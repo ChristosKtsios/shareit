@@ -1,0 +1,905 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_strings.dart';
+import '../../../core/services/tag_extractor_service.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../profile/data/user_repository.dart';
+import '../data/listing_model.dart';
+import '../data/listing_repository.dart';
+import '../data/tags_repository.dart';
+import 'widgets/listing_tags_widget.dart';
+import 'location_picker_screen.dart';
+
+class CreateListingScreen extends ConsumerStatefulWidget {
+  const CreateListingScreen({super.key});
+  @override
+  ConsumerState<CreateListingScreen> createState() =>
+      _CreateListingScreenState();
+}
+
+class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
+  ListingType _type = ListingType.offer;
+  final _titleCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+
+  DateTime? _availableFrom;
+  DateTime? _availableUntil;
+  TimeOfDay? _fromTime;
+  TimeOfDay? _untilTime;
+
+  bool _autoDelete = true;
+  bool _loading = false;
+  bool _uploadingImage = false;
+  bool _locationLoading = true;
+  GeoPoint? _location;
+  String _locationLabel = '';
+  List<String> _imageUrls = [];
+  List<String> _tags = [];
+  List<String> _suggestedTags = [];
+  Timer? _suggestDebounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocation();
+    _titleCtrl.addListener(_onTextChanged);
+    _descCtrl.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _descCtrl.dispose();
+    _suggestDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onTextChanged() {
+    _suggestDebounce?.cancel();
+    _suggestDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      final suggestions = TagExtractorService.extractTags(
+        title: _titleCtrl.text,
+        description: _descCtrl.text,
+        existingTags: _tags,
+      );
+      setState(() => _suggestedTags = suggestions);
+    });
+  }
+
+  Future<void> _fetchLocation() async {
+    setState(() => _locationLoading = true);
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+      if (mounted) {
+        setState(() {
+          _location = GeoPoint(pos.latitude, pos.longitude);
+          _locationLabel = 'Τρέχουσα τοποθεσία';
+          _locationLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _locationLabel = 'Δεν βρέθηκε τοποθεσία';
+          _locationLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openLocationPicker() async {
+    final current = _location != null
+        ? LatLng(_location!.latitude, _location!.longitude)
+        : null;
+    final result = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(initialLocation: current),
+      ),
+    );
+    if (result != null) {
+      setState(() {
+        _location = GeoPoint(result.latitude, result.longitude);
+        _locationLabel = 'Επιλεγμένη τοποθεσία';
+      });
+    }
+  }
+
+  /// Νέο: bottom sheet για επιλογή camera/gallery
+  Future<void> _pickImage() async {
+    if (_imageUrls.length >= 5) {
+      _snack('Μέγιστος αριθμός φωτογραφιών: 5');
+      return;
+    }
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 14, 20, 14),
+              child: Text('Πρόσθεσε φωτογραφία',
+                  style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: AppColors.primary),
+              title: const Text('Τράβηξε φωτογραφία',
+                  style: TextStyle(color: AppColors.textPrimary)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.photo_library, color: AppColors.primary),
+              title: const Text('Επίλεξε από γκαλερί',
+                  style: TextStyle(color: AppColors.textPrimary)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Άκυρο',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+        source: source, imageQuality: 60, maxWidth: 1200, maxHeight: 1200);
+    if (file == null) return;
+
+    setState(() => _uploadingImage = true);
+    try {
+      final uid = ref.read(currentUserProvider)!.uid;
+      final ref2 = FirebaseStorage.instance
+          .ref('listings/$uid/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref2.putFile(File(file.path));
+      final url = await ref2.getDownloadURL();
+      setState(() => _imageUrls = [..._imageUrls, url]);
+    } catch (e) {
+      _snack('Σφάλμα: $e');
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  Future<void> _removeImage(String url) async {
+    try {
+      await FirebaseStorage.instance.refFromURL(url).delete();
+    } catch (_) {}
+    setState(() => _imageUrls = _imageUrls.where((u) => u != url).toList());
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final initial = isFrom
+        ? (_availableFrom ?? DateTime.now())
+        : (_availableUntil ??
+            (_availableFrom ?? DateTime.now()).add(const Duration(days: 3)));
+    final first = isFrom ? DateTime.now() : (_availableFrom ?? DateTime.now());
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+              primary: AppColors.primary, surface: AppColors.surface),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isFrom) {
+          _availableFrom = picked;
+          if (_availableUntil != null && _availableUntil!.isBefore(picked)) {
+            _availableUntil = null;
+            _untilTime = null;
+          }
+        } else {
+          _availableUntil = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> _pickTime({required bool isFrom}) async {
+    final initial = isFrom
+        ? (_fromTime ?? const TimeOfDay(hour: 9, minute: 0))
+        : (_untilTime ?? const TimeOfDay(hour: 18, minute: 0));
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+              primary: AppColors.primary, surface: AppColors.surface),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isFrom) {
+          _fromTime = picked;
+        } else {
+          _untilTime = picked;
+        }
+      });
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  DateTime? _combineDateTime(DateTime? date, TimeOfDay? time) {
+    if (date == null) return null;
+    if (time == null) return date;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+  }
+
+  Future<void> _publish() async {
+    if (_titleCtrl.text.trim().isEmpty) {
+      _snack('Γράψε τίτλο για την αγγελία.');
+      return;
+    }
+    if (_location == null) {
+      _snack(AppStrings.errorLocation);
+      return;
+    }
+    if (_tags.length < 3) {
+      _snack('Πρόσθεσε τουλάχιστον 3 tags αναζήτησης.');
+      return;
+    }
+
+    final from = _availableFrom;
+    final until = _availableUntil;
+    if (until != null && from != null && until.isBefore(from)) {
+      _snack('Η λήξη δεν μπορεί να είναι πριν την έναρξη.');
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
+    final title = _titleCtrl.text.trim();
+    final desc = _descCtrl.text.trim();
+    final normalizedTags = _tags.map(ListingModel.normalizeTag).toList();
+    final keywords = {
+      ...ListingModel.generateKeywords(title, desc),
+      ...normalizedTags,
+    }.toList();
+
+    String? userAvatar;
+    try {
+      final userDoc = await UserRepository().get(user.uid);
+      userAvatar = userDoc?.avatarUrl;
+    } catch (_) {}
+
+    final listing = ListingModel(
+      id: '',
+      userId: user.uid,
+      userFirstName: user.displayName?.split(' ').first ?? 'Χρήστης',
+      userAvatarUrl: userAvatar,
+      type: _type,
+      title: title,
+      description: desc,
+      imageUrls: _imageUrls,
+      tags: normalizedTags,
+      searchKeywords: keywords,
+      location: _location!,
+      locationLabel: _locationLabel,
+      availableFrom: _combineDateTime(_availableFrom, _fromTime),
+      availableUntil: _combineDateTime(_availableUntil, _untilTime),
+      hasFromTime: _fromTime != null,
+      hasUntilTime: _untilTime != null,
+      autoDelete: _autoDelete,
+      rating: 0,
+      createdAt: DateTime.now(),
+      isActive: true,
+    );
+
+    try {
+      await ListingRepository().createListing(listing);
+      TagsRepository().incrementTags(normalizedTags);
+
+      if (mounted) {
+        _snack('Η αγγελία δημοσιεύθηκε!');
+        context.pop();
+      }
+    } catch (e) {
+      _snack(AppStrings.errorGeneric);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _formatDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
+
+  String _formatTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(AppStrings.newListing),
+        leading: IconButton(
+            icon: const Icon(Icons.close), onPressed: () => context.pop()),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // SECTION 1: ΤΥΠΟΣ
+              _SectionHeader(
+                  icon: Icons.swap_horiz, title: '1. Τι θέλεις να κάνεις;'),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: _BigTypeChip(
+                      emoji: '🤲',
+                      label: 'Προσφέρω',
+                      selected: _type == ListingType.offer,
+                      color: AppColors.offer,
+                      onTap: () => setState(() => _type = ListingType.offer)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _BigTypeChip(
+                      emoji: '🔍',
+                      label: 'Αναζητώ',
+                      selected: _type == ListingType.seek,
+                      color: AppColors.seek,
+                      onTap: () => setState(() => _type = ListingType.seek)),
+                ),
+              ]),
+
+              const SizedBox(height: 28),
+
+              // SECTION 2: ΒΑΣΙΚΑ
+              _SectionHeader(
+                  icon: Icons.edit_note,
+                  title:
+                      '2. Πες μας τι ${_type == ListingType.offer ? "προσφέρεις" : "ψάχνεις"}'),
+              const SizedBox(height: 12),
+
+              const Text('Τίτλος *',
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _titleCtrl,
+                style: const TextStyle(color: AppColors.textPrimary),
+                maxLength: 80,
+                decoration: InputDecoration(
+                  hintText: _type == ListingType.offer
+                      ? 'π.χ. Δανείζω δράπανο Bosch'
+                      : 'π.χ. Ψάχνω κάποιον για βαφή τοίχου',
+                  counterText: '',
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Ο τίτλος θα εμφανίζεται στον χάρτη',
+                style: TextStyle(color: AppColors.textHint, fontSize: 11),
+              ),
+              const SizedBox(height: 16),
+
+              const Text(AppStrings.description,
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _descCtrl,
+                maxLines: 5,
+                maxLength: 500,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                    hintText:
+                        'Πες περισσότερα — κατάσταση, λεπτομέρειες, όροι...'),
+              ),
+
+              const SizedBox(height: 28),
+
+              // SECTION 3: ΦΩΤΟΓΡΑΦΙΕΣ
+              _SectionHeader(
+                  icon: Icons.photo_library_outlined,
+                  title: '3. Φωτογραφίες',
+                  trailing: Text('${_imageUrls.length}/5',
+                      style: const TextStyle(
+                          color: AppColors.textHint, fontSize: 12))),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 100,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount:
+                      _imageUrls.length + (_imageUrls.length < 5 ? 1 : 0),
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    if (i == _imageUrls.length) {
+                      return _AddPhotoButton(
+                          loading: _uploadingImage, onTap: _pickImage);
+                    }
+                    return Stack(children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(_imageUrls[i],
+                            width: 100, height: 100, fit: BoxFit.cover),
+                      ),
+                      Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () => _removeImage(_imageUrls[i]),
+                            child: Container(
+                              width: 22,
+                              height: 22,
+                              decoration: const BoxDecoration(
+                                  color: AppColors.danger,
+                                  shape: BoxShape.circle),
+                              child: const Icon(Icons.close,
+                                  color: Colors.white, size: 14),
+                            ),
+                          )),
+                    ]);
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              // SECTION 4: TAGS
+              _SectionHeader(icon: Icons.tag, title: '4. Tags αναζήτησης'),
+              const SizedBox(height: 4),
+              const Text(
+                'Βοηθάνε τους άλλους να σε βρουν εύκολα.',
+                style: TextStyle(color: AppColors.textHint, fontSize: 11),
+              ),
+              const SizedBox(height: 12),
+              ListingTagsWidget(
+                tags: _tags,
+                suggestedFromText: _suggestedTags,
+                onTagsChanged: (t) => setState(() {
+                  _tags = t;
+                  _suggestedTags = TagExtractorService.extractTags(
+                    title: _titleCtrl.text,
+                    description: _descCtrl.text,
+                    existingTags: t,
+                  );
+                }),
+              ),
+
+              const SizedBox(height: 28),
+
+              // SECTION 5: ΤΟΠΟΘΕΣΙΑ
+              _SectionHeader(
+                  icon: Icons.location_on_outlined, title: '5. Τοποθεσία'),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: _location != null
+                              ? AppColors.primary
+                              : AppColors.border,
+                          width: _location != null ? 1.5 : 0.5),
+                    ),
+                    child: Row(children: [
+                      _locationLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: AppColors.primary))
+                          : Icon(
+                              _location != null
+                                  ? Icons.location_on
+                                  : Icons.location_off,
+                              color: _location != null
+                                  ? AppColors.primary
+                                  : AppColors.danger,
+                              size: 16),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text(
+                        _locationLoading
+                            ? 'Εντοπισμός τοποθεσίας...'
+                            : _locationLabel,
+                        style: TextStyle(
+                            color: _locationLoading
+                                ? AppColors.textHint
+                                : AppColors.textPrimary,
+                            fontSize: 14),
+                      )),
+                    ]),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: _openLocationPicker,
+                  child: Container(
+                    height: 50,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.primary, width: 1),
+                    ),
+                    child: const Row(children: [
+                      Icon(Icons.map_outlined,
+                          color: AppColors.primary, size: 18),
+                      SizedBox(width: 6),
+                      Text('Χάρτης',
+                          style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+              ]),
+
+              const SizedBox(height: 28),
+
+              // SECTION 6: ΔΙΑΘΕΣΙΜΟΤΗΤΑ
+              _SectionHeader(
+                  icon: Icons.event_outlined,
+                  title: '6. Διαθεσιμότητα (προαιρετικό)'),
+              const SizedBox(height: 4),
+              const Text(
+                'Πες από πότε μέχρι πότε είσαι διαθέσιμος.',
+                style: TextStyle(color: AppColors.textHint, fontSize: 11),
+              ),
+              const SizedBox(height: 12),
+
+              _AvailabilityRow(
+                label: 'Από',
+                date: _availableFrom,
+                time: _fromTime,
+                onPickDate: () => _pickDate(isFrom: true),
+                onPickTime: () => _pickTime(isFrom: true),
+                onClearDate: () => setState(() {
+                  _availableFrom = null;
+                  _fromTime = null;
+                }),
+                onClearTime: () => setState(() => _fromTime = null),
+                formatDate: _formatDate,
+                formatTime: _formatTime,
+              ),
+              const SizedBox(height: 10),
+
+              _AvailabilityRow(
+                label: 'Έως',
+                date: _availableUntil,
+                time: _untilTime,
+                onPickDate: () => _pickDate(isFrom: false),
+                onPickTime: () => _pickTime(isFrom: false),
+                onClearDate: () => setState(() {
+                  _availableUntil = null;
+                  _untilTime = null;
+                }),
+                onClearTime: () => setState(() => _untilTime = null),
+                formatDate: _formatDate,
+                formatTime: _formatTime,
+              ),
+
+              const SizedBox(height: 12),
+              Row(children: [
+                Switch(
+                  value: _autoDelete,
+                  onChanged: (v) => setState(() => _autoDelete = v),
+                  activeThumbColor: AppColors.primary,
+                  activeTrackColor: AppColors.primarySurface,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                    child: Text(AppStrings.autoDelete,
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 13))),
+              ]),
+
+              const SizedBox(height: 32),
+
+              ElevatedButton(
+                onPressed: _loading || _locationLoading ? null : _publish,
+                child: _loading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.background))
+                    : const Text(AppStrings.publish),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AvailabilityRow extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final TimeOfDay? time;
+  final VoidCallback onPickDate;
+  final VoidCallback onPickTime;
+  final VoidCallback onClearDate;
+  final VoidCallback onClearTime;
+  final String Function(DateTime) formatDate;
+  final String Function(TimeOfDay) formatTime;
+
+  const _AvailabilityRow({
+    required this.label,
+    required this.date,
+    required this.time,
+    required this.onPickDate,
+    required this.onPickTime,
+    required this.onClearDate,
+    required this.onClearTime,
+    required this.formatDate,
+    required this.formatTime,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 40,
+          child: Text(label,
+              style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 3,
+          child: GestureDetector(
+            onTap: onPickDate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: date != null
+                        ? AppColors.primary.withValues(alpha: 0.5)
+                        : AppColors.border,
+                    width: 0.5),
+              ),
+              child: Row(children: [
+                const Icon(Icons.calendar_today_outlined,
+                    color: AppColors.textSecondary, size: 14),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    date != null ? formatDate(date!) : 'Ημερομηνία',
+                    style: TextStyle(
+                        color: date != null
+                            ? AppColors.textPrimary
+                            : AppColors.textHint,
+                        fontSize: 13),
+                  ),
+                ),
+                if (date != null)
+                  GestureDetector(
+                    onTap: onClearDate,
+                    child: const Icon(Icons.close,
+                        color: AppColors.textHint, size: 14),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          flex: 2,
+          child: GestureDetector(
+            onTap: date != null ? onPickTime : null,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+              decoration: BoxDecoration(
+                color: date != null
+                    ? AppColors.surfaceVariant
+                    : AppColors.surfaceVariant.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: time != null
+                        ? AppColors.primary.withValues(alpha: 0.5)
+                        : AppColors.border,
+                    width: 0.5),
+              ),
+              child: Row(children: [
+                Icon(Icons.access_time,
+                    color: date != null
+                        ? AppColors.textSecondary
+                        : AppColors.textHint,
+                    size: 14),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    time != null ? formatTime(time!) : 'Ώρα',
+                    style: TextStyle(
+                        color: time != null
+                            ? AppColors.textPrimary
+                            : AppColors.textHint,
+                        fontSize: 13),
+                  ),
+                ),
+                if (time != null)
+                  GestureDetector(
+                    onTap: onClearTime,
+                    child: const Icon(Icons.close,
+                        color: AppColors.textHint, size: 14),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget? trailing;
+
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: AppColors.primary, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(title,
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600)),
+        ),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+class _BigTypeChip extends StatelessWidget {
+  final String emoji;
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _BigTypeChip({
+    required this.emoji,
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.15)
+              : AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: selected ? color : AppColors.border,
+              width: selected ? 2 : 0.5),
+        ),
+        child: Column(children: [
+          Text(emoji, style: const TextStyle(fontSize: 28)),
+          const SizedBox(height: 4),
+          Text(label,
+              style: TextStyle(
+                  color: selected ? color : AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _AddPhotoButton extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onTap;
+  const _AddPhotoButton({required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: loading ? null : onTap,
+        child: Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            color: AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border, width: 1),
+          ),
+          child: loading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.primary))
+              : const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                      Icon(Icons.add_photo_alternate_outlined,
+                          color: AppColors.primary, size: 28),
+                      SizedBox(height: 4),
+                      Text('Πρόσθεσε\nφωτογραφία',
+                          style: TextStyle(
+                              color: AppColors.textHint, fontSize: 10),
+                          textAlign: TextAlign.center),
+                    ]),
+        ),
+      );
+}
