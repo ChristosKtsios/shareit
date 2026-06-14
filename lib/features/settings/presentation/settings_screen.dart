@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
@@ -98,6 +99,18 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.help_outline,
             label: 'Βοήθεια & Υποστήριξη',
             onTap: () {}),
+        _SettingsTile(
+            icon: Icons.privacy_tip_outlined,
+            label: 'Πολιτική Απορρήτου',
+            onTap: () => launchUrl(
+                Uri.parse('https://shareit-6cfa0.web.app/privacy_policy.html'),
+                mode: LaunchMode.externalApplication)),
+        _SettingsTile(
+            icon: Icons.description_outlined,
+            label: 'Όροι Χρήσης',
+            onTap: () => launchUrl(
+                Uri.parse('https://shareit-6cfa0.web.app/terms.html'),
+                mode: LaunchMode.externalApplication)),
         _SettingsTile(
             icon: Icons.privacy_tip_outlined,
             label: 'Πολιτική απορρήτου',
