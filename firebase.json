@@ -20,8 +20,7 @@
   },
   "functions": [
     {
-      "source": "functions",
-      "codebase": "default",
+      "codebase": "shareit-functions",
       "disallowLegacyRuntimeConfig": true,
       "ignore": [
         "node_modules",
@@ -29,6 +28,25 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ],
+      "source": "shareit-functions"
+    },
+    {
+      "source": "push-notifications",
+      "codebase": "push-notifications",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
       ]
     }
   ]

@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../providers/map_provider.dart';
 import 'widgets/map_listing_card.dart';
+import 'widgets/cluster_carousel_sheet.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -20,20 +21,36 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final notifier = ref.read(mapProvider.notifier);
 
     ref.listen(mapProvider, (prev, next) {
-      if (next.clusterTapPosition != null &&
+      print('🔵 LISTENER triggered. clusterListings.length=${next.clusterListings.length}');
+      if (next.clusterListings.isNotEmpty &&
+          (prev == null || prev.clusterListings.isEmpty)) {
+        print('🟢 OPENING SHEET');
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => ClusterCarouselSheet(
+            listings: next.clusterListings,
+            initialIndex: next.clusterIndex,
+          ),
+        ).whenComplete(() {
+          notifier.clearClusterTap();
+        });
+      }
+      if (next.clusterListings.isNotEmpty &&
+          next.clusterTapPosition != null &&
           next.clusterTapPosition != prev?.clusterTapPosition) {
         _mapController?.animateCamera(
-          CameraUpdate.newCameraPosition(CameraPosition(
-            target: next.clusterTapPosition!,
-            zoom: next.clusterTapZoom ?? (next.zoomLevel + 3),
-          )),
+          CameraUpdate.newLatLng(next.clusterTapPosition!),
         );
-        notifier.clearClusterTap();
       }
     });
 
     return Scaffold(
-      body: mapState.userPosition == null
+      // ΑΛΛΑΓΗ: ο spinner δείχνεται μόνο όσο τρέχει ο εντοπισμός (isLocating),
+      // ΟΧΙ με βάση το userPosition. Έτσι, ακόμα κι αν το GPS αποτύχει,
+      // ο χάρτης εμφανίζεται με το default location αντί για ατέρμονο spinner.
+      body: mapState.isLocating
           ? const Center(
               child: CircularProgressIndicator(color: AppColors.primary))
           : Stack(children: [
@@ -41,11 +58,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 onMapCreated: (c) {
                   _mapController = c;
                 },
+                // ΑΛΛΑΓΗ: cameraTarget αντί για userPosition! (έχει fallback)
                 initialCameraPosition: CameraPosition(
-                  target: LatLng(
-                    mapState.userPosition!.latitude,
-                    mapState.userPosition!.longitude,
-                  ),
+                  target: mapState.cameraTarget,
                   zoom: 14,
                 ),
                 myLocationEnabled: true,
@@ -73,6 +88,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
 
+              // Subtle hint όταν χρησιμοποιούμε default location
+              // (δεν βρέθηκε πραγματική τοποθεσία)
+              if (mapState.usingFallbackLocation)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 12,
+                  left: 12,
+                  right: 52,
+                  child: _LocationHintChip(
+                    onRetry: () => notifier.retryLocation(),
+                  ),
+                ),
+
               // Locate me
               Positioned(
                 top: MediaQuery.of(context).padding.top + 12,
@@ -82,14 +109,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   backgroundColor: AppColors.surface,
                   foregroundColor: AppColors.primary,
                   elevation: 0,
-                  onPressed: () {
-                    if (mapState.userPosition != null &&
-                        _mapController != null) {
+                  onPressed: () async {
+                    // Αν δεν έχουμε πραγματική τοποθεσία, ξαναπροσπαθούμε.
+                    if (mapState.userPosition == null) {
+                      await notifier.retryLocation();
+                    }
+                    final pos = ref.read(mapProvider).userPosition;
+                    if (pos != null && _mapController != null) {
                       _mapController!.animateCamera(
-                        CameraUpdate.newLatLng(LatLng(
-                          mapState.userPosition!.latitude,
-                          mapState.userPosition!.longitude,
-                        )),
+                        CameraUpdate.newLatLng(
+                            LatLng(pos.latitude, pos.longitude)),
                       );
                     }
                   },
@@ -149,6 +178,35 @@ class _ActiveFilterChip extends StatelessWidget {
             child: const Icon(Icons.close, color: Colors.white, size: 16),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _LocationHintChip extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _LocationHintChip({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onRetry,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.location_off, color: Colors.white, size: 14),
+            SizedBox(width: 6),
+            Text('Δεν βρέθηκε η τοποθεσία — Δοκίμασε ξανά',
+                style: TextStyle(color: Colors.white, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }

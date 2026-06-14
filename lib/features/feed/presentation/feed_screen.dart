@@ -6,10 +6,8 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/listing_card.dart';
 import '../../../core/widgets/shimmer_loader.dart';
 import '../../listings/data/listing_model.dart';
-import '../../listings/data/tags_repository.dart';
 import '../../search/presentation/widgets/search_filters_widget.dart';
 import '../providers/feed_provider.dart';
-import 'widgets/feed_filters_sheet.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
   const FeedScreen({super.key});
@@ -19,13 +17,11 @@ class FeedScreen extends ConsumerStatefulWidget {
 
 class _FeedScreenState extends ConsumerState<FeedScreen> {
   final _scrollCtrl = ScrollController();
-  List<String> _trendingTags = [];
 
   @override
   void initState() {
     super.initState();
     _scrollCtrl.addListener(_onScroll);
-    _loadTrendingTags();
   }
 
   @override
@@ -41,57 +37,41 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     }
   }
 
-  Future<void> _loadTrendingTags() async {
-    try {
-      final tags = await TagsRepository().getTrendingTags(limit: 15);
-      if (mounted) {
-        setState(() => _trendingTags = tags.map((t) => t.name).toList());
-      }
-    } catch (_) {}
-  }
-
-  void _openFiltersSheet() {
-    final state = ref.read(feedProvider);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => FeedFiltersSheet(
-        initialDistance: state.distance,
-        initialSort: state.sort,
-        initialTagFilter: state.tagFilter,
-        trendingTags: _trendingTags,
-        onApply: (distance, sort, tag) {
-          final notifier = ref.read(feedProvider.notifier);
-          notifier.setDistance(distance);
-          notifier.setSort(sort);
-          notifier.setTagFilter(tag);
-        },
-      ),
-    );
-  }
-
-  /// Μετράει πόσα φίλτρα είναι ενεργά (εκτός default)
-  int _activeFiltersCount(FeedState state) {
-    var count = 0;
-    if (state.distance != SearchDistance.all) count++;
-    if (state.sort != SearchSort.recent) count++;
-    if (state.tagFilter != null) count++;
-    return count;
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(feedProvider);
     final notifier = ref.read(feedProvider.notifier);
     final listings = state.filtered;
-    final activeCount = _activeFiltersCount(state);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(AppStrings.navFeed),
+        titleSpacing: 16,
+        title: Row(children: [
+          Text('Share',
+              style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                  letterSpacing: -0.5)),
+          Text('It',
+              style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                  letterSpacing: -0.5)),
+          const SizedBox(width: 6),
+          Text('€',
+              style: TextStyle(
+                  color: AppColors.deal.withValues(alpha: 0.5),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14)),
+          const SizedBox(width: 2),
+          Text('\$',
+              style: TextStyle(
+                  color: AppColors.deal.withValues(alpha: 0.4),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14)),
+        ]),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
@@ -131,95 +111,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           ),
         ),
 
-        // Filters button + active filters chips
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              // Filters button με badge
-              GestureDetector(
-                onTap: _openFiltersSheet,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: activeCount > 0
-                        ? AppColors.primary
-                        : AppColors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: activeCount > 0
-                            ? AppColors.primary
-                            : AppColors.border,
-                        width: 0.5),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.tune,
-                          color: activeCount > 0
-                              ? Colors.white
-                              : AppColors.textPrimary,
-                          size: 16),
-                      const SizedBox(width: 6),
-                      Text(AppStrings.filters,
-                          style: TextStyle(
-                              color: activeCount > 0
-                                  ? Colors.white
-                                  : AppColors.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                      if (activeCount > 0) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text('$activeCount',
-                              style: const TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-
-              // Active filter pills
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      if (state.distance != SearchDistance.all)
-                        _ActivePill(
-                          label: state.distance.label,
-                          onRemove: () =>
-                              notifier.setDistance(SearchDistance.all),
-                        ),
-                      if (state.sort != SearchSort.recent)
-                        _ActivePill(
-                          label: '📍 Κοντινά',
-                          onRemove: () => notifier.setSort(SearchSort.recent),
-                        ),
-                      if (state.tagFilter != null)
-                        _ActivePill(
-                          label: '#${state.tagFilter}',
-                          onRemove: () => notifier.setTagFilter(null),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        // Distance slider — επιλογή απόστασης κατευθείαν στην οθόνη
 
         const Divider(height: 0),
 
@@ -232,13 +124,6 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               Text('${listings.length} αγγελίες',
                   style: const TextStyle(
                       color: AppColors.textSecondary, fontSize: 12)),
-              const Spacer(),
-              Text(
-                  state.sort == SearchSort.recent
-                      ? '🕐 Πιο πρόσφατα'
-                      : '📍 Πιο κοντινά',
-                  style:
-                      const TextStyle(color: AppColors.textHint, fontSize: 11)),
             ]),
           ),
 
@@ -346,38 +231,9 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _ActivePill extends StatelessWidget {
-  final String label;
-  final VoidCallback onRemove;
+/// Distance picker inline (χωρίς bottom sheet).
+/// Δείχνει chips για κάθε επιλογή απόστασης από SearchDistance.values.
+class _DistancePicker extends StatelessWidget {
+  final SearchDistance current;
+  final ValueChanged<SearchDistance> onChanged;
 
-  const _ActivePill({required this.label, required this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.4), width: 0.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: onRemove,
-            child: const Icon(Icons.close, color: AppColors.primary, size: 14),
-          ),
-        ],
-      ),
-    );
-  }
-}

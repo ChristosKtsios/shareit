@@ -2,59 +2,62 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum DealStatus { pending, accepted, active, completed, cancelled }
 
+/// Πρόταση deal με 4 πεδία:
+/// - title: τίτλος που ΠΡΕΠΕΙ να περιέχει @firstName lastName και των 2 χρηστών
+/// - details: λεπτομέρειες/όροι της ανταλλαγής
+/// - startDate: πότε ξεκινάει η ανταλλαγή
+/// - endDate: πότε ολοκληρώνεται
+/// - accepted: true όταν αυτός ο χρήστης έχει πατήσει "Συμφωνώ"
 class DealProposal {
   final String userId;
-  final String reason;
-  final String iGive;
-  final String iReceive;
-  final DateTime deliveryAt;
-  final bool withPayment;
-  final double? amount;
+  final String title;
+  final String details;
+  final DateTime startDate;
+  final DateTime endDate;
   final bool accepted;
 
   const DealProposal({
     required this.userId,
-    required this.reason,
-    required this.iGive,
-    required this.iReceive,
-    required this.deliveryAt,
-    required this.withPayment,
-    this.amount,
+    required this.title,
+    required this.details,
+    required this.startDate,
+    required this.endDate,
     this.accepted = false,
   });
 
   DealProposal copyWith({bool? accepted}) => DealProposal(
-    userId:      userId,
-    reason:      reason,
-    iGive:       iGive,
-    iReceive:    iReceive,
-    deliveryAt:  deliveryAt,
-    withPayment: withPayment,
-    amount:      amount,
-    accepted:    accepted ?? this.accepted,
-  );
+        userId: userId,
+        title: title,
+        details: details,
+        startDate: startDate,
+        endDate: endDate,
+        accepted: accepted ?? this.accepted,
+      );
 
-  factory DealProposal.fromMap(Map<String, dynamic> d) => DealProposal(
-    userId:      d['userId']      ?? '',
-    reason:      d['reason']      ?? '',
-    iGive:       d['iGive']       ?? '',
-    iReceive:    d['iReceive']    ?? '',
-    deliveryAt:  (d['deliveryAt'] as Timestamp).toDate(),
-    withPayment: d['withPayment'] ?? false,
-    amount:      (d['amount']     as num?)?.toDouble(),
-    accepted:    d['accepted']    ?? false,
-  );
+  factory DealProposal.fromMap(Map<String, dynamic> d) {
+    // Safe parsing - αν λείπει κάποιο field, δίνει default
+    final start = d['startDate'] as Timestamp?;
+    final end = d['endDate'] as Timestamp?;
+    return DealProposal(
+      userId: d['userId'] as String? ?? '',
+      title: d['title'] as String? ?? '',
+      details: d['details'] as String? ?? d['description'] as String? ?? '',
+      startDate: start?.toDate() ?? DateTime.now(),
+      endDate: end?.toDate() ??
+          (d['deliveryAt'] as Timestamp?)?.toDate() ??
+          DateTime.now().add(const Duration(days: 1)),
+      accepted: d['accepted'] as bool? ?? false,
+    );
+  }
 
   Map<String, dynamic> toMap() => {
-    'userId':      userId,
-    'reason':      reason,
-    'iGive':       iGive,
-    'iReceive':    iReceive,
-    'deliveryAt':  Timestamp.fromDate(deliveryAt),
-    'withPayment': withPayment,
-    'amount':      amount,
-    'accepted':    accepted,
-  };
+        'userId': userId,
+        'title': title,
+        'details': details,
+        'startDate': Timestamp.fromDate(startDate),
+        'endDate': Timestamp.fromDate(endDate),
+        'accepted': accepted,
+      };
 }
 
 class DealModel {
@@ -68,7 +71,8 @@ class DealModel {
   final DealProposal? proposal1;
   final DealProposal? proposal2;
   final DateTime? activatedAt;
-  final DateTime? deliveryAt;
+  final DateTime? startDate;
+  final DateTime? endDate;
   final double? ownerRating;
   final double? seekerRating;
   final DateTime createdAt;
@@ -84,58 +88,52 @@ class DealModel {
     this.proposal1,
     this.proposal2,
     this.activatedAt,
-    this.deliveryAt,
+    this.startDate,
+    this.endDate,
     this.ownerRating,
     this.seekerRating,
     required this.createdAt,
   });
 
-  bool get isActive      => status == DealStatus.active;
-  bool get bothAccepted  =>
+  bool get isActive => status == DealStatus.active;
+  bool get isCompleted => status == DealStatus.completed;
+  bool get bothAccepted =>
       proposal1?.accepted == true && proposal2?.accepted == true;
+
   Duration get remaining =>
-      deliveryAt?.difference(DateTime.now()) ?? Duration.zero;
-  bool get isExpired     => remaining.isNegative;
+      endDate?.difference(DateTime.now()) ?? Duration.zero;
+  bool get isExpired => remaining.isNegative;
+
+  bool get hasStarted =>
+      startDate != null && startDate!.isBefore(DateTime.now());
+
+  String get displayTitle =>
+      proposal1?.title ?? proposal2?.title ?? listingTitle;
+
+  String get displayDetails => proposal1?.details ?? proposal2?.details ?? '';
 
   factory DealModel.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
     return DealModel(
-      id:           doc.id,
-      chatId:       d['chatId']       ?? '',
-      listingId:    d['listingId']    ?? '',
-      listingTitle: d['listingTitle'] ?? '',
-      user1Uid:     d['user1Uid']     ?? '',
-      user2Uid:     d['user2Uid']     ?? '',
-      status: DealStatus.values.firstWhere(
-          (e) => e.name == d['status'],
+      id: doc.id,
+      chatId: d['chatId'] as String? ?? '',
+      listingId: d['listingId'] as String? ?? '',
+      listingTitle: d['listingTitle'] as String? ?? '',
+      user1Uid: d['user1Uid'] as String? ?? '',
+      user2Uid: d['user2Uid'] as String? ?? '',
+      status: DealStatus.values.firstWhere((e) => e.name == d['status'],
           orElse: () => DealStatus.pending),
-      proposal1: d['proposal1'] != null
-          ? DealProposal.fromMap(d['proposal1']) : null,
-      proposal2: d['proposal2'] != null
-          ? DealProposal.fromMap(d['proposal2']) : null,
-      activatedAt:  (d['activatedAt']  as Timestamp?)?.toDate(),
-      deliveryAt:   (d['deliveryAt']   as Timestamp?)?.toDate(),
-      ownerRating:  (d['ownerRating']  as num?)?.toDouble(),
+      proposal1:
+          d['proposal1'] != null ? DealProposal.fromMap(d['proposal1']) : null,
+      proposal2:
+          d['proposal2'] != null ? DealProposal.fromMap(d['proposal2']) : null,
+      activatedAt: (d['activatedAt'] as Timestamp?)?.toDate(),
+      startDate: (d['startDate'] as Timestamp?)?.toDate(),
+      endDate: (d['endDate'] as Timestamp?)?.toDate() ??
+          (d['deliveryAt'] as Timestamp?)?.toDate(),
+      ownerRating: (d['ownerRating'] as num?)?.toDouble(),
       seekerRating: (d['seekerRating'] as num?)?.toDouble(),
-      createdAt:    (d['createdAt']    as Timestamp).toDate(),
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
-
-  Map<String, dynamic> toFirestore() => {
-    'chatId':       chatId,
-    'listingId':    listingId,
-    'listingTitle': listingTitle,
-    'user1Uid':     user1Uid,
-    'user2Uid':     user2Uid,
-    'status':       status.name,
-    'proposal1':    proposal1?.toMap(),
-    'proposal2':    proposal2?.toMap(),
-    'activatedAt':  activatedAt != null
-        ? Timestamp.fromDate(activatedAt!) : null,
-    'deliveryAt':   deliveryAt != null
-        ? Timestamp.fromDate(deliveryAt!) : null,
-    'ownerRating':  ownerRating,
-    'seekerRating': seekerRating,
-    'createdAt':    FieldValue.serverTimestamp(),
-  };
 }

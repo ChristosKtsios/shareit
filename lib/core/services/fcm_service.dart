@@ -7,11 +7,11 @@ import 'package:flutter/material.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
 class FcmService {
-  static final _fcm   = FirebaseMessaging.instance;
-  static final _db    = FirebaseFirestore.instance;
+  static final _fcm = FirebaseMessaging.instance;
+  static final _db = FirebaseFirestore.instance;
   static final _local = FlutterLocalNotificationsPlugin();
 
-  static const _channelId   = 'shareit_messages';
+  static const _channelId = 'shareit_messages';
   static const _channelName = 'Μηνύματα ShareIt';
 
   static Future<void> init(String uid) async {
@@ -24,7 +24,7 @@ class FcmService {
     await _local.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS:     DarwinInitializationSettings(),
+        iOS: DarwinInitializationSettings(),
       ),
     );
 
@@ -42,7 +42,6 @@ class FcmService {
   static Future<void> _handleForeground(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
-
     await _local.show(
       notification.hashCode,
       notification.title,
@@ -52,8 +51,8 @@ class FcmService {
           _channelId,
           _channelName,
           importance: Importance.high,
-          priority:   Priority.high,
-          icon:       '@mipmap/ic_launcher',
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
         ),
         iOS: DarwinNotificationDetails(
           presentAlert: true,
@@ -68,8 +67,7 @@ class FcmService {
   static void _handleOpened(RemoteMessage message) {
     final chatId = message.data['chatId'];
     final dealId = message.data['dealId'];
-    final type   = message.data['type'];
-
+    final type = message.data['type'];
     if (navigatorKey.currentContext == null) return;
 
     if (type == 'message' && chatId != null) {
@@ -81,8 +79,14 @@ class FcmService {
     }
   }
 
+  /// Αποθήκευση FCM token με set+merge.
+  /// Αν το user document δεν υπάρχει ακόμα -> το δημιουργεί με μόνο
+  /// το fcmToken. Αν υπάρχει -> ενημερώνει μόνο αυτό το πεδίο.
   static Future<void> _saveToken(String uid, String token) async =>
-      await _db.collection('users').doc(uid).update({'fcmToken': token});
+      await _db.collection('users').doc(uid).set(
+        {'fcmToken': token},
+        SetOptions(merge: true),
+      );
 
   static final navigatorKey = GlobalKey<NavigatorState>();
 }

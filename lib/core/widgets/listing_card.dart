@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants/app_colors.dart';
 import '../../features/listings/data/listing_model.dart';
 
@@ -6,7 +7,8 @@ class ListingCard extends StatelessWidget {
   final ListingModel listing;
   final VoidCallback? onTap;
 
-  const ListingCard({super.key, required this.listing, this.onTap});
+  final double? distanceKm;
+  const ListingCard({super.key, required this.listing, this.onTap, this.distanceKm});
 
   String _formatDateRange() {
     final from = listing.availableFrom;
@@ -112,29 +114,77 @@ class ListingCard extends StatelessWidget {
                   )),
             ],
             const SizedBox(height: 10),
-            Row(children: [
-              CircleAvatar(
-                radius: 10,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.15),
-                backgroundImage: listing.userAvatarUrl != null
-                    ? NetworkImage(listing.userAvatarUrl!)
-                    : null,
-                child: listing.userAvatarUrl == null
-                    ? Text(
-                        listing.userFirstName.isNotEmpty
-                            ? listing.userFirstName[0].toUpperCase()
-                            : '?',
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(listing.userId)
+                  .snapshots(),
+              builder: (context, snap) {
+                String name = listing.userFirstName;
+                String? avatar = listing.userAvatarUrl;
+                double rating = 0;
+                int ratingCount = 0;
+                if (snap.hasData && snap.data!.exists) {
+                  final d = snap.data!.data() as Map<String, dynamic>;
+                  final first = (d['firstName'] as String?) ?? '';
+                  final last = (d['lastName'] as String?) ?? '';
+                  final full = '$first $last'.trim();
+                  if (full.isNotEmpty) name = full;
+                  avatar = (d['avatarUrl'] as String?) ?? avatar;
+                  rating = (d['rating'] as num?)?.toDouble() ?? 0;
+                  ratingCount = (d['ratingCount'] as num?)?.toInt() ?? 0;
+                }
+                return Row(children: [
+                  CircleAvatar(
+                    radius: 10,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.15),
+                    backgroundImage:
+                        avatar != null ? NetworkImage(avatar) : null,
+                    child: avatar == null
+                        ? Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : '?',
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600))
+                        : null,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(name,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600))
-                    : null,
-              ),
-              const SizedBox(width: 6),
-              Text(listing.userFirstName,
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12)),
-            ]),
+                            color: AppColors.textSecondary, fontSize: 12)),
+                  ),
+                  if (distanceKm != null) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.location_on,
+                        color: AppColors.textHint, size: 12),
+                    Text(
+                      distanceKm! < 1
+                          ? '${(distanceKm! * 1000).toStringAsFixed(0)} μ'
+                          : '${distanceKm!.toStringAsFixed(1)} χλμ',
+                      style: const TextStyle(
+                          color: AppColors.textHint, fontSize: 11),
+                    ),
+                  ],
+                  if (ratingCount > 0) ...[
+                    const SizedBox(width: 6),
+                    const Icon(Icons.star,
+                        color: AppColors.deal, size: 12),
+                    const SizedBox(width: 2),
+                    Text(rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                            color: AppColors.deal,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700)),
+                    Text(' ($ratingCount)',
+                        style: const TextStyle(
+                            color: AppColors.textHint, fontSize: 10)),
+                  ],
+                ]);
+              },
+            ),
           ],
         ),
       ),

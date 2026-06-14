@@ -6,6 +6,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/listing_card.dart';
 import '../../../core/widgets/shimmer_loader.dart';
 import '../providers/listings_provider.dart';
+import '../../../core/widgets/empty_state.dart';
 
 class MyListingsScreen extends ConsumerWidget {
   const MyListingsScreen({super.key});
@@ -22,21 +23,13 @@ class MyListingsScreen extends ConsumerWidget {
             style: TextStyle(color: AppColors.textSecondary))),
         data: (listings) {
           if (listings.isEmpty) {
-            return Center(child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.post_add_outlined,
-                  color: AppColors.textHint, size: 48),
-              const SizedBox(height: 12),
-              const Text('Δεν έχεις δημοσιεύσει αγγελίες ακόμα.',
-                  style: TextStyle(color: AppColors.textSecondary)),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => context.push('/listing/new'),
-                child: const Text('Δημιούργησε αγγελία'),
-              ),
-            ],
-          ));
+            return EmptyState(
+              icon: Icons.post_add_outlined,
+              title: 'Δεν έχεις δημοσιεύσει αγγελίες ακόμα',
+              subtitle: 'Δημιούργησε την πρώτη σου αγγελία!',
+              actionLabel: 'Δημιούργησε αγγελία',
+              onAction: () => context.push('/listing/new'),
+            );
           }
 
           return ListView.separated(

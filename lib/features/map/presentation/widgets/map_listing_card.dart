@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../listings/data/listing_model.dart';
@@ -38,57 +39,87 @@ class MapListingCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row: user info + close
-            Row(
-              children: [
-                // User avatar
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: AppColors.primary.withValues(alpha: 0.2),
-                  backgroundImage: listing.userAvatarUrl != null
-                      ? NetworkImage(listing.userAvatarUrl!)
-                      : null,
-                  child: listing.userAvatarUrl == null
-                      ? Text(
-                          listing.userFirstName.isNotEmpty
-                              ? listing.userFirstName[0].toUpperCase()
-                              : '?',
-                          style: const TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w600))
-                      : null,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(listing.userFirstName,
-                          style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                      Text(label,
-                          style: TextStyle(
-                              color: color,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500)),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: onClose,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      shape: BoxShape.circle,
+            // Header row: user info (LIVE από Firestore) + close
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(listing.userId)
+                  .snapshots(),
+              builder: (context, snap) {
+                String displayName = listing.userFirstName.isNotEmpty
+                    ? listing.userFirstName
+                    : 'Χρήστης';
+                String? avatarUrl = listing.userAvatarUrl;
+
+                if (snap.hasData && snap.data!.exists) {
+                  final d = snap.data!.data() as Map<String, dynamic>;
+                  final first = (d['firstName'] as String?) ?? '';
+                  final last = (d['lastName'] as String?) ?? '';
+                  final full =
+                      last.isNotEmpty ? '$first $last'.trim() : first.trim();
+                  if (full.isNotEmpty) displayName = full;
+                  avatarUrl = (d['avatarUrl'] as String?) ??
+                      (d['photoUrl'] as String?) ??
+                      avatarUrl;
+                }
+
+                final initial =
+                    displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+
+                return Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => context.push('/profile/${listing.userId}'),
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor:
+                            AppColors.primary.withValues(alpha: 0.2),
+                        backgroundImage:
+                            avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                        child: avatarUrl == null
+                            ? Text(initial,
+                                style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600))
+                            : null,
+                      ),
                     ),
-                    child: const Icon(Icons.close,
-                        size: 14, color: AppColors.textHint),
-                  ),
-                ),
-              ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => context.push('/profile/${listing.userId}'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(displayName,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                            Text(label,
+                                style: TextStyle(
+                                    color: color,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: onClose,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close,
+                            size: 14, color: AppColors.textHint),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 12),
 
@@ -140,7 +171,7 @@ class MapListingCard extends StatelessWidget {
               const SizedBox(height: 10),
             ],
 
-            // Tags + location
+            // Tags
             if (listing.tags.isNotEmpty) ...[
               Wrap(
                 spacing: 4,

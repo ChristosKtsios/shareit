@@ -20,7 +20,9 @@ class MainShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final idx = _idx(context);
-    final unread = ref.watch(unreadCountProvider);
+    // FIX: unreadCountProvider είναι τώρα StreamProvider<int>, οπότε
+    // παίρνουμε το int μέσω .valueOrNull (0 αν δεν έχει φορτώσει).
+    final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
       body: child,
@@ -50,15 +52,8 @@ class MainShell extends ConsumerWidget {
                 current: idx,
                 onTap: () => context.go('/map')),
             _NavItem(
-                icon: Icons.grid_view_outlined,
-                acti_NavItem(
-                    icon: Icons.search_outlined,
-                    activeIcon: Icons.search,
-                    label: AppStrings.navFeed,
-                    index: 1,
-                    current: idx,
-                    onTap: () => context.go('/feed')),
-                veIcon: Icons.grid_view,
+                icon: Icons.search_outlined,
+                activeIcon: Icons.search,
                 label: AppStrings.navFeed,
                 index: 1,
                 current: idx,

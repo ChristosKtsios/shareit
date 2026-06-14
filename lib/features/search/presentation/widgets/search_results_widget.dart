@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/listing_card.dart';
@@ -69,15 +70,49 @@ class SearchResultsWidget extends StatelessWidget {
       ]));
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: state.results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => ListingCard(
-        listing: state.results[i],
-        onTap: () =>
-            context.push('/listing/${state.results[i].id}'),
-      ),
+    return FutureBuilder<Position?>(
+      future: _getCurrentPosition(),
+      builder: (context, posSnap) {
+        final pos = posSnap.data;
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: state.results.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (_, i) {
+            final l = state.results[i];
+            double? distKm;
+            if (pos != null) {
+              final meters = Geolocator.distanceBetween(
+                pos.latitude,
+                pos.longitude,
+                l.location.latitude,
+                l.location.longitude,
+              );
+              distKm = meters / 1000;
+            }
+            return ListingCard(
+              listing: l,
+              distanceKm: distKm,
+              onTap: () => context.push('/listing/${l.id}'),
+            );
+          },
+        );
+      },
     );
+  }
+
+  Future<Position?> _getCurrentPosition() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+        if (perm == LocationPermission.denied) return null;
+      }
+      if (perm == LocationPermission.deniedForever) return null;
+      return await Geolocator.getCurrentPosition();
+    } catch (_) {
+      return null;
+    }
   }
 }

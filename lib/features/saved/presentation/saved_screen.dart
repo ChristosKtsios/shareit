@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/listing_card.dart';
 import '../../../core/widgets/shimmer_loader.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../providers/saved_provider.dart';
 
 class SavedScreen extends ConsumerWidget {
@@ -22,14 +23,11 @@ class SavedScreen extends ConsumerWidget {
                 style: TextStyle(color: AppColors.textSecondary))),
         data: (listings) {
           if (listings.isEmpty) {
-            return const Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.bookmark_outline, color: AppColors.textHint, size: 48),
-              SizedBox(height: 12),
-              Text('Δεν έχεις αποθηκευμένες αγγελίες.',
-                  style: TextStyle(color: AppColors.textSecondary)),
-            ]),
-          );
+            return const EmptyState(
+              icon: Icons.bookmark_outline,
+              title: 'Δεν έχεις αποθηκευμένες αγγελίες',
+              subtitle: 'Πάτα το ❤️ σε όποια αγγελία σε ενδιαφέρει για να την έχεις εδώ.',
+            );
           }
           return ListView.separated(
             padding: const EdgeInsets.all(16),

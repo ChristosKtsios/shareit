@@ -5,6 +5,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../profile/data/user_repository.dart';
+import '../../../core/widgets/shimmer_loader.dart';
+import '../../../core/widgets/empty_state.dart';
 
 class BlockedUsersScreen extends ConsumerWidget {
   const BlockedUsersScreen({super.key});
@@ -19,17 +21,18 @@ class BlockedUsersScreen extends ConsumerWidget {
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snap) {
           if (!snap.hasData) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary));
+            return const ShimmerList(count: 5);
           }
 
           final data = snap.data!.data() as Map<String, dynamic>? ?? {};
           final blocked = List<String>.from(data['blockedUids'] ?? []);
 
           if (blocked.isEmpty) {
-            return const Center(
-            child: Text('Δεν έχεις αποκλείσει κανέναν.',
-                style: TextStyle(color: AppColors.textSecondary)));
+            return const EmptyState(
+              icon: Icons.block,
+              title: 'Δεν έχεις αποκλείσει κανέναν',
+              subtitle: 'Όταν αποκλείσεις κάποιον χρήστη θα εμφανιστεί εδώ.',
+            );
           }
 
           return ListView.separated(

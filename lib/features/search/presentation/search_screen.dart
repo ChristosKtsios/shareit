@@ -6,7 +6,6 @@ import '../../listings/data/listing_model.dart';
 import '../../listings/data/tags_repository.dart';
 import '../providers/search_provider.dart';
 import 'widgets/search_bar_widget.dart';
-import 'widgets/distance_slider_widget.dart';
 import 'widgets/search_results_widget.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -55,10 +54,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             _ctrl.clear();
             notifier.clear();
           },
-        ),
-        DistanceSliderWidget(
-          value: state.distanceKm,
-          onChanged: notifier.setDistance,
         ),
         const Divider(height: 0),
         SizedBox(

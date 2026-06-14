@@ -6,6 +6,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../data/listing_model.dart';
 import '../../data/listing_repository.dart';
+import '../../../chat/data/chat_repository.dart';
 
 class ListingActionsWidget extends ConsumerWidget {
   final ListingModel listing;
@@ -13,27 +14,13 @@ class ListingActionsWidget extends ConsumerWidget {
 
   Future<void> _startChat(
       BuildContext context, String currentUid) async {
-    final db = FirebaseFirestore.instance;
-    final existing = await db.collection('chats')
-        .where('listingId', isEqualTo: listing.id)
-        .where('participants', arrayContains: currentUid)
-        .limit(1).get();
-
-    String chatId;
-    if (existing.docs.isNotEmpty) {
-      chatId = existing.docs.first.id;
-    } else {
-      final doc = await db.collection('chats').add({
-        'listingId':    listing.id,
-        'listingTitle': listing.title,
-        'participants': [currentUid, listing.userId],
-        'otherUserName': listing.userFirstName,
-        'lastMessage':  '',
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'unread': false,
-      });
-      chatId = doc.id;
-    }
+    final chatId = await ChatRepository().getOrCreate(
+      currentUid: currentUid,
+      otherUid: listing.userId,
+      listingId: listing.id,
+      listingTitle: listing.title,
+      otherUserName: listing.userFirstName,
+    );
     if (context.mounted) context.push('/chat/$chatId');
   }
 

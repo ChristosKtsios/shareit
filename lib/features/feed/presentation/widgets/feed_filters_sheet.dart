@@ -65,7 +65,8 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
     if (_useCustomKm && _kmCtrl.text.isNotEmpty) {
       final km = int.tryParse(_kmCtrl.text);
       if (km != null && km > 0) {
-        _distance = SearchDistance.fromCustomKm(km.toDouble());
+        // FIX: static method του extension -> SearchDistanceX, όχι SearchDistance
+        _distance = SearchDistanceX.fromCustomKm(km.toDouble());
       }
     }
     widget.onApply(_distance, _sort, _tagFilter);
@@ -127,7 +128,6 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
               children: [
-                // === Απόσταση ===
                 const _SectionTitle(
                     icon: Icons.location_on_outlined, title: 'Απόσταση'),
                 const SizedBox(height: 12),
@@ -153,7 +153,7 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
                 const SizedBox(height: 16),
 
                 // Custom km input
-                Text('Ή ορίσε δικιά σου ακτίνα:',
+                const Text('Ή ορίσε δικιά σου ακτίνα:',
                     style: TextStyle(
                         color: AppColors.textSecondary, fontSize: 12)),
                 const SizedBox(height: 8),
@@ -260,7 +260,7 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
           // Apply button (sticky bottom)
           Container(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.surface,
               border:
                   Border(top: BorderSide(color: AppColors.border, width: 0.5)),

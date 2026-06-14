@@ -6,6 +6,12 @@ import '../../listings/data/listing_repository.dart';
 import '../presentation/widgets/map_marker_widget.dart';
 import '../presentation/widgets/map_cluster_widget.dart';
 
+/// Default fallback location (Athens center) — χρησιμοποιείται ΜΟΝΟ
+/// όταν δεν μπορούμε να πάρουμε την πραγματική τοποθεσία του χρήστη
+/// (permission denied, location services off, ή GPS timeout).
+/// Έτσι ο χάρτης εμφανίζεται ΠΑΝΤΑ αντί για ατέρμονο spinner.
+const _defaultLocation = LatLng(37.9838, 23.7275);
+
 class MapState {
   final Position? userPosition;
   final Set<Marker> markers;
@@ -14,6 +20,16 @@ class MapState {
   final double zoomLevel;
   final LatLng? clusterTapPosition;
   final double? clusterTapZoom;
+  final List<ListingModel> clusterListings;
+  final int clusterIndex;
+
+  /// true όσο τρέχει η αρχικοποίηση της τοποθεσίας.
+  /// Όταν γίνει false, ο χάρτης εμφανίζεται (με πραγματική ή default θέση).
+  final bool isLocating;
+
+  /// true αν δεν καταφέραμε να πάρουμε πραγματική τοποθεσία και
+  /// πέσαμε στο default. Χρήσιμο για να δείξεις ένα subtle hint στον χρήστη.
+  final bool usingFallbackLocation;
 
   const MapState({
     this.userPosition,
@@ -23,7 +39,17 @@ class MapState {
     this.zoomLevel = 14.0,
     this.clusterTapPosition,
     this.clusterTapZoom,
+    this.clusterListings = const [],
+    this.clusterIndex = 0,
+    this.isLocating = true,
+    this.usingFallbackLocation = false,
   });
+
+  /// Η θέση στην οποία πρέπει να κεντράρει ο χάρτης.
+  /// Επιστρέφει την πραγματική τοποθεσία αν υπάρχει, αλλιώς το default.
+  LatLng get cameraTarget => userPosition != null
+      ? LatLng(userPosition!.latitude, userPosition!.longitude)
+      : _defaultLocation;
 
   MapState copyWith({
     Position? userPosition,
@@ -33,6 +59,10 @@ class MapState {
     double? zoomLevel,
     LatLng? clusterTapPosition,
     double? clusterTapZoom,
+    List<ListingModel>? clusterListings,
+    int? clusterIndex,
+    bool? isLocating,
+    bool? usingFallbackLocation,
     bool clearSelected = false,
     bool clearFilter = false,
     bool clearClusterTap = false,
@@ -50,6 +80,14 @@ class MapState {
             : (clusterTapPosition ?? this.clusterTapPosition),
         clusterTapZoom:
             clearClusterTap ? null : (clusterTapZoom ?? this.clusterTapZoom),
+        clusterListings: clearClusterTap
+            ? const []
+            : (clusterListings ?? this.clusterListings),
+        clusterIndex:
+            clearClusterTap ? 0 : (clusterIndex ?? this.clusterIndex),
+        isLocating: isLocating ?? this.isLocating,
+        usingFallbackLocation:
+            usingFallbackLocation ?? this.usingFallbackLocation,
       );
 }
 
@@ -62,23 +100,81 @@ class MapNotifier extends StateNotifier<MapState> {
   }
 
   Future<void> _init() async {
-    await _requestLocation();
+    await _resolveLocation();
     _listenListings();
   }
 
-  Future<void> _requestLocation() async {
-    if (!await Geolocator.isLocationServiceEnabled()) return;
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
+  /// Προσπαθεί να βρει την πραγματική τοποθεσία του χρήστη.
+  /// Αν αποτύχει σε οποιοδήποτε σημείο, πέφτει σε fallback ώστε
+  /// ο χάρτης να εμφανίζεται ΠΑΝΤΑ (ποτέ ατέρμονος spinner).
+  Future<void> _resolveLocation() async {
+    try {
+      // 1) Location services ενεργά;
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _fallback();
+        return;
+      }
+
+      // 2) Permission flow
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        _fallback();
+        return;
+      }
+
+      // 3) Γρήγορο cached fix πρώτα (ακαριαίο, αν υπάρχει).
+      //    Δείχνουμε αμέσως κάτι ενώ περιμένουμε ακριβές fix.
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        state = state.copyWith(
+          userPosition: lastKnown,
+          isLocating: false,
+          usingFallbackLocation: false,
+        );
+      }
+
+      // 4) Ακριβές fix ΜΕ timeout — το κρίσιμο fix.
+      //    Χωρίς timeLimit, σε πραγματικό Samsung/Android 15 το
+      //    getCurrentPosition μπορεί να κρεμάσει επ' αόριστον.
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      state = state.copyWith(
+        userPosition: pos,
+        isLocating: false,
+        usingFallbackLocation: false,
+      );
+    } catch (e) {
+      // Timeout ή οποιοδήποτε άλλο σφάλμα GPS.
+      // Αν είχαμε ήδη πάρει lastKnown, το κρατάμε. Αλλιώς fallback.
+      if (state.userPosition == null) {
+        _fallback();
+      } else {
+        state = state.copyWith(isLocating: false);
+      }
     }
-    if (perm == LocationPermission.denied ||
-        perm == LocationPermission.deniedForever) {
-      return;
-    }
-    final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-    state = state.copyWith(userPosition: pos);
+  }
+
+  /// Πέφτει στο default location ώστε ο χάρτης να εμφανιστεί.
+  void _fallback() {
+    state = state.copyWith(
+      isLocating: false,
+      usingFallbackLocation: true,
+    );
+  }
+
+  /// Public: ξανα-προσπάθεια εντοπισμού (π.χ. από το "locate me" κουμπί).
+  Future<void> retryLocation() async {
+    state = state.copyWith(isLocating: true);
+    await _resolveLocation();
   }
 
   void _listenListings() {
@@ -89,15 +185,42 @@ class MapNotifier extends StateNotifier<MapState> {
   }
 
   double _radiusForZoom(double zoom) {
-    if (zoom >= 15) return 0;
-    if (zoom >= 12) return 50;
-    if (zoom >= 10) return 300;
-    return 1000;
+    if (zoom >= 17) return 10;
+    if (zoom >= 15) return 30;
+    if (zoom >= 12) return 100;
+    if (zoom >= 10) return 500;
+    return 1500;
+  }
+  int _minClusterSize(double zoom) {
+    return 2;
   }
 
-  int _minClusterSize(double zoom) {
-    if (zoom >= 12) return 5;
-    return 2;
+  /// Υπολογίζει το μέγεθος (scale) των markers με βάση το zoom.
+  /// - Zoom out (μικρό zoom) -> μικρά markers (min 0.55)
+  /// - Zoom in (μεγάλο zoom) -> φτάνει σε max 1.0 και ΔΕΝ μεγαλώνει άλλο
+  /// Γραμμική παρεμβολή μεταξύ zoom 10 (0.55) και zoom 16 (1.0).
+  double _markerScaleForZoom(double zoom) {
+    const minScale = 0.55;
+    const maxScale = 1.0;
+    const minZoom = 10.0;
+    const maxZoom = 16.0;
+
+    if (zoom <= minZoom) return minScale;
+    if (zoom >= maxZoom) return maxScale;
+
+    final t = (zoom - minZoom) / (maxZoom - minZoom);
+    return minScale + (maxScale - minScale) * t;
+  }
+
+  void setClusterIndex(int i) {
+    state = state.copyWith(clusterIndex: i);
+    if (i < state.clusterListings.length) {
+      final listing = state.clusterListings[i];
+      state = state.copyWith(
+        clusterTapPosition: LatLng(
+            listing.location.latitude, listing.location.longitude),
+      );
+    }
   }
 
   Future<void> _rebuildMarkers() async {
@@ -109,6 +232,7 @@ class MapNotifier extends StateNotifier<MapState> {
 
     final radius = _radiusForZoom(state.zoomLevel);
     final minSize = _minClusterSize(state.zoomLevel);
+    final scale = _markerScaleForZoom(state.zoomLevel);
 
     final clusters = radius == 0
         ? filtered.map((l) => [l]).toList()
@@ -119,7 +243,8 @@ class MapNotifier extends StateNotifier<MapState> {
     for (final cluster in clusters) {
       if (cluster.length == 1) {
         final listing = cluster.first;
-        final icon = await MapMarkerBuilder.buildMarker(listing: listing);
+        final icon =
+            await MapMarkerBuilder.buildMarker(listing: listing, scale: scale);
         markers.add(Marker(
           markerId: MarkerId(listing.id),
           position:
@@ -137,6 +262,7 @@ class MapNotifier extends StateNotifier<MapState> {
           listings: cluster,
           offerCount: offerCount,
           seekCount: seekCount,
+          scale: scale,
         );
         final clusterId = 'cluster_${cluster.map((l) => l.id).join('_')}';
         markers.add(Marker(
@@ -144,9 +270,11 @@ class MapNotifier extends StateNotifier<MapState> {
           position: center,
           icon: icon,
           onTap: () {
+            print('🟠 CLUSTER TAPPED: ${cluster.length} listings');
             state = state.copyWith(
+              clusterListings: cluster,
+              clusterIndex: 0,
               clusterTapPosition: center,
-              clusterTapZoom: state.zoomLevel + 3,
             );
           },
         ));

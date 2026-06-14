@@ -34,28 +34,6 @@ class ListingHeaderWidget extends StatelessWidget {
       Text(listing.description,
           style: const TextStyle(
               color: AppColors.textSecondary, fontSize: 15, height: 1.5)),
-      if (listing.tags.isNotEmpty) ...[
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: listing.tags
-              .map((t) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text('#$t',
-                        style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
-                  ))
-              .toList(),
-        ),
-      ],
     ]);
   }
 }

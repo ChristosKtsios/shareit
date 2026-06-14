@@ -10,13 +10,10 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/services/tag_extractor_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../profile/data/user_repository.dart';
 import '../data/listing_model.dart';
 import '../data/listing_repository.dart';
-import '../data/tags_repository.dart';
-import 'widgets/listing_tags_widget.dart';
 import 'location_picker_screen.dart';
 
 class CreateListingScreen extends ConsumerStatefulWidget {
@@ -36,44 +33,25 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   TimeOfDay? _fromTime;
   TimeOfDay? _untilTime;
 
-  bool _autoDelete = true;
+  bool _autoDelete = false;
   bool _loading = false;
   bool _uploadingImage = false;
   bool _locationLoading = true;
   GeoPoint? _location;
   String _locationLabel = '';
   List<String> _imageUrls = [];
-  List<String> _tags = [];
-  List<String> _suggestedTags = [];
-  Timer? _suggestDebounce;
 
   @override
   void initState() {
     super.initState();
     _fetchLocation();
-    _titleCtrl.addListener(_onTextChanged);
-    _descCtrl.addListener(_onTextChanged);
   }
 
   @override
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
-    _suggestDebounce?.cancel();
     super.dispose();
-  }
-
-  void _onTextChanged() {
-    _suggestDebounce?.cancel();
-    _suggestDebounce = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      final suggestions = TagExtractorService.extractTags(
-        title: _titleCtrl.text,
-        description: _descCtrl.text,
-        existingTags: _tags,
-      );
-      setState(() => _suggestedTags = suggestions);
-    });
   }
 
   Future<void> _fetchLocation() async {
@@ -116,7 +94,6 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     }
   }
 
-  /// Νέο: bottom sheet για επιλογή camera/gallery
   Future<void> _pickImage() async {
     if (_imageUrls.length >= 5) {
       _snack('Μέγιστος αριθμός φωτογραφιών: 5');
@@ -230,6 +207,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
           if (_availableUntil != null && _availableUntil!.isBefore(picked)) {
             _availableUntil = null;
             _untilTime = null;
+            _autoDelete = false;
           }
         } else {
           _availableUntil = picked;
@@ -284,10 +262,6 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       _snack(AppStrings.errorLocation);
       return;
     }
-    if (_tags.length < 3) {
-      _snack('Πρόσθεσε τουλάχιστον 3 tags αναζήτησης.');
-      return;
-    }
 
     final from = _availableFrom;
     final until = _availableUntil;
@@ -306,28 +280,32 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
     final title = _titleCtrl.text.trim();
     final desc = _descCtrl.text.trim();
-    final normalizedTags = _tags.map(ListingModel.normalizeTag).toList();
-    final keywords = {
-      ...ListingModel.generateKeywords(title, desc),
-      ...normalizedTags,
-    }.toList();
 
+    final keywords = ListingModel.generateKeywords(title, desc);
+
+    String firstName = 'Χρήστης';
     String? userAvatar;
     try {
       final userDoc = await UserRepository().get(user.uid);
-      userAvatar = userDoc?.avatarUrl;
+      if (userDoc != null) {
+        firstName =
+            userDoc.firstName.isNotEmpty ? userDoc.firstName : 'Χρήστης';
+        userAvatar = userDoc.avatarUrl;
+      }
     } catch (_) {}
+
+    final effectiveAutoDelete = (_availableUntil != null) ? _autoDelete : false;
 
     final listing = ListingModel(
       id: '',
       userId: user.uid,
-      userFirstName: user.displayName?.split(' ').first ?? 'Χρήστης',
+      userFirstName: firstName,
       userAvatarUrl: userAvatar,
       type: _type,
       title: title,
       description: desc,
       imageUrls: _imageUrls,
-      tags: normalizedTags,
+      tags: const [],
       searchKeywords: keywords,
       location: _location!,
       locationLabel: _locationLabel,
@@ -335,7 +313,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       availableUntil: _combineDateTime(_availableUntil, _untilTime),
       hasFromTime: _fromTime != null,
       hasUntilTime: _untilTime != null,
-      autoDelete: _autoDelete,
+      autoDelete: effectiveAutoDelete,
       rating: 0,
       createdAt: DateTime.now(),
       isActive: true,
@@ -343,7 +321,6 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
     try {
       await ListingRepository().createListing(listing);
-      TagsRepository().incrementTags(normalizedTags);
 
       if (mounted) {
         _snack('Η αγγελία δημοσιεύθηκε!');
@@ -363,6 +340,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canAutoDelete = _availableUntil != null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(AppStrings.newListing),
@@ -376,7 +355,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // SECTION 1: ΤΥΠΟΣ
-              _SectionHeader(
+              const _SectionHeader(
                   icon: Icons.swap_horiz, title: '1. Τι θέλεις να κάνεις;'),
               const SizedBox(height: 12),
               Row(children: [
@@ -418,8 +397,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                 maxLength: 80,
                 decoration: InputDecoration(
                   hintText: _type == ListingType.offer
-                      ? 'π.χ. Δανείζω δράπανο Bosch'
-                      : 'π.χ. Ψάχνω κάποιον για βαφή τοίχου',
+                      ? 'π.χ. Δανείζω εργαλεία'
+                      : 'π.χ. Ψάχνω βοήθεια για μετακόμιση',
                   counterText: '',
                 ),
               ),
@@ -441,7 +420,12 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                 style: const TextStyle(color: AppColors.textPrimary),
                 decoration: const InputDecoration(
                     hintText:
-                        'Πες περισσότερα — κατάσταση, λεπτομέρειες, όροι...'),
+                        'Γράψε λεπτομέρειες — τι ακριβώς, κατάσταση, όροι...'),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Συμβουλή: γράψε λέξεις-κλειδιά στην περιγραφή για να σε βρίσκουν εύκολα στην αναζήτηση.',
+                style: TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
 
               const SizedBox(height: 28),
@@ -494,32 +478,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
               const SizedBox(height: 28),
 
-              // SECTION 4: TAGS
-              _SectionHeader(icon: Icons.tag, title: '4. Tags αναζήτησης'),
-              const SizedBox(height: 4),
-              const Text(
-                'Βοηθάνε τους άλλους να σε βρουν εύκολα.',
-                style: TextStyle(color: AppColors.textHint, fontSize: 11),
-              ),
-              const SizedBox(height: 12),
-              ListingTagsWidget(
-                tags: _tags,
-                suggestedFromText: _suggestedTags,
-                onTagsChanged: (t) => setState(() {
-                  _tags = t;
-                  _suggestedTags = TagExtractorService.extractTags(
-                    title: _titleCtrl.text,
-                    description: _descCtrl.text,
-                    existingTags: t,
-                  );
-                }),
-              ),
-
-              const SizedBox(height: 28),
-
-              // SECTION 5: ΤΟΠΟΘΕΣΙΑ
-              _SectionHeader(
-                  icon: Icons.location_on_outlined, title: '5. Τοποθεσία'),
+              // SECTION 4: ΤΟΠΟΘΕΣΙΑ
+              const _SectionHeader(
+                  icon: Icons.location_on_outlined, title: '4. Τοποθεσία'),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
@@ -592,10 +553,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
               const SizedBox(height: 28),
 
-              // SECTION 6: ΔΙΑΘΕΣΙΜΟΤΗΤΑ
-              _SectionHeader(
+              // SECTION 5: ΔΙΑΘΕΣΙΜΟΤΗΤΑ
+              const _SectionHeader(
                   icon: Icons.event_outlined,
-                  title: '6. Διαθεσιμότητα (προαιρετικό)'),
+                  title: '5. Διαθεσιμότητα (προαιρετικό)'),
               const SizedBox(height: 4),
               const Text(
                 'Πες από πότε μέχρι πότε είσαι διαθέσιμος.',
@@ -628,6 +589,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                 onClearDate: () => setState(() {
                   _availableUntil = null;
                   _untilTime = null;
+                  _autoDelete = false;
                 }),
                 onClearTime: () => setState(() => _untilTime = null),
                 formatDate: _formatDate,
@@ -635,19 +597,40 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
               ),
 
               const SizedBox(height: 12),
-              Row(children: [
-                Switch(
-                  value: _autoDelete,
-                  onChanged: (v) => setState(() => _autoDelete = v),
-                  activeThumbColor: AppColors.primary,
-                  activeTrackColor: AppColors.primarySurface,
-                ),
-                const SizedBox(width: 8),
-                const Expanded(
-                    child: Text(AppStrings.autoDelete,
-                        style: TextStyle(
-                            color: AppColors.textSecondary, fontSize: 13))),
-              ]),
+
+              Opacity(
+                opacity: canAutoDelete ? 1.0 : 0.5,
+                child: Row(children: [
+                  Switch(
+                    value: _autoDelete,
+                    onChanged: canAutoDelete
+                        ? (v) => setState(() => _autoDelete = v)
+                        : null,
+                    activeThumbColor: AppColors.primary,
+                    activeTrackColor: AppColors.primarySurface,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(AppStrings.autoDelete,
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 13)),
+                        if (!canAutoDelete)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Text(
+                              'Διαθέσιμο μόνο αν βάλεις ημερομηνία λήξης.',
+                              style: TextStyle(
+                                  color: AppColors.textHint, fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
 
               const SizedBox(height: 32),
 

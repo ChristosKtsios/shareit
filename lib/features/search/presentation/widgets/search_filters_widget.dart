@@ -116,18 +116,6 @@ class SearchFiltersWidget extends StatelessWidget {
                   ? SearchSort.nearest
                   : SearchSort.recent),
             ),
-            const SizedBox(width: 12),
-            ...SearchDistance.values
-                .where((d) => !d.isCustom)
-                .map((d) => Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: _Chip(
-                        label: d.label,
-                        selected: activeDistance == d,
-                        color: AppColors.primary,
-                        onTap: () => onDistanceChanged(d),
-                      ),
-                    )),
           ],
         ),
       ),

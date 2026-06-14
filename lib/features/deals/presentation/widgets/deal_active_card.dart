@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/date_helpers.dart';
 import '../../data/deal_model.dart';
-import '../../providers/deal_provider.dart';
 
 class DealActiveCard extends ConsumerStatefulWidget {
   final DealModel deal;
@@ -31,37 +30,12 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
     });
   }
 
-  Future<void> _complete() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Ολοκλήρωση Deal',
-            style: TextStyle(color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700)),
-        content: const Text(
-            'Επιβεβαιώνεις ότι η ανταλλαγή ολοκληρώθηκε;',
-            style: TextStyle(color: AppColors.textSecondary)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Όχι')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ναι, ολοκληρώθηκε',
-                style: TextStyle(color: AppColors.offer))),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-    await ref.read(dealRepoProvider).complete(widget.deal.id);
-    if (mounted) context.push('/rate-deal/${widget.deal.id}');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final expired    = _remaining.isNegative;
-    final color      = expired ? AppColors.danger : AppColors.offer;
+    final expired = _remaining.isNegative;
+    final isCompleted = widget.deal.status == DealStatus.completed;
+    final color =
+        (expired || isCompleted) ? AppColors.primary : AppColors.offer;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -71,78 +45,106 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Column(children: [
-
-        // Header με timer
         Container(
-          padding: const EdgeInsets.symmetric(
-              horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.08),
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
           child: Row(children: [
             Icon(
-              expired
-                  ? Icons.check_circle_outline
-                  : Icons.handshake_outlined,
-              color: color, size: 18),
+                isCompleted
+                    ? Icons.check_circle
+                    : expired
+                        ? Icons.timer_off
+                        : Icons.handshake_outlined,
+                color: color,
+                size: 18),
             const SizedBox(width: 8),
-            Expanded(child: Text(widget.deal.listingTitle,
-                style: TextStyle(
-                    color: color,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600))),
-            // Timer
+            Expanded(
+                child: Text(widget.deal.displayTitle,
+                    style: TextStyle(
+                        color: color,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis)),
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                expired
-                    ? 'Έληξε'
-                    : DateHelpers.formatTimer(_remaining),
+                isCompleted
+                    ? 'Ολοκληρώθηκε'
+                    : expired
+                        ? 'Σε επεξεργασία...'
+                        : DateHelpers.formatTimer(_remaining),
                 style: TextStyle(
                     color: color,
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    fontFeatures: const [
-                      FontFeature.tabularFigures()
-                    ]),
+                    fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ),
           ]),
         ),
-
-        // Details
         Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
-              // Ημερομηνία παράδοσης
-              if (widget.deal.deliveryAt != null)
+              if (widget.deal.displayDetails.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    widget.deal.displayDetails,
+                    style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.4),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              if (widget.deal.endDate != null)
                 _InfoRow(
                   icon: Icons.event_outlined,
-                  text: 'Παράδοση: '
-                      '${DateHelpers.formatDate(widget.deal.deliveryAt!)} '
-                      '${widget.deal.deliveryAt!.hour.toString().padLeft(2, '0')}:'
-                      '${widget.deal.deliveryAt!.minute.toString().padLeft(2, '0')}',
+                  text: 'Λήξη: '
+                      '${DateHelpers.formatDate(widget.deal.endDate!)} '
+                      '${widget.deal.endDate!.hour.toString().padLeft(2, '0')}:'
+                      '${widget.deal.endDate!.minute.toString().padLeft(2, '0')}',
                   color: color,
                 ),
+              if (expired && !isCompleted) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.info_outline,
+                        color: AppColors.textHint, size: 14),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Το deal ολοκληρώνεται αυτόματα. Μπορεί να πάρει '
+                        'μερικά λεπτά μέχρι να ενημερωθεί.',
+                        style:
+                            TextStyle(color: AppColors.textHint, fontSize: 11),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
               const SizedBox(height: 12),
-
-              // Κουμπιά
               Row(children: [
-
-                // Chat button
-                Expanded(child: OutlinedButton.icon(
-                  onPressed: () =>
-                      context.push('/chat/${widget.deal.chatId}'),
+                Expanded(
+                    child: OutlinedButton.icon(
+                  onPressed: () => context.push('/chat/${widget.deal.chatId}'),
                   icon: const Icon(Icons.chat_bubble_outline,
                       size: 16, color: AppColors.primary),
                   label: const Text('Συνομιλία',
@@ -154,19 +156,37 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
                   ),
                 )),
                 const SizedBox(width: 10),
-
-                // Complete button
-                Expanded(child: ElevatedButton.icon(
-                  onPressed: _complete,
-                  icon: const Icon(Icons.check, size: 16),
-                  label: const Text('Ολοκλήρωση'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: color,
-                    foregroundColor: AppColors.background,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                )),
+                if (isCompleted)
+                  Expanded(
+                      child: ElevatedButton.icon(
+                    onPressed: () =>
+                        context.push('/rate-deal/${widget.deal.id}'),
+                    icon: const Icon(Icons.star_outline, size: 16),
+                    label: const Text('Αξιολόγησε'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ))
+                else
+                  Expanded(
+                      child: Container(
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      expired ? 'Σύντομα...' : 'Σε εξέλιξη',
+                      style: const TextStyle(
+                          color: AppColors.textHint,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  )),
               ]),
             ],
           ),
@@ -188,9 +208,9 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    Icon(icon, size: 14, color: color),
-    const SizedBox(width: 6),
-    Expanded(child: Text(text,
-        style: TextStyle(color: color, fontSize: 12))),
-  ]);
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+            child: Text(text, style: TextStyle(color: color, fontSize: 12))),
+      ]);
 }

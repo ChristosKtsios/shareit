@@ -12,15 +12,22 @@ import 'features/auth/presentation/phone_auth_screen.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/map/presentation/map_screen.dart';
 import 'features/feed/presentation/feed_screen.dart';
+import 'features/listings/data/listing_repository.dart';
 import 'features/listings/presentation/create_listing_screen.dart';
+import 'features/listings/presentation/edit_listing_screen.dart';
 import 'features/listings/presentation/listing_detail_screen.dart';
 import 'features/listings/presentation/my_listings_screen.dart';
 import 'features/chat/presentation/chat_screen.dart';
 import 'features/chat/presentation/inbox_screen.dart';
 import 'features/profile/presentation/profile_screen.dart';
 import 'features/profile/presentation/edit_profile_screen.dart';
+import 'features/profile/presentation/create_user_post_screen.dart';
+import 'features/profile/presentation/user_posts_screen.dart';
+import 'features/profile/presentation/user_post_detail_screen.dart';
 import 'features/profile/presentation/profile_photos_screen.dart';
 import 'features/profile/presentation/delete_account_screen.dart';
+import 'features/profile/presentation/friend_requests_screen.dart';
+import 'features/profile/presentation/friends_list_screen.dart';
 import 'features/search/presentation/search_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'features/settings/presentation/change_password_screen.dart';
@@ -29,6 +36,8 @@ import 'features/notifications/presentation/notifications_screen.dart';
 import 'features/deals/presentation/rate_user_screen.dart';
 import 'features/deals/presentation/rate_deal_screen.dart';
 import 'features/deals/presentation/deal_proposal_screen.dart';
+import 'features/deals/presentation/deal_review_screen.dart';
+import 'features/deals/presentation/my_deals_screen.dart';
 import 'features/report/presentation/report_screen.dart';
 import 'features/saved/presentation/saved_screen.dart';
 import 'features/listings/presentation/listing_images_screen.dart';
@@ -37,6 +46,16 @@ import 'features/shell/presentation/main_shell.dart';
 
 final _routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authStateProvider);
+
+  // Auto-cleanup των ληγμένων αγγελιών του χρήστη με autoDelete=true
+  // κάθε φορά που γίνεται login. Τρέχει σιωπηλά στο background.
+  auth.whenData((user) async {
+    if (user != null) {
+      try {
+        await ListingRepository().cleanupExpiredForUser(user.uid);
+      } catch (_) {}
+    }
+  });
 
   return GoRouter(
     initialLocation: '/map',
@@ -91,6 +110,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
           path: '/listing/new',
           builder: (_, __) => const CreateListingScreen()),
       GoRoute(
+          path: '/edit-listing/:id',
+          builder: (_, s) =>
+              EditListingScreen(listingId: s.pathParameters['id']!)),
+      GoRoute(
           path: '/listing/:id',
           builder: (_, s) =>
               ListingDetailScreen(listingId: s.pathParameters['id']!)),
@@ -115,6 +138,12 @@ final _routerProvider = Provider<GoRouter>((ref) {
           path: '/profile/delete',
           builder: (_, __) => const DeleteAccountScreen()),
 
+      // Friend requests + Friends list
+      GoRoute(
+          path: '/friend-requests',
+          builder: (_, __) => const FriendRequestsScreen()),
+      GoRoute(path: '/friends', builder: (_, __) => const FriendsListScreen()),
+
       // Search
       GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
 
@@ -123,6 +152,17 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/settings/edit-profile',
           builder: (_, __) => const EditProfileScreen()),
+      GoRoute(
+          path: '/create-post',
+          builder: (_, __) => const CreateUserPostScreen()),
+      GoRoute(
+          path: '/user-posts/:uid',
+          builder: (_, state) =>
+              UserPostsScreen(uid: state.pathParameters['uid']!)),
+      GoRoute(
+          path: '/user-post/:postId',
+          builder: (_, state) => UserPostDetailScreen(
+              postId: state.pathParameters['postId']!)),
       GoRoute(
           path: '/settings/change-password',
           builder: (_, __) => const ChangePasswordScreen()),
@@ -156,6 +196,14 @@ final _routerProvider = Provider<GoRouter>((ref) {
                 otherUserUid: s.uri.queryParameters['otherUserUid'] ?? '',
                 existingDealId: s.uri.queryParameters['dealId'],
               )),
+      // Deal review (full-screen με Αποδοχή/Απόρριψη)
+      GoRoute(
+          path: '/deal-review/:dealId',
+          builder: (_, s) => DealReviewScreen(
+                dealId: s.pathParameters['dealId']!,
+              )),
+      // Τα Deals μου (3 tabs)
+      GoRoute(path: '/my-deals', builder: (_, __) => const MyDealsScreen()),
 
       // Report
       GoRoute(

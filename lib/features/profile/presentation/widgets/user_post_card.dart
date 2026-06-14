@@ -1,0 +1,291 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:video_player/video_player.dart';
+import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/date_helpers.dart';
+import '../../../auth/providers/auth_provider.dart';
+import '../../data/user_post_model.dart';
+import '../../data/user_post_repository.dart';
+
+class UserPostCard extends ConsumerStatefulWidget {
+  final UserPostModel post;
+  const UserPostCard({super.key, required this.post});
+
+  @override
+  ConsumerState<UserPostCard> createState() => _UserPostCardState();
+}
+
+class _UserPostCardState extends ConsumerState<UserPostCard> {
+  bool _liking = false;
+
+  Future<void> _toggleLike() async {
+    final uid = ref.read(currentUserProvider)?.uid;
+    if (uid == null || _liking) return;
+    setState(() => _liking = true);
+    try {
+      await UserPostRepository().toggleLike(postId: widget.post.id, userId: uid);
+    } finally {
+      if (mounted) setState(() => _liking = false);
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Διαγραφή post;',
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: const Text('Η ενέργεια είναι μη αναστρέψιμη.',
+            style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Άκυρο',
+                  style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Διαγραφή',
+                  style: TextStyle(color: AppColors.danger))),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await UserPostRepository().delete(widget.post.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final post = widget.post;
+    final currentUid = ref.watch(currentUserProvider)?.uid ?? '';
+    final isMine = post.authorUid == currentUid;
+    final liked = post.isLikedBy(currentUid);
+
+    return InkWell(
+      onTap: () => context.push('/user-post/${post.id}'),
+      child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
+            child: Row(children: [
+              Expanded(
+                child: StreamBuilder<DocumentSnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(post.authorUid)
+                      .snapshots(),
+                  builder: (context, snap) {
+                    String name = post.authorName;
+                    String? avatar = post.authorAvatar;
+                    if (snap.hasData && snap.data!.exists) {
+                      final d = snap.data!.data() as Map<String, dynamic>;
+                      final first = d['firstName'] as String? ?? '';
+                      final last = d['lastName'] as String? ?? '';
+                      name = '$first $last'.trim();
+                      if (name.isEmpty) name = post.authorName;
+                      avatar = (d['avatarUrl'] as String?) ?? avatar;
+                    }
+                    return Row(children: [
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: AppColors.primary,
+                        backgroundImage: avatar != null
+                            ? CachedNetworkImageProvider(avatar)
+                            : null,
+                        child: avatar == null
+                            ? Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                style: const TextStyle(
+                                    color: AppColors.background,
+                                    fontWeight: FontWeight.w700))
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(name,
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700)),
+                            Text(DateHelpers.timeAgo(post.createdAt),
+                                style: const TextStyle(
+                                    color: AppColors.textHint, fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                    ]);
+                  },
+                ),
+              ),
+              if (isMine)
+                IconButton(
+                  icon: const Icon(Icons.more_horiz,
+                      color: AppColors.textSecondary),
+                  onPressed: _confirmDelete,
+                ),
+            ]),
+          ),
+          if (post.text.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: Text(post.text,
+                  style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                      height: 1.4)),
+            ),
+          if (post.hasMedia)
+            _MediaGrid(urls: post.mediaUrls, types: post.mediaTypes),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(children: [
+              IconButton(
+                onPressed: _toggleLike,
+                icon: Icon(
+                    liked ? Icons.favorite : Icons.favorite_border,
+                    color: liked ? AppColors.danger : AppColors.textSecondary,
+                    size: 22),
+              ),
+              if (post.likesCount > 0)
+                Text('${post.likesCount}',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+            ]),
+          ),
+        ],
+      ),
+    ),
+    );
+  }
+}
+
+class _MediaGrid extends StatelessWidget {
+  final List<String> urls;
+  final List<String> types;
+  const _MediaGrid({required this.urls, required this.types});
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) return const SizedBox.shrink();
+    if (urls.length == 1) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: _MediaTile(url: urls[0], type: types[0], height: 280),
+      );
+    }
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
+      ),
+      itemCount: urls.length,
+      itemBuilder: (_, i) =>
+          _MediaTile(url: urls[i], type: types[i], height: 100),
+    );
+  }
+}
+
+class _MediaTile extends StatelessWidget {
+  final String url;
+  final String type;
+  final double height;
+  const _MediaTile(
+      {required this.url, required this.type, required this.height});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: type == 'image'
+          ? CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              height: height,
+              width: double.infinity,
+              placeholder: (_, __) => Container(
+                  color: AppColors.surfaceVariant,
+                  child: const Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.primary, strokeWidth: 2))),
+              errorWidget: (_, __, ___) => Container(
+                  color: AppColors.surfaceVariant,
+                  child: const Icon(Icons.broken_image,
+                      color: AppColors.textHint)),
+            )
+          : _VideoThumb(url: url, height: height),
+    );
+  }
+}
+
+class _VideoThumb extends StatefulWidget {
+  final String url;
+  final double height;
+  const _VideoThumb({required this.url, required this.height});
+
+  @override
+  State<_VideoThumb> createState() => _VideoThumbState();
+}
+
+class _VideoThumbState extends State<_VideoThumb> {
+  VideoPlayerController? _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) {
+        if (mounted) setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = _ctrl?.value.isInitialized ?? false;
+    return Stack(alignment: Alignment.center, children: [
+      ready
+          ? AspectRatio(
+              aspectRatio: _ctrl!.value.aspectRatio,
+              child: VideoPlayer(_ctrl!),
+            )
+          : Container(
+              color: AppColors.surfaceVariant,
+              height: widget.height,
+              width: double.infinity,
+            ),
+      Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.6),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.play_arrow, color: Colors.white, size: 28),
+      ),
+    ]);
+  }
+}
