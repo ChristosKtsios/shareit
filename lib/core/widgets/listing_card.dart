@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants/app_colors.dart';
 import '../../features/listings/data/listing_model.dart';
@@ -28,8 +29,8 @@ class ListingCard extends StatelessWidget {
         : null;
 
     if (fromStr != null && untilStr != null) return '$fromStr → $untilStr';
-    if (fromStr != null) return 'από $fromStr';
-    if (untilStr != null) return 'ως $untilStr';
+    if (fromStr != null) return 'lcard.fromDate'.tr(namedArgs: {'d': fromStr});
+    if (untilStr != null) return 'lcard.untilDate'.tr(namedArgs: {'d': untilStr});
     return '';
   }
 
@@ -37,7 +38,7 @@ class ListingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOffer = listing.type == ListingType.offer;
     final color = isOffer ? AppColors.offer : AppColors.seek;
-    final label = isOffer ? '🤲 Προσφέρω' : '🔍 Αναζητώ';
+    final label = isOffer ? 'map.offerLabel'.tr() : 'map.seekLabel'.tr();
     final dateRange = _formatDateRange();
 
     return GestureDetector(
@@ -115,10 +116,15 @@ class ListingCard extends StatelessWidget {
             ],
             const SizedBox(height: 10),
             StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(listing.userId)
-                  .snapshots(),
+              // Άμυνα: αν λείπει το userId (malformed/legacy αγγελία) μη καλέσεις
+              // .doc('') (ρίχνει «document path must be non-empty») — ο builder
+              // πέφτει στα local fallback πεδία (userFirstName/userAvatarUrl).
+              stream: listing.userId.isEmpty
+                  ? const Stream<DocumentSnapshot>.empty()
+                  : FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(listing.userId)
+                      .snapshots(),
               builder: (context, snap) {
                 String name = listing.userFirstName;
                 String? avatar = listing.userAvatarUrl;
@@ -162,8 +168,8 @@ class ListingCard extends StatelessWidget {
                         color: AppColors.textHint, size: 12),
                     Text(
                       distanceKm! < 1
-                          ? '${(distanceKm! * 1000).toStringAsFixed(0)} μ'
-                          : '${distanceKm!.toStringAsFixed(1)} χλμ',
+                          ? '${(distanceKm! * 1000).toStringAsFixed(0)} ${'map.unitM'.tr()}'
+                          : '${distanceKm!.toStringAsFixed(1)} ${'map.unitKm'.tr()}',
                       style: const TextStyle(
                           color: AppColors.textHint, fontSize: 11),
                     ),

@@ -1,16 +1,19 @@
+import 'dart:async';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../profile/data/user_repository.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/error_logger.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../deals/providers/deal_provider.dart';
 import '../../deals/data/deal_model.dart';
+import '../../deals/data/deal_repository.dart';
 import '../data/chat_repository.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/chat_input_bar.dart';
-import 'widgets/chat_deal_banner.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String chatId;
@@ -22,42 +25,90 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _msgCtrl = TextEditingController();
+  Timer? _typingTimer;
+  bool _isTyping = false;
   final _scrollCtrl = ScrollController();
   final _db = FirebaseFirestore.instance;
 
   Map<String, dynamic>? _chatData;
   String? _otherUid;
 
+  /// UID του τρέχοντος χρήστη, cached ώστε το dispose() να ΜΗΝ χρησιμοποιεί
+  /// `ref` (μπορεί να ρίξει αφού το widget αποσυνδεθεί).
+  String? _myUid;
+
+  /// Μήνυμα στο οποίο απαντάμε τώρα (null = κανονική αποστολή).
+  Map<String, dynamic>? _replyingTo;
+
   @override
   void initState() {
     super.initState();
+    _myUid = ref.read(currentUserProvider)?.uid;
     _loadChatData();
   }
 
   @override
   void dispose() {
+    _typingTimer?.cancel();
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
+    // Καθάρισε το typing flag στο Firestore κατά την έξοδο (χωρίς `ref`).
+    final uid = _myUid;
+    if (uid != null) {
+      ChatRepository()
+          .setTyping(chatId: widget.chatId, uid: uid, typing: false);
+    }
     super.dispose();
   }
 
+  /// Ενημερώνει το `isTyping` flag (τοπικά + Firestore) ΜΟΝΟ όταν αλλάζει
+  /// κατάσταση — αποφεύγει περιττά writes και το «κόλλημα» του δείκτη.
+  void _setTyping(bool typing) {
+    final uid = _myUid;
+    if (uid == null || _isTyping == typing) return;
+    _isTyping = typing;
+    ChatRepository().setTyping(chatId: widget.chatId, uid: uid, typing: typing);
+  }
+
+  void _onTypingChanged(String text) {
+    _typingTimer?.cancel();
+    // Άδειο πεδίο → σταμάτησε να γράφει αμέσως.
+    if (text.trim().isEmpty) {
+      _setTyping(false);
+      return;
+    }
+    _setTyping(true);
+    // Safety net: auto-clear μετά από ~4 δευτ. αδράνειας.
+    _typingTimer = Timer(const Duration(seconds: 4), () => _setTyping(false));
+  }
+
   Future<void> _loadChatData() async {
-    final doc = await _db.collection('chats').doc(widget.chatId).get();
-    if (!mounted) return;
-    final data = doc.data();
-    if (data == null) return;
-    final currentUid = ref.read(currentUserProvider)?.uid ?? '';
-    final participants = List<String>.from(data['participants'] ?? []);
-    final otherUid = participants.firstWhere(
-      (p) => p != currentUid,
-      orElse: () => '',
-    );
-    setState(() {
-      _chatData = data;
-      _otherUid = otherUid.isEmpty ? null : otherUid;
-    });
-    if (data['unread'] == true) {
-      ChatRepository().markRead(widget.chatId);
+    try {
+      final doc = await _db.collection('chats').doc(widget.chatId).get();
+      if (!mounted) return;
+      final data = doc.data();
+      if (data == null) return;
+      final currentUid = ref.read(currentUserProvider)?.uid ?? '';
+      final participants = List<String>.from(data['participants'] ?? []);
+      final otherUid = participants.firstWhere(
+        (p) => p != currentUid,
+        orElse: () => '',
+      );
+      setState(() {
+        _chatData = data;
+        _otherUid = otherUid.isEmpty ? null : otherUid;
+      });
+      if (data['unread'] == true) {
+        ChatRepository().markRead(widget.chatId);
+        ChatRepository().markMessagesRead(
+          chatId: widget.chatId,
+          currentUid: currentUid,
+        );
+      }
+    } catch (e, s) {
+      // Offline / permission / malformed doc — μην αφήσεις το σφάλμα να γίνει
+      // unhandled (fatal). Το screen απλώς δεν φορτώνει τα extra δεδομένα.
+      logSwallowed(e, s, 'chat _loadChatData');
     }
   }
 
@@ -65,13 +116,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty) return;
     _msgCtrl.clear();
+    // Στέλνοντας μήνυμα, σταμάτησες να «γράφεις» → καθάρισε το typing flag.
+    _typingTimer?.cancel();
+    _setTyping(false);
+    final replyTo = _replyingTo;
+    if (replyTo != null) setState(() => _replyingTo = null);
     final uid = ref.read(currentUserProvider)?.uid ?? '';
     await ChatRepository().send(
       chatId: widget.chatId,
       senderId: uid,
       text: text,
+      replyTo: replyTo,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // μην αγγίζεις τον _scrollCtrl μετά το dispose
       if (_scrollCtrl.hasClients) {
         _scrollCtrl.animateTo(
           _scrollCtrl.position.maxScrollExtent,
@@ -82,16 +140,63 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  /// Dialog επεξεργασίας δικού μου μηνύματος κειμένου.
+  Future<void> _editMessage(String messageId, String currentText) async {
+    final ctrl = TextEditingController(text: currentText);
+    try {
+      final newText = await showDialog<String>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('chatx.editMessage'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: 5,
+          minLines: 1,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: InputDecoration(hintText: 'chatx.messageText'.tr()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, ctrl.text.trim()),
+            child: Text('common.save'.tr(),
+                style: const TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+      if (newText == null || newText.isEmpty || newText == currentText) return;
+      try {
+        await ChatRepository().editMessage(
+          chatId: widget.chatId,
+          messageId: messageId,
+          text: newText,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('${'common.error'.tr()}: $e')));
+        }
+      }
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
   Future<void> _openDealFlow(DealModel? existingDeal) async {
     if (_chatData == null || _otherUid == null) return;
 
-    // Καθόλου deal, ή ακυρωμένο → νέα φόρμα πρότασης
-    if (existingDeal == null ||
-        existingDeal.status == DealStatus.cancelled) {
+    if (existingDeal == null || existingDeal.status == DealStatus.cancelled) {
       _openNewProposalForm();
       return;
     }
-    // Completed → έλεγξε αν έχει αξιολογήσει
     if (existingDeal.status == DealStatus.completed) {
       final currentUid = ref.read(currentUserProvider)?.uid ?? '';
       try {
@@ -100,10 +205,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               userId: currentUid,
             );
         if (!hasRated) {
-          // Αξιολόγησε → μετά την επιστροφή refresh state
           if (mounted) {
             await context.push('/rate-deal/${existingDeal.id}');
-            // Trigger rebuild όταν επιστρέψει
             if (mounted) setState(() {});
           }
         } else {
@@ -115,7 +218,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
 
-    // Pending/accepted/active → review screen
     context.push('/deal-review/${existingDeal.id}');
   }
 
@@ -158,20 +260,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   context: context,
                   builder: (_) => AlertDialog(
                     backgroundColor: AppColors.surface,
-                    title: const Text('Μπλοκάρισμα χρήστη;',
-                        style: TextStyle(color: AppColors.textPrimary)),
-                    content: const Text(
-                        'Δεν θα μπορείτε να λάβετε μηνύματα από αυτόν τον χρήστη.',
-                        style: TextStyle(color: AppColors.textSecondary)),
+                    title: Text('chatx.blockUserQ'.tr(),
+                        style: const TextStyle(color: AppColors.textPrimary)),
+                    content: Text('chatx.blockUserBody'.tr(),
+                        style: const TextStyle(color: AppColors.textSecondary)),
                     actions: [
                       TextButton(
                           onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Άκυρο',
-                              style: TextStyle(color: AppColors.textSecondary))),
+                          child: Text('common.cancel'.tr(),
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary))),
                       TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Μπλοκάρισμα',
-                              style: TextStyle(color: AppColors.danger))),
+                          child: Text('chatx.block'.tr(),
+                              style: const TextStyle(color: AppColors.danger))),
                     ],
                   ),
                 );
@@ -179,69 +281,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   await UserRepository().block(currentUid, _otherUid!);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Ο χρήστης μπλοκαρίστηκε')),
+                      SnackBar(content: Text('chatx.userBlocked'.tr())),
                     );
                     context.pop();
                   }
                 }
               } else if (value == 'report') {
-                final reason = await showDialog<String>(
-                  context: context,
-                  builder: (_) => SimpleDialog(
-                    backgroundColor: AppColors.surface,
-                    title: const Text('Λόγος αναφοράς',
-                        style: TextStyle(color: AppColors.textPrimary)),
-                    children: [
-                      'Spam ή ενοχλητικά μηνύματα',
-                      'Απάτη',
-                      'Παρενόχληση',
-                      'Ακατάλληλο περιεχόμενο',
-                      'Άλλο',
-                    ]
-                        .map((r) => SimpleDialogOption(
-                              onPressed: () => Navigator.pop(context, r),
-                              child: Text(r,
-                                  style: const TextStyle(
-                                      color: AppColors.textPrimary)),
-                            ))
-                        .toList(),
-                  ),
-                );
-                if (reason != null && _otherUid != null) {
-                  await FirebaseFirestore.instance
-                      .collection('reports')
-                      .add({
-                    'reporterUid': currentUid,
-                    'reportedUid': _otherUid,
-                    'reason': reason,
-                    'type': 'user',
-                    'createdAt': FieldValue.serverTimestamp(),
-                  });
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Η αναφορά υποβλήθηκε. Ευχαριστούμε!')),
-                    );
-                  }
+                // Κανονική ροή report (targetUid) — την επεξεργάζεται το
+                // Cloud Function onReportCreated (counter/auto-hide).
+                if (_otherUid != null) {
+                  context.push('/report/user/$_otherUid');
                 }
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'block',
                 child: Row(children: [
-                  Icon(Icons.block, color: AppColors.danger, size: 18),
-                  SizedBox(width: 10),
-                  Text('Μπλοκάρισμα',
-                      style: TextStyle(color: AppColors.textPrimary)),
+                  const Icon(Icons.block, color: AppColors.danger, size: 18),
+                  const SizedBox(width: 10),
+                  Text('chatx.block'.tr(),
+                      style: const TextStyle(color: AppColors.textPrimary)),
                 ]),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'report',
                 child: Row(children: [
-                  Icon(Icons.flag_outlined, color: AppColors.deal, size: 18),
-                  SizedBox(width: 10),
-                  Text('Αναφορά',
-                      style: TextStyle(color: AppColors.textPrimary)),
+                  const Icon(Icons.flag_outlined,
+                      color: AppColors.deal, size: 18),
+                  const SizedBox(width: 10),
+                  Text('chatx.report'.tr(),
+                      style: const TextStyle(color: AppColors.textPrimary)),
                 ]),
               ),
             ],
@@ -249,10 +319,203 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ],
       ),
       body: Column(children: [
+        if (_otherUid != null)
+          StreamBuilder<DocumentSnapshot>(
+            stream: _db.collection('users').doc(currentUid).snapshots(),
+            builder: (context, snap) {
+              if (!snap.hasData || !snap.data!.exists) {
+                return const SizedBox.shrink();
+              }
+              final blocked = List<String>.from((snap.data!.data()
+                      as Map<String, dynamic>?)?['blockedUids'] ??
+                  []);
+              if (!blocked.contains(_otherUid)) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                color: AppColors.danger.withValues(alpha: 0.15),
+                child: Row(children: [
+                  const Icon(Icons.block, color: AppColors.danger, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'chatx.youBlockedUser'.tr(),
+                      style: const TextStyle(
+                          color: AppColors.danger, fontSize: 13),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => context.push('/settings/blocked'),
+                    child: Text('chatx.unblock'.tr(),
+                        style: const TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ]),
+              );
+            },
+          ),
         dealAsync.when(
-          data: (deal) => deal != null && deal.status == DealStatus.active
-              ? ChatDealBanner(deal: deal)
-              : const SizedBox.shrink(),
+          data: (deal) {
+            if (deal == null) return const SizedBox.shrink();
+
+            // PENDING — Sender / Receiver UI
+            if (deal.status == DealStatus.pending) {
+              final isReceiver = deal.proposal1?.userId != currentUid;
+              if (!isReceiver) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: AppColors.deal.withValues(alpha: 0.12),
+                  child: Row(children: [
+                    const Icon(Icons.hourglass_top,
+                        color: AppColors.deal, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'chatx.dealSentWaiting'.tr(),
+                        style: const TextStyle(
+                            color: AppColors.deal,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ]),
+                );
+              }
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                color: AppColors.deal.withValues(alpha: 0.12),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(children: [
+                        const Icon(Icons.handshake_outlined,
+                            color: AppColors.deal, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text('chatx.dealSentToYou'.tr(),
+                              style: const TextStyle(
+                                  color: AppColors.deal,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ]),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 26),
+                        child: Text(deal.proposal1?.details ?? '',
+                            style: const TextStyle(
+                                color: AppColors.textPrimary, fontSize: 13)),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await DealRepository().cancel(deal.id);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            'chatx.proposalRejected'.tr())),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text('${'common.error'.tr()}: $e')),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.close,
+                                size: 16, color: AppColors.danger),
+                            label: Text('chatx.reject'.tr(),
+                                style:
+                                    const TextStyle(color: AppColors.danger)),
+                            style: OutlinedButton.styleFrom(
+                                side:
+                                    const BorderSide(color: AppColors.danger)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              try {
+                                await DealRepository().acceptProposal(
+                                    dealId: deal.id, userId: currentUid);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text('chatx.dealStarted'.tr())),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text('${'common.error'.tr()}: $e')),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.check, size: 16),
+                            label: Text('chatx.accept'.tr()),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.offer,
+                                foregroundColor: Colors.white),
+                          ),
+                        ),
+                      ]),
+                    ]),
+              );
+            }
+
+            // ACTIVE — Countdown banner
+            if (deal.status == DealStatus.active) {
+              return _ActiveCountdownBanner(deal: deal);
+            }
+
+            // COMPLETED — Αξιολόγησε banner
+            if (deal.status == DealStatus.completed) {
+              final isParticipant =
+                  deal.user1Uid == currentUid || deal.user2Uid == currentUid;
+              if (!isParticipant) return const SizedBox.shrink();
+              return GestureDetector(
+                onTap: () => context.push('/rate-deal/${deal.id}'),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  child: Row(children: [
+                    const Icon(Icons.star_outline,
+                        color: AppColors.primary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'chatx.dealDoneRate'.tr(),
+                        style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right,
+                        color: AppColors.primary, size: 18),
+                  ]),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
           loading: () => const SizedBox.shrink(),
           error: (_, __) => const SizedBox.shrink(),
         ),
@@ -271,46 +534,120 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
               final docs = snap.data!.docs;
               WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted) return; // μην αγγίζεις τον _scrollCtrl μετά το dispose
                 if (_scrollCtrl.hasClients) {
                   _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
                 }
               });
               if (docs.isEmpty) {
-                return const Center(
-                  child: Text('Ξεκίνα τη συνομιλία!',
-                      style: TextStyle(color: AppColors.textHint)),
+                return Center(
+                  child: Text('chatx.startConversation'.tr(),
+                      style: const TextStyle(color: AppColors.textHint)),
                 );
               }
               return ListView.builder(
                 controller: _scrollCtrl,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 itemCount: docs.length,
                 itemBuilder: (_, i) {
                   final d = docs[i].data() as Map<String, dynamic>;
                   final isMe = d['senderId'] == currentUid;
                   final sentAt = (d['sentAt'] as Timestamp?)?.toDate();
                   final messageType = d['messageType'] as String? ?? 'text';
+                  final readBy = List<String>.from(d['readBy'] ?? []);
+                  final isRead = readBy.any((u) => u != currentUid);
+                  final msgText = (d['text'] ?? '') as String;
+                  final mId = docs[i].id;
                   return ChatMessageBubble(
-                    text: d['text'] ?? '',
+                    text: msgText,
                     isMe: isMe,
                     sentAt: sentAt,
                     chatId: widget.chatId,
                     messageType: messageType,
                     dealData: d['dealData'] as Map<String, dynamic>?,
                     mediaUrl: d['mediaUrl'] as String?,
+                    isRead: isRead,
+                    messageId: mId,
+                    senderId: d['senderId'] as String?,
+                    reactions: d['reactions'] as Map<String, dynamic>?,
+                    currentUid: currentUid,
+                    replyTo: d['replyTo'] as Map<String, dynamic>?,
+                    editedAt: (d['editedAt'] as Timestamp?)?.toDate(),
+                    // Αντίδραση επιτρέπεται μόνο σε μηνύματα ΑΛΛΟΥ χρήστη.
+                    onReact: isMe
+                        ? null
+                        : (emoji) => ChatRepository().setMessageReaction(
+                              chatId: widget.chatId,
+                              messageId: mId,
+                              uid: currentUid,
+                              emoji: emoji,
+                            ),
+                    // Απάντηση: μόνο σε μηνύματα κειμένου.
+                    onReply: messageType == 'text'
+                        ? () => setState(() => _replyingTo = {
+                              'messageId': mId,
+                              'text': msgText,
+                              'senderId': d['senderId'],
+                            })
+                        : null,
+                    // Επεξεργασία: μόνο δικά μου μηνύματα κειμένου.
+                    onEdit: (isMe && messageType == 'text')
+                        ? () => _editMessage(mId, msgText)
+                        : null,
                   );
                 },
               );
             },
           ),
         ),
+        if (_replyingTo != null) _buildReplyBanner(),
         SafeArea(
           top: false,
           child: ChatInputBar(
             controller: _msgCtrl,
+            onChanged: _onTypingChanged,
             onSend: _sendMessage,
             chatId: widget.chatId,
           ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildReplyBanner() {
+    final preview = (_replyingTo?['text'] as String?)?.trim();
+    return Container(
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      child: Row(children: [
+        Container(width: 3, height: 34, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('chatx.reply'.tr(),
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
+              Text(
+                (preview == null || preview.isEmpty)
+                    ? 'chatx.message'.tr()
+                    : preview,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close, color: AppColors.textHint, size: 20),
+          onPressed: () => setState(() => _replyingTo = null),
         ),
       ]),
     );
@@ -341,18 +678,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildNameAndListing(String listingTitle) {
     if (_otherUid == null || _otherUid!.isEmpty) {
-      return _staticName(_chatData?['otherUserName'] ?? 'Συνομιλία', listingTitle);
+      return _staticName(
+          _chatData?['otherUserName'] ?? 'chatx.conversation'.tr(),
+          listingTitle);
     }
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('users').doc(_otherUid).snapshots(),
       builder: (context, snap) {
-        String name = _chatData?['otherUserName'] ?? 'Συνομιλία';
+        String name = _chatData?['otherUserName'] ?? 'chatx.conversation'.tr();
         String? onlineText;
         if (snap.hasData && snap.data!.exists) {
           final d = snap.data!.data() as Map<String, dynamic>;
           final first = (d['firstName'] as String?) ?? '';
           final last = (d['lastName'] as String?) ?? '';
-          final fullName = last.isNotEmpty ? '$first $last'.trim() : first.trim();
+          final fullName =
+              last.isNotEmpty ? '$first $last'.trim() : first.trim();
           if (fullName.isNotEmpty) name = fullName;
           final showOnline = d['showOnlineStatus'] ?? true;
           if (showOnline) {
@@ -362,16 +702,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               if (mins < 5) {
                 onlineText = 'online';
               } else if (mins < 60) {
-                onlineText = 'ενεργός πριν $mins λ.';
+                onlineText =
+                    'chatx.activeMinsAgo'.tr(namedArgs: {'n': '$mins'});
               } else if (mins < 1440) {
-                onlineText = 'ενεργός πριν ${mins ~/ 60} ώρες';
+                onlineText = 'chatx.activeHoursAgo'
+                    .tr(namedArgs: {'n': '${mins ~/ 60}'});
               } else {
-                onlineText = 'ενεργός πριν ${mins ~/ 1440} μέρες';
+                onlineText = 'chatx.activeDaysAgo'
+                    .tr(namedArgs: {'n': '${mins ~/ 1440}'});
               }
             }
           }
         }
-        return _staticName(name, listingTitle, onlineText: onlineText);
+        return StreamBuilder<DocumentSnapshot>(
+          stream: _db.collection('chats').doc(widget.chatId).snapshots(),
+          builder: (context, chatSnap) {
+            String? finalText = onlineText;
+            if (chatSnap.hasData && chatSnap.data!.exists) {
+              final cd = chatSnap.data!.data() as Map<String, dynamic>;
+              final typing = List<String>.from(cd['typingUids'] ?? []);
+              if (typing.contains(_otherUid)) {
+                finalText = 'chatx.typing'.tr();
+              }
+            }
+            return _staticName(name, listingTitle, onlineText: finalText);
+          },
+        );
       },
     );
   }
@@ -395,13 +751,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               height: 6,
               margin: const EdgeInsets.only(right: 5),
               decoration: BoxDecoration(
-                color: onlineText == 'online' ? AppColors.success : AppColors.textHint,
+                color: onlineText == 'online'
+                    ? AppColors.success
+                    : AppColors.textHint,
                 shape: BoxShape.circle,
               ),
             ),
             Text(onlineText,
                 style: TextStyle(
-                  color: onlineText == 'online' ? AppColors.success : AppColors.textSecondary,
+                  color: onlineText == 'online'
+                      ? AppColors.success
+                      : AppColors.textSecondary,
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                 ),
@@ -409,6 +769,89 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 overflow: TextOverflow.ellipsis),
           ]),
       ],
+    );
+  }
+}
+
+// ── Active Countdown Banner ──
+class _ActiveCountdownBanner extends StatefulWidget {
+  final DealModel deal;
+  const _ActiveCountdownBanner({required this.deal});
+
+  @override
+  State<_ActiveCountdownBanner> createState() => _ActiveCountdownBannerState();
+}
+
+class _ActiveCountdownBannerState extends State<_ActiveCountdownBanner> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _formatCountdown(Duration d) {
+    if (d.isNegative) return 'chatx.expired'.tr();
+    final days = d.inDays;
+    final hours = d.inHours.remainder(24);
+    final minutes = d.inMinutes.remainder(60);
+    final seconds = d.inSeconds.remainder(60);
+    if (days > 0) {
+      return 'chatx.cdDHM'
+          .tr(namedArgs: {'d': '$days', 'h': '$hours', 'm': '$minutes'});
+    }
+    if (hours > 0) {
+      return 'chatx.cdHMS'
+          .tr(namedArgs: {'h': '$hours', 'm': '$minutes', 's': '$seconds'});
+    }
+    return 'chatx.cdMS'.tr(namedArgs: {'m': '$minutes', 's': '$seconds'});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final endDate = widget.deal.endDate;
+    final remaining = endDate?.difference(DateTime.now()) ?? Duration.zero;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      color: AppColors.deal.withValues(alpha: 0.12),
+      child: Row(children: [
+        const Icon(Icons.timer_outlined, color: AppColors.deal, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'deal.active'.tr(),
+            style: const TextStyle(
+                color: AppColors.deal,
+                fontSize: 13,
+                fontWeight: FontWeight.w700),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.deal.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            _formatCountdown(remaining),
+            style: const TextStyle(
+                color: AppColors.deal,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                fontFeatures: [FontFeature.tabularFigures()]),
+          ),
+        ),
+      ]),
     );
   }
 }
@@ -440,7 +883,6 @@ class _DealButtonState extends ConsumerState<_DealButton> {
   @override
   void didUpdateWidget(_DealButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Πάντα ξανά έλεγξε αν αξιολόγησε όταν αλλάζει το deal ή refresh
     _checkRatedStatus();
   }
 
@@ -471,26 +913,24 @@ class _DealButtonState extends ConsumerState<_DealButton> {
     if (deal != null) {
       switch (deal.status) {
         case DealStatus.active:
-          label = 'Ενεργό';
+          label = 'chatx.statusActive'.tr();
           icon = Icons.timer_outlined;
           color = AppColors.deal;
           break;
         case DealStatus.completed:
-          // Αν δεν έχει αξιολογήσει ακόμα → "Αξιολόγησε"
-          // Αν έχει αξιολογήσει → "Νέο Deal"
           if (_hasRated == true) {
-            label = 'Νέο Deal';
+            label = 'chatx.statusNewDeal'.tr();
             icon = Icons.handshake_outlined;
             color = AppColors.deal;
           } else {
-            label = 'Αξιολόγησε';
+            label = 'chatx.statusRate'.tr();
             icon = Icons.star_outline_rounded;
             color = AppColors.offer;
           }
           break;
         case DealStatus.pending:
         case DealStatus.accepted:
-          label = 'Εκκρεμεί';
+          label = 'chatx.statusPending'.tr();
           icon = Icons.pending_outlined;
           color = AppColors.deal;
           break;

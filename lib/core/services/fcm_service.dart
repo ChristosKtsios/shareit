@@ -1,7 +1,9 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'error_logger.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
@@ -12,7 +14,7 @@ class FcmService {
   static final _local = FlutterLocalNotificationsPlugin();
 
   static const _channelId = 'shareit_messages';
-  static const _channelName = 'Μηνύματα ShareIt';
+  static String get _channelName => 'fcm.channelName'.tr();
 
   static Future<void> init(String uid) async {
     await _fcm.requestPermission(
@@ -28,15 +30,27 @@ class FcmService {
       ),
     );
 
-    final token = await _fcm.getToken();
-    if (token != null) await _saveToken(uid, token);
+    // Το getToken() μπορεί να ρίξει IOException/SERVICE_NOT_AVAILABLE σε κακό
+    // δίκτυο ή προβλήματα Play Services — ΔΕΝ πρέπει να κρασάρει την app. Το
+    // token θα ξαναζητηθεί αυτόματα (onTokenRefresh) όταν γίνει διαθέσιμο.
+    try {
+      final token = await _fcm.getToken();
+      if (token != null) await _saveToken(uid, token);
+    } catch (e, s) {
+      logSwallowed(e, s, 'fcm getToken');
+    }
     _fcm.onTokenRefresh.listen((t) => _saveToken(uid, t));
 
     FirebaseMessaging.onMessage.listen(_handleForeground);
     FirebaseMessaging.onMessageOpenedApp.listen(_handleOpened);
 
-    final initial = await _fcm.getInitialMessage();
-    if (initial != null) _handleOpened(initial);
+    // Ίδια κατηγορία network-dependent κλήσης στο startup — μη κρασάρεις.
+    try {
+      final initial = await _fcm.getInitialMessage();
+      if (initial != null) _handleOpened(initial);
+    } catch (e, s) {
+      logSwallowed(e, s, 'fcm getInitialMessage');
+    }
   }
 
   static Future<void> _handleForeground(RemoteMessage message) async {
@@ -46,7 +60,7 @@ class FcmService {
       notification.hashCode,
       notification.title,
       notification.body,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -54,7 +68,7 @@ class FcmService {
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
         ),
-        iOS: DarwinNotificationDetails(
+        iOS: const DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
@@ -85,6 +99,14 @@ class FcmService {
   static Future<void> _saveToken(String uid, String token) async =>
       await _db.collection('users').doc(uid).set(
         {'fcmToken': token},
+        SetOptions(merge: true),
+      );
+
+  /// Αποθηκεύει τη γλώσσα του χρήστη (el/en/es) στο user doc, ώστε οι Cloud
+  /// Functions να στέλνουν τα push notifications στη γλώσσα του ΠΑΡΑΛΗΠΤΗ.
+  static Future<void> saveLanguage(String uid, String lang) async =>
+      await _db.collection('users').doc(uid).set(
+        {'language': lang},
         SetOptions(merge: true),
       );
 

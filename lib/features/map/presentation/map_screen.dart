@@ -1,7 +1,9 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/error_logger.dart';
 import '../providers/map_provider.dart';
 import 'widgets/map_listing_card.dart';
 import 'widgets/cluster_carousel_sheet.dart';
@@ -16,15 +18,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   GoogleMapController? _mapController;
 
   @override
+  void dispose() {
+    // Ο GoogleMap widget κάνει ο ίδιος το πραγματικό dispose του controller·
+    // εμείς απλώς καθαρίζουμε την αναφορά ώστε τίποτα να μην τον χρησιμοποιήσει
+    // μετά (ΔΕΝ ξανακαλούμε .dispose() → double-dispose crash).
+    _mapController = null;
+    super.dispose();
+  }
+
+  /// Ασφαλής χρήση του χάρτη: μόνο αν το widget είναι mounted ΚΑΙ ο controller
+  /// υπάρχει. Τυλίγει σε try/catch το «used after being disposed» (π.χ. όταν ο
+  /// χάρτης ξεφορτώθηκε λόγω isLocating) ώστε να μη γίνεται fatal crash.
+  void _withMap(void Function(GoogleMapController c) action) {
+    final c = _mapController;
+    if (!mounted || c == null) return;
+    try {
+      action(c);
+    } catch (e, s) {
+      logSwallowed(e, s, 'map controller');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final mapState = ref.watch(mapProvider);
     final notifier = ref.read(mapProvider.notifier);
 
     ref.listen(mapProvider, (prev, next) {
-      print('🔵 LISTENER triggered. clusterListings.length=${next.clusterListings.length}');
+      // Όταν ξεκινά νέος εντοπισμός, ο χάρτης ξεφορτώνεται και ο controller
+      // γίνεται invalid → καθάρισε την αναφορά ώστε να μη χρησιμοποιηθεί stale.
+      if (next.isLocating && !(prev?.isLocating ?? false)) {
+        _mapController = null;
+      }
       if (next.clusterListings.isNotEmpty &&
           (prev == null || prev.clusterListings.isEmpty)) {
-        print('🟢 OPENING SHEET');
         showModalBottomSheet(
           context: context,
           isScrollControlled: true,
@@ -40,9 +67,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (next.clusterListings.isNotEmpty &&
           next.clusterTapPosition != null &&
           next.clusterTapPosition != prev?.clusterTapPosition) {
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLng(next.clusterTapPosition!),
-        );
+        _withMap((c) => c.animateCamera(
+              CameraUpdate.newLatLng(next.clusterTapPosition!),
+            ));
       }
     });
 
@@ -69,9 +96,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 markers: mapState.markers,
                 onTap: (_) => notifier.clearSelected(),
                 onCameraIdle: () async {
-                  if (_mapController != null) {
-                    final zoom = await _mapController!.getZoomLevel();
+                  final c = _mapController;
+                  if (c == null) return;
+                  try {
+                    final zoom = await c.getZoomLevel();
+                    if (!mounted) return;
                     notifier.updateZoom(zoom);
+                  } catch (e, s) {
+                    logSwallowed(e, s, 'map getZoomLevel');
                   }
                 },
               ),
@@ -110,17 +142,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   foregroundColor: AppColors.primary,
                   elevation: 0,
                   onPressed: () async {
-                    // Αν δεν έχουμε πραγματική τοποθεσία, ξαναπροσπαθούμε.
-                    if (mapState.userPosition == null) {
-                      await notifier.retryLocation();
-                    }
-                    final pos = ref.read(mapProvider).userPosition;
-                    if (pos != null && _mapController != null) {
-                      _mapController!.animateCamera(
-                        CameraUpdate.newLatLng(
-                            LatLng(pos.latitude, pos.longitude)),
-                      );
-                    }
+                    // Ανανεώνει τη θέση ΧΩΡΙΣ να ξεφορτωθεί ο χάρτης, ώστε ο
+                    // controller να μείνει έγκυρος και το animateCamera να δουλέψει.
+                    final target = await notifier.centerOnUser();
+                    if (!mounted || target == null) return;
+                    _withMap((c) => c.animateCamera(
+                          CameraUpdate.newLatLngZoom(target, 15),
+                        ));
                   },
                   child: const Icon(Icons.my_location),
                 ),
@@ -198,13 +226,13 @@ class _LocationHintChip extends StatelessWidget {
           color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.location_off, color: Colors.white, size: 14),
-            SizedBox(width: 6),
-            Text('Δεν βρέθηκε η τοποθεσία — Δοκίμασε ξανά',
-                style: TextStyle(color: Colors.white, fontSize: 12)),
+            const Icon(Icons.location_off, color: Colors.white, size: 14),
+            const SizedBox(width: 6),
+            Text('mapx.locationNotFoundRetry'.tr(),
+                style: const TextStyle(color: Colors.white, fontSize: 12)),
           ],
         ),
       ),

@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../../core/services/error_logger.dart';
+import '../../../core/services/location_permission_gate.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../listings/data/listing_model.dart';
 import '../../listings/data/listing_repository.dart';
@@ -116,11 +119,8 @@ class MapNotifier extends StateNotifier<MapState> {
         return;
       }
 
-      // 2) Permission flow
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
+      // 2) Permission flow (shows in-app rationale before the OS prompt)
+      final perm = await LocationPermissionGate.ensure();
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
         _fallback();
@@ -171,17 +171,68 @@ class MapNotifier extends StateNotifier<MapState> {
     );
   }
 
-  /// Public: ξανα-προσπάθεια εντοπισμού (π.χ. από το "locate me" κουμπί).
+  /// Public: ξανα-προσπάθεια εντοπισμού (π.χ. από το "Δοκίμασε ξανά" hint).
   Future<void> retryLocation() async {
     state = state.copyWith(isLocating: true);
     await _resolveLocation();
   }
 
+  /// Public: ανανέωση τοποθεσίας για το "locate me" κουμπί ΧΩΡΙΣ να ξεφορτωθεί
+  /// ο χάρτης (δεν αγγίζει το isLocating, ώστε ο GoogleMapController να μείνει
+  /// έγκυρος και το animateCamera να δουλέψει). Επιστρέφει το σημείο για
+  /// κεντράρισμα, ή null αν δεν βρέθηκε θέση.
+  Future<LatLng?> centerOnUser() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return _existingTarget();
+      }
+      final perm = await LocationPermissionGate.ensure();
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return _existingTarget();
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      state = state.copyWith(
+        userPosition: pos,
+        usingFallbackLocation: false,
+        isLocating: false,
+      );
+      return LatLng(pos.latitude, pos.longitude);
+    } catch (_) {
+      // Timeout/σφάλμα: κεντράρισε στην τελευταία γνωστή θέση αν υπάρχει.
+      return _existingTarget();
+    }
+  }
+
+  LatLng? _existingTarget() {
+    final p = state.userPosition;
+    return p != null ? LatLng(p.latitude, p.longitude) : null;
+  }
+
+  StreamSubscription<List<ListingModel>>? _listingsSub;
+
   void _listenListings() {
-    _repo.watchActive().listen((listings) async {
-      _allListings = listings;
-      await _rebuildMarkers();
-    });
+    _listingsSub = _repo.watchActive().listen(
+      (listings) async {
+        if (!mounted) return;
+        _allListings = listings;
+        await _rebuildMarkers();
+      },
+      // permission-denied / network σφάλμα στο stream ΔΕΝ πρέπει να γίνεται
+      // fatal — απλώς δεν ενημερώνουμε τα markers.
+      onError: (e, s) => logSwallowed(e, s, 'map watchActive'),
+    );
+  }
+
+  @override
+  void dispose() {
+    _listingsSub?.cancel();
+    super.dispose();
   }
 
   double _radiusForZoom(double zoom) {
@@ -270,7 +321,6 @@ class MapNotifier extends StateNotifier<MapState> {
           position: center,
           icon: icon,
           onTap: () {
-            print('🟠 CLUSTER TAPPED: ${cluster.length} listings');
             state = state.copyWith(
               clusterListings: cluster,
               clusterIndex: 0,
