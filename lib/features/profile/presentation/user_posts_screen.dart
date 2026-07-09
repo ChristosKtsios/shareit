@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,8 +25,8 @@ class UserPostsScreen extends ConsumerWidget {
               foregroundColor: AppColors.background,
               onPressed: () => context.push('/create-post'),
               icon: const Icon(Icons.add),
-              label: const Text('Νέο Post',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              label: Text('userPost.newPost'.tr(),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
             )
           : null,
       appBar: AppBar(
@@ -36,7 +37,9 @@ class UserPostsScreen extends ConsumerWidget {
             if (snap.hasData && snap.data!.exists) {
               final d = snap.data!.data() as Map<String, dynamic>;
               final first = d['firstName'] ?? '';
-              name = first.isNotEmpty ? 'Posts του $first' : 'Posts';
+              name = first.isNotEmpty
+                  ? 'userPost.postsOf'.tr(namedArgs: {'name': first})
+                  : 'Posts';
             }
             return Text(name);
           },
@@ -52,17 +55,17 @@ class UserPostsScreen extends ConsumerWidget {
           }
           final posts = snap.data!;
           if (posts.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(32),
+                padding: const EdgeInsets.all(32),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.article_outlined,
+                    const Icon(Icons.article_outlined,
                         size: 64, color: AppColors.textHint),
-                    SizedBox(height: 16),
-                    Text('Δεν υπάρχουν posts ακόμα',
-                        style: TextStyle(
+                    const SizedBox(height: 16),
+                    Text('userPost.noPostsYet'.tr(),
+                        style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 14)),
                   ],
                 ),

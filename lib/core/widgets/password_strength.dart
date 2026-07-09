@@ -1,16 +1,14 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../../features/auth/data/auth_repository.dart';
 
 class PasswordStrengthIndicator extends StatelessWidget {
   final String password;
   const PasswordStrengthIndicator({super.key, required this.password});
 
-  List<_Rule> get _rules => [
-    _Rule(label: 'Τουλάχιστον 8 χαρακτήρες', met: password.length >= 8),
-    _Rule(label: 'Κεφαλαίο γράμμα (A-Z)',    met: password.contains(RegExp(r'[A-Z]'))),
-    _Rule(label: 'Αριθμός (0-9)',             met: password.contains(RegExp(r'[0-9]'))),
-    _Rule(label: 'Σύμβολο (!@#\$...)',        met: password.contains(RegExp(r'[!@#\$%^&*(),.?":{}|<>]'))),
-  ];
+  // ΜΙΑ πηγή αλήθειας: οι ΙΔΙΟΙ κανόνες με τον validator/κουμπί.
+  List<PasswordRule> get _rules => AuthRepository.passwordRules(password);
 
   int get _score => _rules.where((r) => r.met).length;
 
@@ -23,10 +21,10 @@ class PasswordStrengthIndicator extends StatelessWidget {
 
   String get _strengthLabel {
     if (password.isEmpty) return '';
-    if (_score <= 1) return 'Αδύναμος';
-    if (_score == 2) return 'Μέτριος';
-    if (_score == 3) return 'Καλός';
-    return 'Ισχυρός';
+    if (_score <= 1) return 'pwstr.weak'.tr();
+    if (_score == 2) return 'pwstr.medium'.tr();
+    if (_score == 3) return 'pwstr.good'.tr();
+    return 'pwstr.strong'.tr();
   }
 
   @override
@@ -81,10 +79,4 @@ class PasswordStrengthIndicator extends StatelessWidget {
       ],
     );
   }
-}
-
-class _Rule {
-  final String label;
-  final bool met;
-  const _Rule({required this.label, required this.met});
 }

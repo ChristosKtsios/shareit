@@ -1,11 +1,16 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/countries.dart';
 import '../../../core/constants/app_strings.dart';
+import '../data/auth_repository.dart';
 import '../providers/auth_provider.dart';
 
 enum _LoginMode { email, phone }
@@ -27,21 +32,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _showPass = false;
   String? _error;
 
-  final List<Map<String, String>> _countries = [
-    {'code': '+30', 'flag': '🇬🇷', 'name': 'Ελλάδα'},
-    {'code': '+357', 'flag': '🇨🇾', 'name': 'Κύπρος'},
-    {'code': '+46', 'flag': '🇸🇪', 'name': 'Σουηδία'},
-    {'code': '+47', 'flag': '🇳🇴', 'name': 'Νορβηγία'},
-    {'code': '+45', 'flag': '🇩🇰', 'name': 'Δανία'},
-    {'code': '+358', 'flag': '🇫🇮', 'name': 'Φινλανδία'},
-    {'code': '+49', 'flag': '🇩🇪', 'name': 'Γερμανία'},
-    {'code': '+33', 'flag': '🇫🇷', 'name': 'Γαλλία'},
-    {'code': '+39', 'flag': '🇮🇹', 'name': 'Ιταλία'},
-    {'code': '+34', 'flag': '🇪🇸', 'name': 'Ισπανία'},
-    {'code': '+31', 'flag': '🇳🇱', 'name': 'Ολλανδία'},
-    {'code': '+44', 'flag': '🇬🇧', 'name': 'Ηνωμένο Βασίλειο'},
-    {'code': '+1', 'flag': '🇺🇸', 'name': 'ΗΠΑ'},
-  ];
+  final List<Map<String, String>> _countries = Countries.all;
 
   @override
   void dispose() {
@@ -51,25 +42,31 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _login() async {
-    // Validation πρώτα — έλεγξε τα πεδία πριν στείλεις στο Firebase
     if (_mode == _LoginMode.email) {
       if (_emailCtrl.text.trim().isEmpty) {
-        setState(() => _error = 'Συμπλήρωσε το email σου.');
+        setState(() => _error = 'authx.fillEmail'.tr());
         return;
       }
-      if (!_emailCtrl.text.contains('@')) {
-        setState(() => _error = 'Μη έγκυρη μορφή email.');
+      if (!AuthRepository.isValidEmail(_emailCtrl.text)) {
+        setState(() => _error = 'authx.invalidEmail'.tr());
         return;
       }
     } else {
       if (_phoneCtrl.text.trim().isEmpty) {
-        setState(() => _error = 'Συμπλήρωσε τον αριθμό κινητού.');
+        setState(() => _error = 'authx.fillPhone'.tr());
         return;
       }
     }
     if (_passwordCtrl.text.isEmpty) {
-      setState(() => _error = 'Συμπλήρωσε τον κωδικό σου.');
+      setState(() => _error = 'authx.fillPassword'.tr());
       return;
     }
 
@@ -79,16 +76,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
+      final pass = _passwordCtrl.text.trim();
       if (_mode == _LoginMode.email) {
         await ref.read(authRepoProvider).loginWithEmail(
               _emailCtrl.text.trim(),
-              _passwordCtrl.text,
+              pass,
             );
       } else {
         final fullPhone = '$_countryCode${_phoneCtrl.text.trim()}';
         await ref.read(authRepoProvider).loginWithPhone(
               fullPhone,
-              _passwordCtrl.text,
+              pass,
             );
       }
       if (mounted) context.go('/map');
@@ -98,39 +96,173 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           case 'user-not-found':
           case 'no-email':
             _error = _mode == _LoginMode.email
-                ? 'Δεν υπάρχει λογαριασμός με αυτό το email.'
-                : 'Δεν υπάρχει λογαριασμός με αυτό το κινητό.';
+                ? 'authx.noAccountEmail'.tr()
+                : 'authx.noAccountPhone'.tr();
             break;
           case 'wrong-password':
-            _error = 'Λάθος κωδικός. Δοκίμασε ξανά.';
+            _error = 'authx.wrongPassword'.tr();
             break;
           case 'invalid-credential':
-            // Firebase v22+ επιστρέφει αυτό αντί για user-not-found/wrong-password
             _error = _mode == _LoginMode.email
-                ? 'Λάθος email ή κωδικός.'
-                : 'Λάθος κινητό ή κωδικός.';
+                ? 'authx.wrongEmailOrPass'.tr()
+                : 'authx.wrongPhoneOrPass'.tr();
             break;
           case 'invalid-email':
-            _error = 'Μη έγκυρη μορφή email.';
+            _error = 'authx.invalidEmail'.tr();
             break;
           case 'user-disabled':
-            _error = 'Ο λογαριασμός είναι απενεργοποιημένος.';
+            _error = 'authx.accountDisabled'.tr();
+            break;
+          case 'operation-not-allowed':
+            _error = 'authx.emailLoginUnavailable'.tr();
             break;
           case 'too-many-requests':
-            _error = 'Πολλές αποτυχημένες προσπάθειες. Δοκίμασε αργότερα.';
+            _error = 'authx.tooManyAttempts'.tr();
             break;
           case 'network-request-failed':
-            _error = 'Πρόβλημα σύνδεσης. Έλεγξε το internet.';
+            _error = 'authx.networkError'.tr();
             break;
           default:
-            _error = e.message ?? AppStrings.errorGeneric;
+            _error = AppStrings.errorGeneric;
         }
       });
     } catch (e) {
-      setState(() => _error = 'Κάτι πήγε στραβά. Δοκίμασε ξανά.');
+      setState(() => _error = AppStrings.errorGeneric);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<bool> _showTermsDialog() async {
+    bool ageOk = false;
+    bool termsOk = false;
+    bool? result;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('authx.beforeContinue'.tr(),
+              style: TextStyle(
+                  color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              'authx.confirmFollowing'.tr(),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () => setDialogState(() => ageOk = !ageOk),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: ageOk,
+                        onChanged: (v) =>
+                            setDialogState(() => ageOk = v ?? false),
+                        activeColor: AppColors.primary,
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text('authx.age18'.tr(),
+                              style: TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 13)),
+                        ),
+                      ),
+                    ]),
+              ),
+            ),
+            InkWell(
+              onTap: () => setDialogState(() => termsOk = !termsOk),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: termsOk,
+                        onChanged: (v) =>
+                            setDialogState(() => termsOk = v ?? false),
+                        activeColor: AppColors.primary,
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: RichText(
+                            text: TextSpan(
+                              style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 13,
+                                  height: 1.4),
+                              children: [
+                                TextSpan(text: 'authx.acceptThe'.tr()),
+                                TextSpan(
+                                  text: 'authx.termsOfUse'.tr(),
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: TextDecoration.underline),
+                                  recognizer: TapGestureRecognizer()
+                                    ..onTap = () => _openUrl(
+                                        'https://shareit-6cfa0.web.app/terms.html'),
+                                ),
+                                TextSpan(text: 'authx.andThe'.tr()),
+                                TextSpan(
+                                  text: 'authx.privacyPolicy'.tr(),
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: TextDecoration.underline),
+                                  recognizer: TapGestureRecognizer()
+                                    ..onTap = () => _openUrl(
+                                        'https://shareit-6cfa0.web.app/privacy_policy.html'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ]),
+              ),
+            ),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () {
+                result = false;
+                Navigator.pop(dialogContext);
+              },
+              child: Text('common.cancel'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: (ageOk && termsOk)
+                  ? () {
+                      result = true;
+                      Navigator.pop(dialogContext);
+                    }
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                disabledBackgroundColor:
+                    AppColors.primary.withValues(alpha: 0.3),
+              ),
+              child: Text('authx.continue'.tr(),
+                  style: TextStyle(color: AppColors.background)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    return result == true;
   }
 
   Future<void> _loginWithGoogle() async {
@@ -139,45 +271,110 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      final googleUser = await GoogleSignIn().signIn();
+      final googleUser = await GoogleSignIn(
+        // Ρητό web client ID (client_type 3 από το google-services.json) ώστε
+        // να παίρνουμε πάντα idToken για το Firebase Auth.
+        serverClientId:
+            '298536596181-ocikmg46hot2lqma65q54rbm8ibtnsjv.apps.googleusercontent.com',
+      ).signIn();
       if (googleUser == null) {
+        // Ο χρήστης ακύρωσε το popup.
         setState(() => _loading = false);
         return;
       }
       final googleAuth = await googleUser.authentication;
+      if (googleAuth.idToken == null) {
+        setState(() {
+          _loading = false;
+          _error = 'authx.googleError'.tr();
+        });
+        return;
+      }
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      if (mounted) context.go('/map');
-    } catch (e) {
-      setState(() => _error = 'Πρόβλημα με τη σύνδεση Google.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
 
-  Future<void> _loginWithFacebook() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final result = await FacebookAuth.instance.login();
-      if (result.status != LoginStatus.success) {
-        setState(() {
-          _loading = false;
-          _error = 'Η σύνδεση με Facebook ακυρώθηκε.';
-        });
-        return;
+      if (user != null) {
+        final db = FirebaseFirestore.instance;
+        final docRef = db.collection('users').doc(user.uid);
+        final doc = await docRef.get();
+
+        // Αν είναι νέος χρήστης — ζητάμε αποδοχή terms
+        if (!doc.exists) {
+          if (!mounted) return;
+          final accepted = await _showTermsDialog();
+          if (!accepted) {
+            // Ο χρήστης δεν αποδέχτηκε — διαγραφή του Firebase Auth user
+            try {
+              await user.delete();
+            } catch (_) {
+              await FirebaseAuth.instance.signOut();
+            }
+            await GoogleSignIn().signOut();
+            setState(() {
+              _loading = false;
+              _error = 'authx.mustAcceptTerms'.tr();
+            });
+            return;
+          }
+
+          // Δημιουργία profile
+          final displayName = user.displayName ?? googleUser.displayName ?? '';
+          final parts = displayName.trim().split(' ');
+          final firstName = parts.isNotEmpty ? parts.first : '';
+          final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+
+          await docRef.set({
+            'uid': user.uid,
+            'firstName': firstName,
+            'lastName': lastName,
+            'email': user.email ?? googleUser.email,
+            'phone': user.phoneNumber ?? '',
+            'photoUrl': user.photoURL ?? googleUser.photoUrl,
+            'avatarUrl': user.photoURL ?? googleUser.photoUrl,
+            'rating': 0.0,
+            'ratingCount': 0,
+            'isVerified': true,
+            'phoneVerified': false,
+            'blockedUids': [],
+            'savedListingIds': [],
+            'friends': [],
+            'dealsCount': 0,
+            'isPrivateProfile': false,
+            'showOnlineStatus': true,
+            'termsAcceptedAt': FieldValue.serverTimestamp(),
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          // Υπάρχων χρήστης — ενημέρωση μόνο αν λείπει firstName
+          final data = doc.data() as Map<String, dynamic>;
+          final existingFirstName = (data['firstName'] as String? ?? '').trim();
+          if (existingFirstName.isEmpty) {
+            final displayName =
+                user.displayName ?? googleUser.displayName ?? '';
+            final parts = displayName.trim().split(' ');
+            final firstName = parts.isNotEmpty ? parts.first : '';
+            final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+            if (firstName.isNotEmpty) {
+              // ΔΕΝ πειράζουμε photoUrl/avatarUrl — μπορεί ο χρήστης να έχει
+              // ανεβάσει δικό του avatar· δεν το αντικαθιστούμε με το Google.
+              await docRef.set({
+                'firstName': firstName,
+                'lastName': lastName,
+                'email': user.email ?? data['email'],
+              }, SetOptions(merge: true));
+            }
+          }
+        }
       }
-      final credential =
-          FacebookAuthProvider.credential(result.accessToken!.tokenString);
-      await FirebaseAuth.instance.signInWithCredential(credential);
+
       if (mounted) context.go('/map');
     } catch (e) {
-      setState(() => _error = 'Πρόβλημα με τη σύνδεση Facebook.');
+      setState(() => _error = 'authx.googleError'.tr());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -225,12 +422,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       fontSize: 36,
                       letterSpacing: -1)),
               const SizedBox(height: 8),
-              const Text('Ανταλλαγές κοντά σου',
+              Text('authx.exchangesNearYou'.tr(),
                   style:
                       TextStyle(color: AppColors.textSecondary, fontSize: 15)),
               const SizedBox(height: 32),
-
-              // Tab selector
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
@@ -277,7 +472,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               : Colors.transparent,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text('Κινητό',
+                        child: Text(AppStrings.phone,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                                 color: _mode == _LoginMode.phone
@@ -291,16 +486,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ]),
               ),
               const SizedBox(height: 16),
-
-              // Email / Phone field
               if (_mode == _LoginMode.email) ...[
                 TextField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: AppStrings.email,
-                    prefixIcon: Icon(Icons.email_outlined,
+                    prefixIcon: const Icon(Icons.email_outlined,
                         color: AppColors.textSecondary, size: 20),
                   ),
                 ),
@@ -344,8 +537,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ]),
               ],
               const SizedBox(height: 12),
-
-              // Password
               TextField(
                 controller: _passwordCtrl,
                 obscureText: !_showPass,
@@ -363,17 +554,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ),
               ),
-
-              // Forgot password
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => context.push('/forgot-password'),
-                  child: const Text('Ξέχασα τον κωδικό',
+                  child: Text('authx.forgotPassword'.tr(),
                       style: TextStyle(color: AppColors.primary, fontSize: 13)),
                 ),
               ),
-
               if (_error != null) ...[
                 const SizedBox(height: 4),
                 Container(
@@ -394,7 +582,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-
               ElevatedButton(
                 onPressed: _loading ? null : _login,
                 child: _loading
@@ -403,41 +590,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         width: 20,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: AppColors.background))
-                    : const Text(AppStrings.login),
+                    : Text(AppStrings.login),
               ),
               const SizedBox(height: 24),
-
-              const Row(children: [
-                Expanded(child: Divider(color: AppColors.border)),
+              Row(children: [
+                const Expanded(child: Divider(color: AppColors.border)),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('ή συνέχισε με',
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('authx.orContinueWith'.tr(),
                       style:
                           TextStyle(color: AppColors.textHint, fontSize: 12)),
                 ),
                 Expanded(child: Divider(color: AppColors.border)),
               ]),
               const SizedBox(height: 20),
-
               _SocialButton(
                 icon: Icons.g_mobiledata,
-                label: 'Σύνδεση με Google',
+                label: 'authx.googleSignIn'.tr(),
                 color: const Color(0xFFDB4437),
                 onTap: _loading ? null : _loginWithGoogle,
               ),
               const SizedBox(height: 12),
-              _SocialButton(
-                icon: Icons.facebook,
-                label: 'Σύνδεση με Facebook',
-                color: const Color(0xFF1877F2),
-                onTap: _loading ? null : _loginWithFacebook,
-              ),
               const SizedBox(height: 24),
-
               Center(
                 child: TextButton(
                   onPressed: () => context.push('/register'),
-                  child: const Text(
+                  child: Text(
                       '${AppStrings.noAccount} ${AppStrings.signUp}'),
                 ),
               ),

@@ -5,14 +5,14 @@
         "lib/firebase_options.dart": {
           "projectId": "shareit-6cfa0",
           "configurations": {
-            "android": "1:298536596181:android:c3e41af75890cc541fe85c"
+            "android": "1:298536596181:android:994609283cb0989e1fe85c"
           }
         }
       },
       "android": {
         "default": {
           "projectId": "shareit-6cfa0",
-          "appId": "1:298536596181:android:c3e41af75890cc541fe85c",
+          "appId": "1:298536596181:android:994609283cb0989e1fe85c",
           "fileOutput": "android/app/google-services.json"
         }
       }
@@ -57,5 +57,12 @@
       "**/.*",
       "**/node_modules/**"
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }

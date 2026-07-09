@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -36,8 +37,8 @@ class _RateUserScreenState extends ConsumerState<RateUserScreen> {
   Future<void> _submit() async {
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Διάλεξε αριθμό αστεριών πρώτα.')));
+          SnackBar(
+              content: Text('rate.pickStarsFirst'.tr())));
       return;
     }
     setState(() => _loading = true);
@@ -52,7 +53,7 @@ class _RateUserScreenState extends ConsumerState<RateUserScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Σφάλμα: $e')));
+          SnackBar(content: Text('rate.errorWith'.tr(namedArgs: {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -63,12 +64,14 @@ class _RateUserScreenState extends ConsumerState<RateUserScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Αξιολόγηση'),
+        title: Text('rate.title'.tr()),
         leading: IconButton(
             icon: const Icon(Icons.close),
             onPressed: () => context.pop()),
       ),
-      body: Padding(
+      body: SafeArea(
+        top: false,
+        child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(children: [
           const SizedBox(height: 20),
@@ -80,8 +83,8 @@ class _RateUserScreenState extends ConsumerState<RateUserScreen> {
                   fontSize: 20,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          const Text('Πώς ήταν η ανταλλαγή;',
-              style: TextStyle(
+          Text('rate.howWasUser'.tr(),
+              style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 14)),
           const SizedBox(height: 32),
 
@@ -104,8 +107,8 @@ class _RateUserScreenState extends ConsumerState<RateUserScreen> {
             controller: _commentCtrl,
             maxLines: 3,
             style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(
-                hintText: 'Γράψε ένα σχόλιο (προαιρετικό)...'),
+            decoration: InputDecoration(
+                hintText: 'rate.commentHint'.tr()),
           ),
           const Spacer(),
 
@@ -116,9 +119,10 @@ class _RateUserScreenState extends ConsumerState<RateUserScreen> {
                     child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: AppColors.background))
-                : const Text('Υποβολή αξιολόγησης'),
+                : Text('rate.submit'.tr()),
           ),
         ]),
+        ),
       ),
     );
   }

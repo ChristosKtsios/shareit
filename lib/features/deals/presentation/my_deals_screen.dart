@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../data/deal_model.dart';
@@ -37,16 +38,16 @@ class _MyDealsScreenState extends ConsumerState<MyDealsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Τα Deals μου'),
+        title: Text('myDeals.title'.tr()),
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.textSecondary,
           indicatorColor: AppColors.primary,
-          tabs: const [
-            Tab(text: 'Εκκρεμή'),
-            Tab(text: 'Ενεργά'),
-            Tab(text: 'Ολοκληρωμένα'),
+          tabs: [
+            Tab(text: 'myDeals.tabPending'.tr()),
+            Tab(text: 'myDeals.tabActive'.tr()),
+            Tab(text: 'myDeals.tabCompleted'.tr()),
           ],
         ),
       ),
@@ -54,7 +55,7 @@ class _MyDealsScreenState extends ConsumerState<MyDealsScreen>
         loading: () => const Center(
             child: CircularProgressIndicator(color: AppColors.primary)),
         error: (e, _) => Center(
-            child: Text('Σφάλμα: $e',
+            child: Text('myDeals.errorWith'.tr(namedArgs: {'e': '$e'}),
                 style: const TextStyle(color: AppColors.danger))),
         data: (allDeals) {
           final pending = allDeals
@@ -75,22 +76,20 @@ class _MyDealsScreenState extends ConsumerState<MyDealsScreen>
             children: [
               _DealsList(
                 deals: pending,
-                emptyTitle: 'Δεν έχεις εκκρεμή deals',
-                emptySubtitle:
-                    'Όταν στείλεις ή λάβεις μια πρόταση, θα εμφανίζεται εδώ.',
+                emptyTitle: 'myDeals.emptyPendingTitle'.tr(),
+                emptySubtitle: 'myDeals.emptyPendingSub'.tr(),
                 tab: _DealTab.pending,
               ),
               _DealsList(
                 deals: active,
-                emptyTitle: 'Δεν έχεις ενεργά deals',
-                emptySubtitle:
-                    'Όταν συμφωνήσετε με κάποιον, το deal θα ξεκινήσει εδώ.',
+                emptyTitle: 'myDeals.emptyActiveTitle'.tr(),
+                emptySubtitle: 'myDeals.emptyActiveSub'.tr(),
                 tab: _DealTab.active,
               ),
               _DealsList(
                 deals: completed,
-                emptyTitle: 'Δεν έχεις ολοκληρωμένα deals',
-                emptySubtitle: 'Τα παλιά deals θα εμφανίζονται εδώ.',
+                emptyTitle: 'myDeals.emptyCompletedTitle'.tr(),
+                emptySubtitle: 'myDeals.emptyCompletedSub'.tr(),
                 tab: _DealTab.completed,
               ),
             ],
@@ -186,13 +185,18 @@ class _DealCardState extends ConsumerState<_DealCard> {
   }
 
   String _formatCountdown(Duration d) {
-    if (d.isNegative) return 'Έληξε';
+    if (d.isNegative) return 'chatx.expired'.tr();
     final days = d.inDays;
     final hours = d.inHours.remainder(24);
     final minutes = d.inMinutes.remainder(60);
-    if (days > 0) return '${days}μ ${hours}ω';
-    if (hours > 0) return '${hours}ω ${minutes}λ';
-    return '${minutes}λ';
+    if (days > 0) {
+      return 'myDeals.cdDaysHours'.tr(namedArgs: {'d': '$days', 'h': '$hours'});
+    }
+    if (hours > 0) {
+      return 'myDeals.cdHoursMins'
+          .tr(namedArgs: {'h': '$hours', 'm': '$minutes'});
+    }
+    return 'myDeals.cdMins'.tr(namedArgs: {'m': '$minutes'});
   }
 
   String _formatDate(DateTime dt) => '${dt.day}/${dt.month}/${dt.year}';
@@ -208,21 +212,22 @@ class _DealCardState extends ConsumerState<_DealCard> {
       case _DealTab.pending:
         color = AppColors.deal;
         statusLabel = deal.status == DealStatus.accepted
-            ? 'Έχει αποδεχτεί ο άλλος'
-            : 'Εκκρεμεί';
+            ? 'myDeals.statusOtherAccepted'.tr()
+            : 'chatx.statusPending'.tr();
         statusIcon = Icons.pending_outlined;
         break;
       case _DealTab.active:
         color = AppColors.offer;
-        statusLabel = 'Ενεργό';
+        statusLabel = 'chatx.statusActive'.tr();
         statusIcon = Icons.handshake;
         break;
       case _DealTab.completed:
         color = deal.status == DealStatus.cancelled
             ? AppColors.danger
             : AppColors.primary;
-        statusLabel =
-            deal.status == DealStatus.cancelled ? 'Ακυρώθηκε' : 'Ολοκληρώθηκε';
+        statusLabel = deal.status == DealStatus.cancelled
+            ? 'deals.cancelled'.tr()
+            : 'deal.done'.tr();
         statusIcon = deal.status == DealStatus.cancelled
             ? Icons.cancel
             : Icons.check_circle;
@@ -333,7 +338,8 @@ class _DealCardState extends ConsumerState<_DealCard> {
                     child: ElevatedButton.icon(
                       onPressed: () => context.push('/deal-review/${deal.id}'),
                       icon: const Icon(Icons.visibility, size: 14),
-                      label: const Text('Δες', style: TextStyle(fontSize: 12)),
+                      label: Text('myDeals.view'.tr(),
+                          style: const TextStyle(fontSize: 12)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.deal,
                         foregroundColor: Colors.white,
@@ -349,8 +355,8 @@ class _DealCardState extends ConsumerState<_DealCard> {
                     child: ElevatedButton.icon(
                       onPressed: () => context.push('/rate-deal/${deal.id}'),
                       icon: const Icon(Icons.star, size: 14),
-                      label: const Text('Αξιολόγησε',
-                          style: TextStyle(fontSize: 12)),
+                      label: Text('chatx.statusRate'.tr(),
+                          style: const TextStyle(fontSize: 12)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.deal,
                         foregroundColor: Colors.white,
@@ -365,8 +371,8 @@ class _DealCardState extends ConsumerState<_DealCard> {
                     child: OutlinedButton.icon(
                       onPressed: () => _openWallPost(context, deal),
                       icon: const Icon(Icons.forum_outlined, size: 14),
-                      label: const Text('Δες deal',
-                          style: TextStyle(fontSize: 12)),
+                      label: Text('myDeals.viewDeal'.tr(),
+                          style: const TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         side: BorderSide(color: color),
@@ -397,7 +403,7 @@ class _DealCardState extends ConsumerState<_DealCard> {
 
     if (snap.docs.isEmpty) {
       scaffold.showSnackBar(
-          const SnackBar(content: Text('Το wall post δεν βρέθηκε')));
+          SnackBar(content: Text('myDeals.wallPostNotFound'.tr())));
       return;
     }
 

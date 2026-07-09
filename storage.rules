@@ -1,0 +1,60 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuth()      { return request.auth != null; }
+    function isOwner(uid)  { return isAuth() && request.auth.uid == uid; }
+
+    // Uploads must be an image or video and under 100 MB. contentType may be
+    // absent on some uploads, so only enforce the type check when it is set.
+    function isValidMedia() {
+      return request.resource.size < 100 * 1024 * 1024
+             && (request.resource.contentType == null
+                 || request.resource.contentType.matches('(image|video)/.*'));
+    }
+
+    // Participants of a chat, read from the corresponding Firestore document.
+    function chatParticipants(chatId) {
+      return firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+    }
+
+    // Profile photos & avatars — /users/{uid}/...
+    match /users/{uid}/{allPaths=**} {
+      allow read:   if isAuth();
+      allow write:  if isOwner(uid) && isValidMedia();
+      allow delete: if isOwner(uid);
+    }
+
+    // Listing images — /listings/{uid}/...
+    match /listings/{uid}/{allPaths=**} {
+      allow read:   if isAuth();
+      allow write:  if isOwner(uid) && isValidMedia();
+      allow delete: if isOwner(uid);
+    }
+
+    // User post media — /userPosts/{uid}/...
+    match /userPosts/{uid}/{allPaths=**} {
+      allow read:   if isAuth();
+      allow write:  if isOwner(uid) && isValidMedia();
+      allow delete: if isOwner(uid);
+    }
+
+    // Chat media — /chats/{chatId}/... — restricted to chat participants.
+    match /chats/{chatId}/{allPaths=**} {
+      allow read:   if isAuth() && request.auth.uid in chatParticipants(chatId);
+      allow write:  if isAuth() && request.auth.uid in chatParticipants(chatId) && isValidMedia();
+      allow delete: if isAuth() && request.auth.uid in chatParticipants(chatId);
+    }
+
+    // Wall post comment images — /wallComments/{postId}/...
+    // Το ποιος επιτρέπεται να σχολιάσει το επιβάλλουν τα Firestore rules· εδώ
+    // αρκεί authenticated χρήστης να ανεβάσει έγκυρη εικόνα.
+    match /wallComments/{postId}/{allPaths=**} {
+      allow read:   if isAuth();
+      allow write:  if isAuth() && isValidMedia();
+      allow delete: if isAuth();
+    }
+
+    // Any path not matched above is denied by default.
+  }
+}

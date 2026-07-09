@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -20,6 +21,44 @@ class UserPostCard extends ConsumerStatefulWidget {
 
 class _UserPostCardState extends ConsumerState<UserPostCard> {
   bool _liking = false;
+  final _commentCtrl = TextEditingController();
+  bool _sendingComment = false;
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendComment() async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty || _sendingComment) return;
+    final uid = ref.read(currentUserProvider)?.uid;
+    if (uid == null) return;
+    setState(() => _sendingComment = true);
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      final d = userDoc.data() ?? {};
+      final first = d['firstName'] as String? ?? '';
+      final last = d['lastName'] as String? ?? '';
+      final name = '$first $last'.trim().isEmpty
+          ? 'Χρήστης'
+          : '$first $last'.trim();
+      await UserPostRepository().addComment(
+        postId: widget.post.id,
+        authorUid: uid,
+        authorName: name,
+        authorAvatar: d['avatarUrl'] as String?,
+        text: text,
+      );
+      _commentCtrl.clear();
+    } finally {
+      if (mounted) setState(() => _sendingComment = false);
+    }
+  }
 
   Future<void> _toggleLike() async {
     final uid = ref.read(currentUserProvider)?.uid;
@@ -37,19 +76,19 @@ class _UserPostCardState extends ConsumerState<UserPostCard> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Διαγραφή post;',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('Η ενέργεια είναι μη αναστρέψιμη.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: Text('userPost.deletePostQ'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('userPost.irreversible'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Άκυρο',
-                  style: TextStyle(color: AppColors.textSecondary))),
+              child: Text('common.cancel'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary))),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Διαγραφή',
-                  style: TextStyle(color: AppColors.danger))),
+              child: Text('common.delete'.tr(),
+                  style: const TextStyle(color: AppColors.danger))),
         ],
       ),
     );
@@ -152,7 +191,7 @@ class _UserPostCardState extends ConsumerState<UserPostCard> {
           if (post.hasMedia)
             _MediaGrid(urls: post.mediaUrls, types: post.mediaTypes),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             child: Row(children: [
               IconButton(
                 onPressed: _toggleLike,
@@ -161,10 +200,79 @@ class _UserPostCardState extends ConsumerState<UserPostCard> {
                     color: liked ? AppColors.danger : AppColors.textSecondary,
                     size: 22),
               ),
-              if (post.likesCount > 0)
-                Text('${post.likesCount}',
+              Text('${post.likesCount}',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(width: 14),
+              IconButton(
+                onPressed: () => context.push('/user-post/${post.id}'),
+                icon: const Icon(Icons.chat_bubble_outline,
+                    color: AppColors.textSecondary, size: 22),
+              ),
+              Text('${post.commentsCount}',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+            ]),
+          ),
+          // Inline comment input
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 8, 12),
+            child: Row(children: [
+              const CircleAvatar(
+                radius: 14,
+                backgroundColor: AppColors.primary,
+                child: Icon(Icons.person,
+                    color: AppColors.background, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: TextField(
+                    controller: _commentCtrl,
                     style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
+                        color: AppColors.textPrimary, fontSize: 13),
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: 'userPost.writeCommentShort'.tr(),
+                      hintStyle: const TextStyle(
+                          color: AppColors.textHint, fontSize: 13),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onSubmitted: (_) => _sendComment(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: _sendingComment ? null : _sendComment,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: _sendingComment
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              color: AppColors.background, strokeWidth: 2))
+                      : const Icon(Icons.send_rounded,
+                          color: AppColors.background, size: 18),
+                ),
+              ),
             ]),
           ),
         ],
@@ -179,13 +287,17 @@ class _MediaGrid extends StatelessWidget {
   final List<String> types;
   const _MediaGrid({required this.urls, required this.types});
 
+  // Ασφαλής τύπος: αν το types είναι πιο κοντό από το urls (μερικό/legacy doc)
+  // επέστρεψε 'image' αντί να σκάσει RangeError.
+  String _typeAt(int i) => i < types.length ? types[i] : 'image';
+
   @override
   Widget build(BuildContext context) {
     if (urls.isEmpty) return const SizedBox.shrink();
     if (urls.length == 1) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: _MediaTile(url: urls[0], type: types[0], height: 280),
+        child: _MediaTile(url: urls[0], type: _typeAt(0), height: 280),
       );
     }
     return GridView.builder(
@@ -199,7 +311,7 @@ class _MediaGrid extends StatelessWidget {
       ),
       itemCount: urls.length,
       itemBuilder: (_, i) =>
-          _MediaTile(url: urls[i], type: types[i], height: 100),
+          _MediaTile(url: urls[i], type: _typeAt(i), height: 100),
     );
   }
 }

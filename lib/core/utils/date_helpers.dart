@@ -1,13 +1,15 @@
+import 'package:easy_localization/easy_localization.dart';
+
 class DateHelpers {
   DateHelpers._();
   static String formatDate(DateTime d) => '${d.day}/${d.month}/${d.year}';
   static String timeAgo(DateTime d) {
     final diff = DateTime.now().difference(d);
-    if (diff.inMinutes < 1)  return 'μόλις τώρα';
-    if (diff.inMinutes < 60) return 'πριν ${diff.inMinutes} λεπτά';
-    if (diff.inHours   < 24) return 'πριν ${diff.inHours} ώρες';
-    if (diff.inDays    == 1) return 'χθες';
-    if (diff.inDays    < 7)  return 'πριν ${diff.inDays} μέρες';
+    if (diff.inMinutes < 1)  return 'time.justNow'.tr();
+    if (diff.inMinutes < 60) return 'time.minsAgo'.tr(namedArgs: {'n': '${diff.inMinutes}'});
+    if (diff.inHours   < 24) return 'time.hoursAgo'.tr(namedArgs: {'n': '${diff.inHours}'});
+    if (diff.inDays    == 1) return 'time.yesterday'.tr();
+    if (diff.inDays    < 7)  return 'time.daysAgo'.tr(namedArgs: {'n': '${diff.inDays}'});
     return formatDate(d);
   }
   static String formatTimer(Duration d) {

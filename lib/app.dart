@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
-import 'features/auth/providers/auth_provider.dart';
+import 'core/services/fcm_service.dart';
+import 'core/services/location_permission_gate.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
 import 'features/auth/presentation/forgot_password_screen.dart';
@@ -12,7 +16,6 @@ import 'features/auth/presentation/phone_auth_screen.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/map/presentation/map_screen.dart';
 import 'features/feed/presentation/feed_screen.dart';
-import 'features/listings/data/listing_repository.dart';
 import 'features/listings/presentation/create_listing_screen.dart';
 import 'features/listings/presentation/edit_listing_screen.dart';
 import 'features/listings/presentation/listing_detail_screen.dart';
@@ -31,7 +34,9 @@ import 'features/profile/presentation/friends_list_screen.dart';
 import 'features/search/presentation/search_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'features/settings/presentation/change_password_screen.dart';
+import 'features/profile/presentation/change_phone_screen.dart';
 import 'features/settings/presentation/blocked_users_screen.dart';
+import 'features/settings/presentation/help_support_screen.dart';
 import 'features/notifications/presentation/notifications_screen.dart';
 import 'features/deals/presentation/rate_user_screen.dart';
 import 'features/deals/presentation/rate_deal_screen.dart';
@@ -44,23 +49,31 @@ import 'features/listings/presentation/listing_images_screen.dart';
 import 'features/profile/presentation/wall_post_detail_screen.dart';
 import 'features/shell/presentation/main_shell.dart';
 
-final _routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(authStateProvider);
+/// Ειδοποιεί τον router σε κάθε αλλαγή auth ΧΩΡΙΣ να ξαναχτίζεται ολόκληρος ο
+/// GoRouter — ξανατρέχει μόνο το redirect. (Αποφεύγουμε navigation resets /
+/// διπλό navigatorKey που προκαλούσε το ref.watch rebuild.)
+class _AuthRefresh extends ChangeNotifier {
+  _AuthRefresh(Stream<User?> stream) {
+    _sub = stream.listen((_) => notifyListeners());
+  }
+  late final StreamSubscription<User?> _sub;
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
 
-  // Auto-cleanup των ληγμένων αγγελιών του χρήστη με autoDelete=true
-  // κάθε φορά που γίνεται login. Τρέχει σιωπηλά στο background.
-  auth.whenData((user) async {
-    if (user != null) {
-      try {
-        await ListingRepository().cleanupExpiredForUser(user.uid);
-      } catch (_) {}
-    }
-  });
+final _routerProvider = Provider<GoRouter>((ref) {
+  final refresh = _AuthRefresh(FirebaseAuth.instance.authStateChanges());
+  ref.onDispose(refresh.dispose);
 
   return GoRouter(
+    navigatorKey: appNavigatorKey,
     initialLocation: '/map',
+    refreshListenable: refresh,
     redirect: (context, state) async {
-      final isLoggedIn = auth.valueOrNull != null;
+      final isLoggedIn = FirebaseAuth.instance.currentUser != null;
       final loc = state.matchedLocation;
       final isAuthRoute = loc == '/login' ||
           loc == '/register' ||
@@ -93,7 +106,6 @@ final _routerProvider = Provider<GoRouter>((ref) {
           registerData: state.extra as Map<String, dynamic>?,
         ),
       ),
-
       // Main shell
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
@@ -104,7 +116,6 @@ final _routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
         ],
       ),
-
       // Listings
       GoRoute(
           path: '/listing/new',
@@ -119,12 +130,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
               ListingDetailScreen(listingId: s.pathParameters['id']!)),
       GoRoute(
           path: '/my-listings', builder: (_, __) => const MyListingsScreen()),
-
       // Chat
       GoRoute(
           path: '/chat/:chatId',
           builder: (_, s) => ChatScreen(chatId: s.pathParameters['chatId']!)),
-
       // Profile
       GoRoute(
           path: '/profile/:uid',
@@ -135,18 +144,15 @@ final _routerProvider = Provider<GoRouter>((ref) {
           path: '/profile/photos',
           builder: (_, __) => const ProfilePhotosScreen()),
       GoRoute(
-          path: '/profile/delete',
+          path: '/delete-account',
           builder: (_, __) => const DeleteAccountScreen()),
-
       // Friend requests + Friends list
       GoRoute(
           path: '/friend-requests',
           builder: (_, __) => const FriendRequestsScreen()),
       GoRoute(path: '/friends', builder: (_, __) => const FriendsListScreen()),
-
       // Search
       GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
-
       // Settings
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
       GoRoute(
@@ -161,20 +167,24 @@ final _routerProvider = Provider<GoRouter>((ref) {
               UserPostsScreen(uid: state.pathParameters['uid']!)),
       GoRoute(
           path: '/user-post/:postId',
-          builder: (_, state) => UserPostDetailScreen(
-              postId: state.pathParameters['postId']!)),
+          builder: (_, state) =>
+              UserPostDetailScreen(postId: state.pathParameters['postId']!)),
       GoRoute(
           path: '/settings/change-password',
           builder: (_, __) => const ChangePasswordScreen()),
       GoRoute(
+          path: '/settings/change-phone',
+          builder: (_, __) => const ChangePhoneScreen()),
+      GoRoute(
           path: '/settings/blocked',
           builder: (_, __) => const BlockedUsersScreen()),
-
+      GoRoute(
+          path: '/settings/help',
+          builder: (_, __) => const HelpSupportScreen()),
       // Notifications
       GoRoute(
           path: '/notifications',
           builder: (_, __) => const NotificationsScreen()),
-
       // Deals
       GoRoute(
           path: '/rate/:dealId',
@@ -204,7 +214,6 @@ final _routerProvider = Provider<GoRouter>((ref) {
               )),
       // Τα Deals μου (3 tabs)
       GoRoute(path: '/my-deals', builder: (_, __) => const MyDealsScreen()),
-
       // Report
       GoRoute(
           path: '/report/user/:uid',
@@ -215,19 +224,29 @@ final _routerProvider = Provider<GoRouter>((ref) {
                 targetUid: s.pathParameters['uid']!,
                 listingId: s.pathParameters['listingId'],
               )),
-
+      GoRoute(
+          path: '/report/message/:uid/:chatId/:messageId',
+          builder: (_, s) => ReportScreen(
+                targetUid: s.pathParameters['uid']!,
+                chatId: s.pathParameters['chatId'],
+                messageId: s.pathParameters['messageId'],
+              )),
       // Saved
       GoRoute(path: '/saved', builder: (_, __) => const SavedScreen()),
-
       // Listing images
       GoRoute(
           path: '/listing/:id/images',
-          builder: (_, s) => ListingImagesScreen(
-                imageUrls: (s.extra as List<String>?) ?? [],
-                initialIndex:
-                    int.tryParse(s.uri.queryParameters['i'] ?? '0') ?? 0,
-              )),
-
+          builder: (_, s) {
+            final raw = s.extra;
+            final urls = raw is List
+                ? raw.map((e) => e.toString()).toList()
+                : <String>[];
+            return ListingImagesScreen(
+              imageUrls: urls,
+              initialIndex:
+                  int.tryParse(s.uri.queryParameters['i'] ?? '0') ?? 0,
+            );
+          }),
       // Wall post
       GoRoute(
           path: '/wall-post/:postId',
@@ -237,16 +256,29 @@ final _routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
+/// Ο τελευταίος χρήστης του οποίου συγχρονίστηκε η γλώσσα στο Firestore (μία
+/// φορά ανά χρήστη/εκκίνηση) — για locale-aware push από τις Cloud Functions.
+String? _langSyncedUid;
+
 class ShareItApp extends ConsumerWidget {
   const ShareItApp({super.key});
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && uid != _langSyncedUid) {
+      _langSyncedUid = uid;
+      final lang = context.locale.languageCode;
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => FcmService.saveLanguage(uid, lang));
+    }
     return MaterialApp.router(
       title: 'ShareIt',
       theme: AppTheme.dark,
       routerConfig: ref.watch(_routerProvider),
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: context.localizationDelegates,
+      supportedLocales: context.supportedLocales,
+      locale: context.locale,
     );
   }
 }

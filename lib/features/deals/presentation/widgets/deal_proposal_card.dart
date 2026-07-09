@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/date_helpers.dart';
 import '../../../auth/providers/auth_provider.dart';
@@ -53,8 +54,8 @@ class DealProposalCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (myProposal != null) ...[
-                const Text('Η πρότασή σου:',
-                    style: TextStyle(
+                Text('dcard.yourProposal'.tr(),
+                    style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
                         fontWeight: FontWeight.w500)),
@@ -63,8 +64,8 @@ class DealProposalCard extends ConsumerWidget {
                 const SizedBox(height: 12),
               ],
               if (otherProposal != null) ...[
-                const Text('Πρόταση άλλου χρήστη:',
-                    style: TextStyle(
+                Text('dcard.otherProposal'.tr(),
+                    style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
                         fontWeight: FontWeight.w500)),
@@ -85,7 +86,7 @@ class DealProposalCard extends ConsumerWidget {
                       backgroundColor: AppColors.deal,
                       minimumSize: const Size(double.infinity, 48),
                     ),
-                    child: const Text('Συμφωνώ'),
+                    child: Text('dcard.agree'.tr()),
                   ),
                   const SizedBox(height: 8),
                 ],
@@ -106,8 +107,8 @@ class DealProposalCard extends ConsumerWidget {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Στείλε την πρότασή σου',
-                        style: TextStyle(color: AppColors.primary)),
+                    child: Text('dcard.sendYourProposal'.tr(),
+                        style: const TextStyle(color: AppColors.primary)),
                   ),
                 if (myProposal != null && otherProposal == null)
                   Container(
@@ -116,14 +117,14 @@ class DealProposalCard extends ConsumerWidget {
                       color: AppColors.surfaceVariant,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Row(children: [
-                      Icon(Icons.info_outline,
+                    child: Row(children: [
+                      const Icon(Icons.info_outline,
                           color: AppColors.textHint, size: 14),
-                      SizedBox(width: 6),
+                      const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'Περίμενε να στείλει και ο άλλος την πρότασή του.',
-                          style: TextStyle(
+                          'dcard.waitOther'.tr(),
+                          style: const TextStyle(
                               color: AppColors.textHint, fontSize: 11),
                         ),
                       ),
@@ -168,22 +169,26 @@ class _ProposalDetails extends StatelessWidget {
           ],
           _Row(
             icon: Icons.event_available,
-            text: 'Έναρξη: ${DateHelpers.formatDate(proposal.startDate)} '
-                '${proposal.startDate.hour.toString().padLeft(2, '0')}:'
-                '${proposal.startDate.minute.toString().padLeft(2, '0')}',
+            text: 'dcard.startAt'.tr(namedArgs: {
+              'v': '${DateHelpers.formatDate(proposal.startDate)} '
+                  '${proposal.startDate.hour.toString().padLeft(2, '0')}:'
+                  '${proposal.startDate.minute.toString().padLeft(2, '0')}'
+            }),
           ),
           const SizedBox(height: 2),
           _Row(
             icon: Icons.event_busy,
-            text: 'Λήξη: ${DateHelpers.formatDate(proposal.endDate)} '
-                '${proposal.endDate.hour.toString().padLeft(2, '0')}:'
-                '${proposal.endDate.minute.toString().padLeft(2, '0')}',
+            text: 'dcard.endAt'.tr(namedArgs: {
+              'v': '${DateHelpers.formatDate(proposal.endDate)} '
+                  '${proposal.endDate.hour.toString().padLeft(2, '0')}:'
+                  '${proposal.endDate.minute.toString().padLeft(2, '0')}'
+            }),
           ),
           if (proposal.accepted) ...[
             const SizedBox(height: 4),
-            const _Row(
+            _Row(
               icon: Icons.check_circle_outline,
-              text: 'Συμφώνησε',
+              text: 'dcard.accepted'.tr(),
               color: AppColors.offer,
             ),
           ],
@@ -231,23 +236,23 @@ class _StatusBadge extends StatelessWidget {
     switch (deal.status) {
       case DealStatus.pending:
         color = AppColors.deal;
-        label = 'Εκκρεμεί';
+        label = 'chatx.statusPending'.tr();
         break;
       case DealStatus.accepted:
         color = AppColors.offer;
-        label = 'Αποδεκτό';
+        label = 'dcard.statusAccepted'.tr();
         break;
       case DealStatus.active:
         color = AppColors.offer;
-        label = 'Ενεργό';
+        label = 'chatx.statusActive'.tr();
         break;
       case DealStatus.completed:
         color = AppColors.primary;
-        label = 'Ολοκληρώθηκε';
+        label = 'deal.done'.tr();
         break;
       case DealStatus.cancelled:
         color = AppColors.danger;
-        label = 'Ακυρώθηκε';
+        label = 'deals.cancelled'.tr();
         break;
     }
 

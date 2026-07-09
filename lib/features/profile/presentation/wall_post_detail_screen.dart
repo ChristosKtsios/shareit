@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_helpers.dart';
+import '../../../core/services/media_picker_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../deals/providers/deal_provider.dart';
 import '../data/wall_post_model.dart';
@@ -24,6 +26,8 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
   final _commentCtrl = TextEditingController();
   final _repo = WallPostRepository();
   bool _sending = false;
+  bool _uploadingImage = false;
+  String? _pendingImageUrl; // ανεβασμένη φωτο σχολίου, εκκρεμεί αποστολή
   Timer? _timer;
 
   @override
@@ -41,9 +45,42 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
     super.dispose();
   }
 
+  /// Διάλεξε & ανέβασε φωτογραφία για το σχόλιο (εκκρεμεί μέχρι την αποστολή).
+  Future<void> _pickCommentImage() async {
+    final picker = MediaPickerService();
+    final media = await picker.showPickerSheet(context);
+    if (media == null) return;
+    if (media.type != MediaType.image) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('wall.onlyPhotoComments'.tr())),
+        );
+      }
+      return;
+    }
+    setState(() => _uploadingImage = true);
+    try {
+      final url = await picker.uploadToStorage(
+        file: media.file,
+        folder: 'wallComments/${widget.postId}',
+        type: media.type,
+      );
+      if (mounted) setState(() => _pendingImageUrl = url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text('wall.uploadError'.tr(namedArgs: {'err': '$e'}))));
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
   Future<void> _sendComment() async {
     final text = _commentCtrl.text.trim();
-    if (text.isEmpty) return;
+    // Επιτρέπεται σχόλιο με κείμενο Ή/ΚΑΙ φωτογραφία.
+    if (text.isEmpty && _pendingImageUrl == null) return;
 
     setState(() => _sending = true);
     try {
@@ -72,14 +109,18 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
         authorName: authorName,
         authorAvatar: authorAvatar,
         text: text,
+        imageUrl: _pendingImageUrl,
       );
 
       _commentCtrl.clear();
-      if (mounted) FocusScope.of(context).unfocus();
+      if (mounted) {
+        setState(() => _pendingImageUrl = null);
+        FocusScope.of(context).unfocus();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Σφάλμα: $e')),
+          SnackBar(content: Text('wall.error'.tr(namedArgs: {'err': '$e'}))),
         );
       }
     } finally {
@@ -88,14 +129,20 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
   }
 
   String _formatCountdown(Duration d) {
-    if (d.isNegative) return 'Έληξε';
+    if (d.isNegative) return 'wall.expired'.tr();
     final days = d.inDays;
     final hours = d.inHours.remainder(24);
     final minutes = d.inMinutes.remainder(60);
     final seconds = d.inSeconds.remainder(60);
-    if (days > 0) return '${days}μ ${hours}ω ${minutes}λ';
-    if (hours > 0) return '${hours}ω ${minutes}λ ${seconds}δ';
-    return '${minutes}λ ${seconds}δ';
+    if (days > 0) {
+      return 'wall.cdDHM'
+          .tr(namedArgs: {'d': '$days', 'h': '$hours', 'm': '$minutes'});
+    }
+    if (hours > 0) {
+      return 'wall.cdHMS'
+          .tr(namedArgs: {'h': '$hours', 'm': '$minutes', 's': '$seconds'});
+    }
+    return 'wall.cdMS'.tr(namedArgs: {'m': '$minutes', 's': '$seconds'});
   }
 
   String _formatDateTime(DateTime dt) {
@@ -119,9 +166,9 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
           }
           final post = snap.data;
           if (post == null) {
-            return const Center(
-                child: Text('Το deal δεν βρέθηκε',
-                    style: TextStyle(color: AppColors.textSecondary)));
+            return Center(
+                child: Text('wall.dealNotFound'.tr(),
+                    style: const TextStyle(color: AppColors.textSecondary)));
           }
 
           final canComment = post.canComment(currentUid);
@@ -158,8 +205,8 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                               const SizedBox(width: 8),
                               Text(
                                   post.isCompleted
-                                      ? 'Ολοκληρωμένο Deal'
-                                      : 'Ενεργό Deal',
+                                      ? 'wall.completedDeal'.tr()
+                                      : 'wall.activeDeal'.tr(),
                                   style: TextStyle(
                                       color: statusColor,
                                       fontSize: 14,
@@ -167,8 +214,8 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                             ]),
                             if (post.isActive && post.endDate != null) ...[
                               const SizedBox(height: 12),
-                              const Text('Απομένει:',
-                                  style: TextStyle(
+                              Text('wall.remaining'.tr(),
+                                  style: const TextStyle(
                                       color: AppColors.textSecondary,
                                       fontSize: 12)),
                               const SizedBox(height: 4),
@@ -187,8 +234,9 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                                 post.completedAt != null) ...[
                               const SizedBox(height: 8),
                               Text(
-                                'Ολοκληρώθηκε στις '
-                                '${_formatDateTime(post.completedAt!)}',
+                                'wall.completedOn'.tr(namedArgs: {
+                                  'date': _formatDateTime(post.completedAt!)
+                                }),
                                 style: const TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 12),
@@ -260,14 +308,14 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                       if (post.startDate != null)
                         _DateInfoRow(
                           icon: Icons.event_available,
-                          label: 'Έναρξη',
+                          label: 'wall.start'.tr(),
                           value: _formatDateTime(post.startDate!),
                         ),
                       if (post.endDate != null) ...[
                         const SizedBox(height: 8),
                         _DateInfoRow(
                           icon: Icons.event_busy,
-                          label: 'Λήξη',
+                          label: 'wall.end'.tr(),
                           value: _formatDateTime(post.endDate!),
                           color: AppColors.deal,
                         ),
@@ -283,8 +331,9 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                       const SizedBox(width: 8),
                       Text(
                         post.commentsCount == 1
-                            ? '1 σχόλιο'
-                            : '${post.commentsCount} σχόλια',
+                            ? 'wall.oneComment'.tr()
+                            : 'wall.nComments'.tr(
+                                namedArgs: {'n': '${post.commentsCount}'}),
                         style: const TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 14,
@@ -313,8 +362,8 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                             child: Center(
                               child: Text(
                                 canComment
-                                    ? 'Γίνε ο πρώτος που θα σχολιάσει!'
-                                    : 'Δεν υπάρχουν σχόλια ακόμα.',
+                                    ? 'wall.beFirstComment'.tr()
+                                    : 'wall.noCommentsYet'.tr(),
                                 style: const TextStyle(
                                     color: AppColors.textHint, fontSize: 12),
                               ),
@@ -352,7 +401,46 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                         top: BorderSide(color: AppColors.border, width: 0.5),
                       ),
                     ),
-                    child: Row(children: [
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      // Preview της εκκρεμούς φωτογραφίας.
+                      if (_pendingImageUrl != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Stack(children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.network(_pendingImageUrl!,
+                                    width: 64, height: 64, fit: BoxFit.cover),
+                              ),
+                              Positioned(
+                                top: -6,
+                                right: -6,
+                                child: IconButton(
+                                  icon: const Icon(Icons.cancel,
+                                      color: AppColors.danger, size: 20),
+                                  onPressed: () =>
+                                      setState(() => _pendingImageUrl = null),
+                                ),
+                              ),
+                            ]),
+                          ),
+                        ),
+                      Row(children: [
+                      IconButton(
+                        onPressed: (_sending || _uploadingImage)
+                            ? null
+                            : _pickCommentImage,
+                        icon: _uploadingImage
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: AppColors.primary))
+                            : const Icon(Icons.photo_camera_outlined,
+                                color: AppColors.primary),
+                      ),
                       Expanded(
                         child: TextField(
                           controller: _commentCtrl,
@@ -360,8 +448,8 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                           maxLines: null,
                           style: const TextStyle(
                               color: AppColors.textPrimary, fontSize: 14),
-                          decoration: const InputDecoration(
-                            hintText: 'Γράψε σχόλιο...',
+                          decoration: InputDecoration(
+                            hintText: 'wall.commentHint'.tr(),
                             counterText: '',
                             border: InputBorder.none,
                           ),
@@ -378,6 +466,7 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                             : const Icon(Icons.send, color: AppColors.primary),
                       ),
                     ]),
+                    ]),
                   ),
                 )
               else
@@ -386,15 +475,13 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     color: AppColors.surfaceVariant,
-                    child: const Row(children: [
-                      Icon(Icons.lock_outline,
+                    child: Row(children: [
+                      const Icon(Icons.lock_outline,
                           color: AppColors.textHint, size: 14),
-                      SizedBox(width: 6),
+                      const SizedBox(width: 6),
                       Expanded(
-                        child: Text(
-                            'Μόνο οι 2 χρήστες του deal και οι φίλοι τους '
-                            'μπορούν να σχολιάσουν.',
-                            style: TextStyle(
+                        child: Text('wall.onlyDealUsers'.tr(),
+                            style: const TextStyle(
                                 color: AppColors.textHint, fontSize: 11)),
                       ),
                     ]),
@@ -479,9 +566,9 @@ class _RateButtonOrStatusState extends ConsumerState<_RateButtonOrStatus> {
         child: Row(children: [
           const Icon(Icons.check_circle, color: AppColors.offer, size: 20),
           const SizedBox(width: 10),
-          const Expanded(
-            child: Text('Έχεις αξιολογήσει αυτό το deal',
-                style: TextStyle(
+          Expanded(
+            child: Text('wall.alreadyRated'.tr(),
+                style: const TextStyle(
                     color: AppColors.offer,
                     fontSize: 14,
                     fontWeight: FontWeight.w700)),
@@ -497,8 +584,8 @@ class _RateButtonOrStatusState extends ConsumerState<_RateButtonOrStatus> {
         if (mounted) _check();
       },
       icon: const Icon(Icons.star, size: 18),
-      label: const Text('Αξιολόγησε τον άλλο χρήστη',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+      label: Text('wall.rateOtherUser'.tr(),
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.offer,
         foregroundColor: Colors.white,
@@ -629,7 +716,7 @@ class _CommentTile extends StatelessWidget {
           Container(
             width: 32,
             height: 32,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.surfaceVariant,
               shape: BoxShape.circle,
             ),
@@ -652,7 +739,8 @@ class _CommentTile extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '${comment.authorName} διέγραψε το σχόλιό του',
+                    'wall.commentDeletedBy'
+                        .tr(namedArgs: {'name': comment.authorName}),
                     style: const TextStyle(
                         color: AppColors.textHint,
                         fontSize: 12,
@@ -711,9 +799,27 @@ class _CommentTile extends StatelessWidget {
                         color: AppColors.textHint, fontSize: 10)),
               ]),
               const SizedBox(height: 2),
-              Text(comment.text,
-                  style: const TextStyle(
-                      color: AppColors.textPrimary, fontSize: 13, height: 1.4)),
+              if (comment.text.isNotEmpty)
+                Text(comment.text,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        height: 1.4)),
+              if (comment.imageUrl != null) ...[
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: 220, maxHeight: 220),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      comment.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ],
             ]),
           ),
         ),
@@ -732,24 +838,23 @@ class _CommentTile extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Διαγραφή σχολίου;',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text(
-            'Το σχόλιο θα εμφανίζεται ως διαγραμμένο. Δεν μπορεί να αναιρεθεί.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: Text('wall.deleteCommentTitle'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('wall.deleteCommentBody'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Άκυρο',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               onDelete();
             },
-            child: const Text('Διαγραφή',
-                style: TextStyle(color: AppColors.danger)),
+            child: Text('common.delete'.tr(),
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),

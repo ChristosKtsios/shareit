@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/greek_text.dart';
 
 class TagsRepository {
   final _tagsRef = FirebaseFirestore.instance.collection('tags');
@@ -59,19 +60,38 @@ class TagsRepository {
     }
   }
 
-  /// Top trending tags
+  /// Top trending tags — ενώνει accent-variants (π.χ. "ψάχνω" + "ψαχνω") σε ΕΝΑ
+  /// tag: αθροίζει τα counts και εμφανίζει την τονισμένη μορφή. Φέρνει
+  /// περισσότερα docs ώστε μετά το merge να μένουν αρκετά για το [limit].
   Future<List<TagSuggestion>> getTrendingTags({int limit = 10}) async {
     try {
-      final snap =
-          await _tagsRef.orderBy('count', descending: true).limit(limit).get();
+      final snap = await _tagsRef
+          .orderBy('count', descending: true)
+          .limit(limit * 4)
+          .get();
 
-      return snap.docs
-          .map((d) => TagSuggestion(
-                name: d['name'] as String,
-                count: (d['count'] ?? 0) as int,
-              ))
-          .where((t) => t.count > 0)
-          .toList();
+      // folded key -> (καλύτερο display name, άθροισμα count)
+      final display = <String, String>{};
+      final counts = <String, int>{};
+      for (final d in snap.docs) {
+        final name = (d['name'] as String?) ?? '';
+        final count = (d['count'] ?? 0) as int;
+        if (name.isEmpty || count <= 0) continue;
+        final key = GreekText.fold(name);
+        counts[key] = (counts[key] ?? 0) + count;
+        final current = display[key];
+        // Προτίμησε την τονισμένη εκδοχή για εμφάνιση.
+        if (current == null ||
+            (GreekText.hasAccent(name) && !GreekText.hasAccent(current))) {
+          display[key] = name;
+        }
+      }
+
+      final merged = counts.keys
+          .map((k) => TagSuggestion(name: display[k]!, count: counts[k]!))
+          .toList()
+        ..sort((a, b) => b.count.compareTo(a.count));
+      return merged.take(limit).toList();
     } catch (_) {
       return [];
     }

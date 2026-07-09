@@ -18,6 +18,7 @@ class AppColors {
   static const deal           = Color(0xFFFBBF24);
   static const danger         = Color(0xFFEF4444);
   static const success        = Color(0xFF34D399);
+  static const warning        = Color(0xFFF59E0B);
 
   // Text
   static const textPrimary    = Color(0xFFFFF7ED);

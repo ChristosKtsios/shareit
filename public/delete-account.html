@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Διαγραφή Λογαριασμού — ShareIt</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, system-ui, sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: #1a1a1a; }
+.container { background: #fff; max-width: 560px; width: 100%; border-radius: 16px; padding: 32px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+.logo { text-align: center; font-size: 48px; margin-bottom: 8px; }
+h1 { color: #FF6B47; text-align: center; font-size: 24px; margin-bottom: 8px; }
+.subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 24px; }
+.warning { background: #FFEEE9; border-left: 4px solid #EF4444; padding: 14px; border-radius: 8px; margin-bottom: 24px; font-size: 13px; line-height: 1.6; }
+.warning strong { color: #EF4444; }
+label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px; margin-top: 16px; }
+input, textarea, select { width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; transition: border-color 0.2s; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: #FF6B47; }
+textarea { resize: vertical; min-height: 80px; }
+.checkbox-row { display: flex; align-items: flex-start; gap: 10px; margin-top: 20px; padding: 14px; background: #fafafa; border-radius: 8px; }
+.checkbox-row input { width: auto; margin-top: 2px; cursor: pointer; }
+.checkbox-row label { margin: 0; font-size: 13px; font-weight: normal; color: #333; cursor: pointer; flex: 1; }
+button { width: 100%; padding: 14px; background: #EF4444; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 24px; transition: background 0.2s; }
+button:hover:not(:disabled) { background: #DC2626; }
+button:disabled { background: #ccc; cursor: not-allowed; }
+.info { background: #F0F9FF; border-left: 4px solid #3B82F6; padding: 14px; border-radius: 8px; margin-top: 20px; font-size: 13px; line-height: 1.6; color: #1E40AF; }
+.success { background: #D1FAE5; border: 2px solid #10B981; padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; }
+.success h3 { color: #047857; margin-bottom: 8px; }
+.success p { color: #065F46; font-size: 14px; line-height: 1.6; }
+.footer { text-align: center; margin-top: 24px; font-size: 12px; color: #888; }
+.footer a { color: #FF6B47; text-decoration: none; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="logo">🤲</div>
+  <h1>Διαγραφή Λογαριασμού</h1>
+  <p class="subtitle">ShareIt — Αίτημα οριστικής διαγραφής δεδομένων</p>
+
+  <div class="warning">
+    <strong>⚠️ ΠΡΟΣΟΧΗ:</strong> Η διαγραφή είναι <strong>οριστική</strong>. Θα διαγραφούν μόνιμα:
+    <br>• Όλες οι αγγελίες σου
+    <br>• Όλα τα μηνύματα και chats
+    <br>• Όλα τα deals και αξιολογήσεις
+    <br>• Φωτογραφίες προφίλ
+    <br>• Φίλοι, posts, σχόλια
+    <br>• Στοιχεία λογαριασμού
+    <br><br>Δεν είναι δυνατή η ανάκτηση μετά τη διαγραφή.
+  </div>
+
+  <form id="deleteForm">
+    <label for="email">Email λογαριασμού *</label>
+    <input type="email" id="email" required placeholder="example@email.com">
+
+    <label for="phone">Τηλέφωνο (όπως το έβαλες κατά την εγγραφή) *</label>
+    <input type="tel" id="phone" required placeholder="+306901234567">
+
+    <label for="fullName">Όνομα & Επώνυμο *</label>
+    <input type="text" id="fullName" required placeholder="Όπως εμφανίζεται στο προφίλ σου">
+
+    <label for="reason">Λόγος διαγραφής (προαιρετικό)</label>
+    <select id="reason">
+      <option value="">— Επίλεξε —</option>
+      <option value="not_using">Δεν χρησιμοποιώ την εφαρμογή</option>
+      <option value="privacy">Λόγοι ιδιωτικότητας</option>
+      <option value="other_app">Χρησιμοποιώ άλλη εφαρμογή</option>
+      <option value="issues">Είχα προβλήματα με την εφαρμογή</option>
+      <option value="other">Άλλο</option>
+    </select>
+
+    <label for="comments">Επιπλέον σχόλια (προαιρετικό)</label>
+    <textarea id="comments" placeholder="Πες μας πώς μπορούμε να βελτιωθούμε..."></textarea>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm1" required>
+      <label for="confirm1">Καταλαβαίνω ότι η διαγραφή είναι οριστική και δεν μπορώ να ανακτήσω τα δεδομένα μου.</label>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm2" required>
+      <label for="confirm2">Επιβεβαιώνω ότι είμαι ο κάτοχος του λογαριασμού.</label>
+    </div>
+
+    <button type="submit" id="submitBtn">Υποβολή αιτήματος διαγραφής</button>
+  </form>
+
+  <div id="successBox" class="success hidden">
+    <h3>✅ Αίτημα παραλήφθηκε</h3>
+    <p>Το αίτημά σου στάλθηκε επιτυχώς. Ο λογαριασμός σου θα διαγραφεί <strong>εντός 7 εργάσιμων ημερών</strong>.<br><br>
+    Θα λάβεις email επιβεβαίωσης μόλις ολοκληρωθεί η διαγραφή.<br><br>
+    Αν έχεις απορίες: <a href="mailto:Christos.katsios1@gmail.com">Christos.katsios1@gmail.com</a></p>
+  </div>
+
+  <div class="info">
+    💡 <strong>Εναλλακτικά:</strong> Μπορείς να διαγράψεις τον λογαριασμό σου άμεσα μέσα από την εφαρμογή: Ρυθμίσεις → Διαγραφή Λογαριασμού.
+  </div>
+
+  <div class="footer">
+    <a href="/privacy_policy.html">Πολιτική Απορρήτου</a> · <a href="/terms.html">Όροι Χρήσης</a><br>
+    ShareIt © 2026 — Χρήστος Κάτσιος
+  </div>
+</div>
+
+<script>
+document.getElementById('deleteForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  const email = document.getElementById('email').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+  const fullName = document.getElementById('fullName').value.trim();
+  const reason = document.getElementById('reason').value;
+  const comments = document.getElementById('comments').value.trim();
+  
+  const subject = encodeURIComponent('Αίτημα Διαγραφής Λογαριασμού - ShareIt');
+  const body = encodeURIComponent(
+    `Αίτημα διαγραφής λογαριασμού\n\n` +
+    `Email: ${email}\n` +
+    `Τηλέφωνο: ${phone}\n` +
+    `Όνομα: ${fullName}\n` +
+    `Λόγος: ${reason || 'Δεν δόθηκε'}\n` +
+    `Σχόλια: ${comments || 'Κανένα'}\n\n` +
+    `Επιβεβαιώνω ότι είμαι ο κάτοχος του λογαριασμού και ζητώ οριστική διαγραφή.`
+  );
+  
+  // Άνοιγμα email client με προ-συμπληρωμένο μήνυμα
+  window.location.href = `mailto:Christos.katsios1@gmail.com?subject=${subject}&body=${body}`;
+  
+  // Εμφάνιση success message
+  document.getElementById('deleteForm').classList.add('hidden');
+  document.getElementById('successBox').classList.remove('hidden');
+});
+</script>
+
+</body>
+</html>

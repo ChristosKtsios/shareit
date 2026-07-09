@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../search/presentation/widgets/search_filters_widget.dart';
@@ -100,16 +101,16 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
               children: [
                 const Icon(Icons.tune, color: AppColors.primary, size: 20),
                 const SizedBox(width: 8),
-                const Text(AppStrings.filters,
-                    style: TextStyle(
+                Text(AppStrings.filters,
+                    style: const TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 18,
                         fontWeight: FontWeight.w700)),
                 const Spacer(),
                 TextButton(
                   onPressed: _reset,
-                  child: const Text(AppStrings.clearFilters,
-                      style: TextStyle(
+                  child: Text(AppStrings.clearFilters,
+                      style: const TextStyle(
                           color: AppColors.textSecondary, fontSize: 13)),
                 ),
                 IconButton(
@@ -128,8 +129,9 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
               children: [
-                const _SectionTitle(
-                    icon: Icons.location_on_outlined, title: 'Απόσταση'),
+                _SectionTitle(
+                    icon: Icons.location_on_outlined,
+                    title: 'filters.distance'.tr()),
                 const SizedBox(height: 12),
 
                 // Quick picks (1, 5, 10, 50, Παντού)
@@ -153,8 +155,8 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
                 const SizedBox(height: 16),
 
                 // Custom km input
-                const Text('Ή ορίσε δικιά σου ακτίνα:',
-                    style: TextStyle(
+                Text('filters.customRadius'.tr(),
+                    style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 12)),
                 const SizedBox(height: 8),
                 Row(
@@ -174,15 +176,15 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
                           });
                         },
                         decoration: InputDecoration(
-                          hintText: 'π.χ. 25',
+                          hintText: 'filters.kmHint'.tr(),
                           prefixIcon: const Icon(Icons.radio_button_unchecked,
                               color: AppColors.textSecondary, size: 18),
-                          suffixIcon: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 14),
+                          suffixIcon: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
                             child: Center(
                               widthFactor: 1,
-                              child: Text('χλμ',
-                                  style: TextStyle(
+                              child: Text('dist.km'.tr(),
+                                  style: const TextStyle(
                                       color: AppColors.textSecondary,
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600)),
@@ -205,13 +207,13 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
                 const SizedBox(height: 28),
 
                 // === Ταξινόμηση ===
-                const _SectionTitle(icon: Icons.sort, title: 'Ταξινόμηση'),
+                _SectionTitle(icon: Icons.sort, title: 'filters.sort'.tr()),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       child: _BigChip(
-                        label: '🕐 Πιο πρόσφατα',
+                        label: 'filters.sortRecent'.tr(),
                         selected: _sort == SearchSort.recent,
                         onTap: () => setState(() => _sort = SearchSort.recent),
                       ),
@@ -219,7 +221,7 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _BigChip(
-                        label: '📍 Πιο κοντινά',
+                        label: 'filters.sortNearest'.tr(),
                         selected: _sort == SearchSort.nearest,
                         onTap: () => setState(() => _sort = SearchSort.nearest),
                       ),
@@ -231,16 +233,16 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
 
                 // === Trending tags ===
                 if (widget.trendingTags.isNotEmpty) ...[
-                  const _SectionTitle(
+                  _SectionTitle(
                       icon: Icons.local_fire_department,
-                      title: 'Δημοφιλή tags'),
+                      title: 'filters.popularTags'.tr()),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
                       _BigChip(
-                        label: '🏷️ Όλα',
+                        label: 'filters.tagAll'.tr(),
                         selected: _tagFilter == null,
                         onTap: () => setState(() => _tagFilter = null),
                       ),
@@ -269,7 +271,7 @@ class _FeedFiltersSheetState extends State<FeedFiltersSheet> {
               top: false,
               child: ElevatedButton(
                 onPressed: _apply,
-                child: const Text(AppStrings.applyFilters),
+                child: Text(AppStrings.applyFilters),
               ),
             ),
           ),

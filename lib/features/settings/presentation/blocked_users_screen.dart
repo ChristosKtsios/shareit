@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -16,7 +17,7 @@ class BlockedUsersScreen extends ConsumerWidget {
     final uid = ref.watch(currentUserProvider)?.uid ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Αποκλεισμένοι χρήστες')),
+      appBar: AppBar(title: Text('settings.blockedUsers'.tr())),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
         builder: (context, snap) {
@@ -28,10 +29,10 @@ class BlockedUsersScreen extends ConsumerWidget {
           final blocked = List<String>.from(data['blockedUids'] ?? []);
 
           if (blocked.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Icons.block,
-              title: 'Δεν έχεις αποκλείσει κανέναν',
-              subtitle: 'Όταν αποκλείσεις κάποιον χρήστη θα εμφανιστεί εδώ.',
+              title: 'blocked.emptyTitle'.tr(),
+              subtitle: 'blocked.emptySubtitle'.tr(),
             );
           }
 
@@ -57,8 +58,8 @@ class BlockedUsersScreen extends ConsumerWidget {
                       style: const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                   trailing: TextButton(
                     onPressed: () => UserRepository().unblock(uid, blocked[i]),
-                    child: const Text('Άρση αποκλεισμού',
-                        style: TextStyle(color: AppColors.primary, fontSize: 12)),
+                    child: Text('blocked.unblock'.tr(),
+                        style: const TextStyle(color: AppColors.primary, fontSize: 12)),
                   ),
                 );
               },

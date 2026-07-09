@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../listings/data/listing_model.dart';
 
@@ -12,17 +13,17 @@ extension SearchDistanceX on SearchDistance {
   String get label {
     switch (this) {
       case SearchDistance.km1:
-        return '1χλμ';
+        return 'dist.km1'.tr();
       case SearchDistance.km5:
-        return '5χλμ';
+        return 'dist.km5'.tr();
       case SearchDistance.km10:
-        return '10χλμ';
+        return 'dist.km10'.tr();
       case SearchDistance.km50:
-        return '50χλμ';
+        return 'dist.km50'.tr();
       case SearchDistance.all:
-        return 'Παντού';
+        return 'dist.everywhere'.tr();
       case SearchDistance.custom:
-        return '${_customKm.toInt()}χλμ';
+        return 'dist.kmValueShort'.tr(namedArgs: {'n': '${_customKm.toInt()}'});
     }
   }
 
@@ -87,12 +88,12 @@ class SearchFiltersWidget extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           children: [
             _Chip(
-                label: 'Όλα',
+                label: 'filters.all'.tr(),
                 selected: activeType == null,
                 onTap: () => onTypeChanged(null)),
             const SizedBox(width: 6),
             _Chip(
-                label: '🤲 Προσφέρω',
+                label: 'filters.offer'.tr(),
                 selected: activeType == ListingType.offer,
                 color: AppColors.offer,
                 onTap: () => onTypeChanged(activeType == ListingType.offer
@@ -100,7 +101,7 @@ class SearchFiltersWidget extends StatelessWidget {
                     : ListingType.offer)),
             const SizedBox(width: 6),
             _Chip(
-                label: '🔍 Αναζητώ',
+                label: 'filters.seek'.tr(),
                 selected: activeType == ListingType.seek,
                 color: AppColors.seek,
                 onTap: () => onTypeChanged(
@@ -108,8 +109,8 @@ class SearchFiltersWidget extends StatelessWidget {
             const SizedBox(width: 12),
             _Chip(
               label: activeSort == SearchSort.recent
-                  ? '🕐 Πρόσφατα'
-                  : '📍 Κοντινά',
+                  ? 'filters.sortRecentShort'.tr()
+                  : 'filters.sortNearestShort'.tr(),
               selected: true,
               color: AppColors.deal,
               onTap: () => onSortChanged(activeSort == SearchSort.recent
@@ -127,7 +128,7 @@ class SearchFiltersWidget extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             children: [
               _Chip(
-                  label: '🏷️ Όλα',
+                  label: 'filters.tagAll'.tr(),
                   selected: activeTag == null,
                   onTap: () => onTagChanged(null)),
               const SizedBox(width: 6),

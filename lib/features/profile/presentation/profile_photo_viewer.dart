@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -85,8 +86,8 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('pf.errorWith'.tr(namedArgs: {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -103,7 +104,7 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
     setState(() => _avatarUrl = url);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ορίστηκε ως εικόνα προφίλ!')));
+          SnackBar(content: Text('photos.setAsProfileDone'.tr())));
     }
   }
 
@@ -115,19 +116,19 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Διαγραφή φωτογραφίας',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('Είσαι σίγουρος;',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: Text('photos.deletePhoto'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('photos.areYouSure'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Άκυρο',
-                  style: TextStyle(color: AppColors.textSecondary))),
+              child: Text('common.cancel'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary))),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Διαγραφή',
-                  style: TextStyle(color: AppColors.danger))),
+              child: Text('common.delete'.tr(),
+                  style: const TextStyle(color: AppColors.danger))),
         ],
       ),
     );
@@ -177,8 +178,8 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
             ListTile(
               leading: const Icon(Icons.account_circle_outlined,
                   color: AppColors.primary),
-              title: const Text('Ορισμός ως εικόνα προφίλ',
-                  style: TextStyle(color: AppColors.textPrimary)),
+              title: Text('photos.setAsProfile'.tr(),
+                  style: const TextStyle(color: AppColors.textPrimary)),
               onTap: () {
                 Navigator.pop(context);
                 _setAsProfile();
@@ -186,8 +187,8 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
             ),
           ListTile(
             leading: const Icon(Icons.delete_outline, color: AppColors.danger),
-            title: const Text('Διαγραφή φωτογραφίας',
-                style: TextStyle(color: AppColors.danger)),
+            title: Text('photos.deletePhoto'.tr(),
+                style: const TextStyle(color: AppColors.danger)),
             onTap: () {
               Navigator.pop(context);
               _deleteCurrent();
@@ -261,8 +262,8 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       if (isCurrentProfile)
-                        const Text('Εικόνα προφίλ',
-                            style: TextStyle(
+                        Text('photos.profilePhoto'.tr(),
+                            style: const TextStyle(
                                 color: AppColors.primary, fontSize: 11)),
                     ],
                   ),

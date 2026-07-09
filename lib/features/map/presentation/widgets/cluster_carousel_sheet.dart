@@ -1,5 +1,7 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -46,6 +48,7 @@ class _ClusterCarouselSheetState extends ConsumerState<ClusterCarouselSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final userPos = ref.watch(mapProvider).userPosition;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.surface,
@@ -93,7 +96,8 @@ class _ClusterCarouselSheetState extends ConsumerState<ClusterCarouselSheet> {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  '${widget.listings.length} αγγελίες εδώ',
+                  'mapx.listingsHere'
+                      .tr(namedArgs: {'n': '${widget.listings.length}'}),
                   style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
@@ -118,7 +122,17 @@ class _ClusterCarouselSheetState extends ConsumerState<ClusterCarouselSheet> {
                 onPageChanged: _onPageChanged,
                 itemCount: widget.listings.length,
                 itemBuilder: (_, i) {
-                  return _ListingCarouselCard(listing: widget.listings[i]);
+                  final l = widget.listings[i];
+                  final double? distMeters = userPos == null
+                      ? null
+                      : Geolocator.distanceBetween(
+                          userPos.latitude,
+                          userPos.longitude,
+                          l.location.latitude,
+                          l.location.longitude,
+                        );
+                  return _ListingCarouselCard(
+                      listing: l, distanceMeters: distMeters);
                 },
               ),
             ),
@@ -153,12 +167,19 @@ class _ClusterCarouselSheetState extends ConsumerState<ClusterCarouselSheet> {
 
 class _ListingCarouselCard extends StatelessWidget {
   final ListingModel listing;
-  const _ListingCarouselCard({required this.listing});
+  final double? distanceMeters;
+  const _ListingCarouselCard({required this.listing, this.distanceMeters});
+
+  String _formatDistance(double m) {
+    if (m < 1000) return '${m.round()} ${'map.unitM'.tr()}';
+    return '${(m / 1000).toStringAsFixed(m < 10000 ? 1 : 0)} ${'map.unitKm'.tr()}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isOffer = listing.type == ListingType.offer;
     final badgeColor = isOffer ? AppColors.offer : AppColors.seek;
-    final badgeLabel = isOffer ? 'ΠΡΟΣΦ.' : 'ΖΗΤΩ';
+    final badgeLabel = isOffer ? 'mapx.badgeOffer'.tr() : 'mapx.badgeSeek'.tr();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Container(
@@ -207,6 +228,28 @@ class _ListingCarouselCard extends StatelessWidget {
                           letterSpacing: 0.4)),
                 ),
               ),
+              if (distanceMeters != null)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.near_me, size: 11, color: Colors.white),
+                      const SizedBox(width: 3),
+                      Text('${_formatDistance(distanceMeters!)} ${'map.away'.tr()}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
             ]),
             // Title
             Padding(
@@ -314,8 +357,8 @@ class _ListingCarouselCard extends StatelessWidget {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
                   ),
-                  child: const Text('Δείτε περισσότερα →',
-                      style: TextStyle(
+                  child: Text('mapx.seeMore'.tr(),
+                      style: const TextStyle(
                           fontWeight: FontWeight.w700, fontSize: 13)),
                 ),
               ),

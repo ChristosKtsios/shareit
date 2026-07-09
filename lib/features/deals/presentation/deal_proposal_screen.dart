@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/error_logger.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../chat/data/chat_repository.dart';
 import '../data/deal_model.dart';
@@ -259,23 +261,23 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
   /// Validation πριν το submit.
   String? _validate() {
     if (_titleCtrl.text.trim().isEmpty) {
-      return 'Συμπλήρωσε τον τίτλο';
+      return 'myDeals.errFillTitle'.tr();
     }
     if (_detailsCtrl.text.trim().length < 20) {
-      return 'Οι λεπτομέρειες πρέπει να έχουν τουλάχιστον 20 χαρακτήρες';
+      return 'myDeals.errDetailsMin'.tr();
     }
 
     final start = _combineDateTime(_startDate, _startTime);
     final end = _combineDateTime(_endDate, _endTime);
 
-    if (start == null) return 'Επίλεξε ημερομηνία έναρξης';
-    if (end == null) return 'Επίλεξε ημερομηνία λήξης';
+    if (start == null) return 'myDeals.pickStartDate'.tr();
+    if (end == null) return 'myDeals.pickEndDate'.tr();
 
     if (end.isBefore(start)) {
-      return 'Η ημερομηνία λήξης πρέπει να είναι μετά την έναρξη';
+      return 'myDeals.errEndAfterStart'.tr();
     }
     if (end.isBefore(DateTime.now())) {
-      return 'Η ημερομηνία λήξης πρέπει να είναι στο μέλλον';
+      return 'myDeals.errEndFuture'.tr();
     }
 
     if (!_hasMyMention || !_hasOtherMention) {
@@ -294,24 +296,26 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
           const Icon(Icons.warning_amber_rounded,
               color: AppColors.danger, size: 22),
           const SizedBox(width: 8),
-          const Text('Λείπουν αναφορές',
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 16)),
+          Text('myDeals.missingMentions'.tr(),
+              style: const TextStyle(
+                  color: AppColors.textPrimary, fontSize: 16)),
         ]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Στον τίτλο πρέπει να αναφέρονται και οι 2 χρήστες με @:',
-              style: TextStyle(color: AppColors.textSecondary),
+            Text(
+              'myDeals.mentionBothTitle'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             _MentionStatus(name: _myFullName, found: _hasMyMention),
             const SizedBox(height: 6),
             _MentionStatus(name: _otherFullName, found: _hasOtherMention),
             const SizedBox(height: 14),
-            const Text('Παράδειγμα:',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            Text('myDeals.exampleLabel'.tr(),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12)),
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -320,7 +324,8 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                '@$_myFullName δίνει εργαλείο στον @$_otherFullName',
+                'myDeals.exampleMention'.tr(
+                    namedArgs: {'my': _myFullName, 'other': _otherFullName}),
                 style:
                     const TextStyle(color: AppColors.textPrimary, fontSize: 12),
               ),
@@ -330,8 +335,8 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Εντάξει',
-                style: TextStyle(color: AppColors.primary)),
+            child: Text('myDeals.ok'.tr(),
+                style: const TextStyle(color: AppColors.primary)),
           ),
         ],
       ),
@@ -386,17 +391,21 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
           startDate: proposal.startDate,
           endDate: proposal.endDate,
         );
-      } catch (_) {}
+      } catch (e, s) {
+        // Το deal δημιουργήθηκε (ο παραλήπτης βλέπει το banner μέσω provider),
+        // αλλά η κάρτα μηνύματος στο chat δεν στάλθηκε — μην το κρύβουμε.
+        logSwallowed(e, s, 'sendDealProposalMessage');
+      }
 
       if (mounted) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Η πρότασή σου στάλθηκε!')));
+            SnackBar(content: Text('myDeals.proposalSent'.tr())));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('myDeals.errorWith'.tr(namedArgs: {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -406,7 +415,7 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Πρόταση Deal')),
+      appBar: AppBar(title: Text('msg.dealProposal'.tr())),
       body: SafeArea(
         child: Stack(children: [
           SingleChildScrollView(
@@ -442,17 +451,17 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
                 const SizedBox(height: 24),
 
                 // ── 1. Τίτλος ──
-                const _Label('1. Τίτλος συμφωνητικού *'),
+                _Label('myDeals.step1Title'.tr()),
                 const SizedBox(height: 6),
-                const _SubLabel('Πρέπει να αναφέρεις και τους 2 χρήστες με @'),
+                _SubLabel('myDeals.step1Sub'.tr()),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _titleCtrl,
                   focusNode: _titleFocus,
                   maxLength: 120,
                   style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: const InputDecoration(
-                    hintText: 'Π.χ. @Όνομα1 δίνει στον @Όνομα2...',
+                  decoration: InputDecoration(
+                    hintText: 'myDeals.titleHint'.tr(),
                     counterText: '',
                   ),
                 ),
@@ -469,43 +478,42 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
                 const SizedBox(height: 20),
 
                 // ── 2. Λεπτομέρειες ──
-                const _Label('2. Λεπτομέρειες / Όροι *'),
+                _Label('myDeals.step2Title'.tr()),
                 const SizedBox(height: 6),
-                const _SubLabel(
-                    'Τι θα ανταλλάξετε; (τουλάχιστον 20 χαρακτήρες)'),
+                _SubLabel('myDeals.step2Sub'.tr()),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _detailsCtrl,
                   maxLines: 5,
                   maxLength: 500,
                   style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: const InputDecoration(
-                    hintText: 'Γράψε ξεκάθαρα ποιος δίνει τι σε ποιον...',
+                  decoration: InputDecoration(
+                    hintText: 'myDeals.detailsHint'.tr(),
                   ),
                 ),
                 const SizedBox(height: 16),
 
                 // ── 3. Έναρξη ──
-                const _Label('3. Ημερομηνία & ώρα έναρξης *'),
+                _Label('myDeals.step3Title'.tr()),
                 const SizedBox(height: 8),
                 _DateTimeBox(
                   icon: Icons.event_available,
                   text: _startDate != null
                       ? _formatDateTime(_startDate, _startTime)
-                      : 'Επίλεξε ημερομηνία έναρξης',
+                      : 'myDeals.pickStartDate'.tr(),
                   hasValue: _startDate != null,
                   onTap: () => _pickDateTime(isStart: true),
                 ),
                 const SizedBox(height: 16),
 
                 // ── 4. Λήξη ──
-                const _Label('4. Ημερομηνία & ώρα λήξης *'),
+                _Label('myDeals.step4Title'.tr()),
                 const SizedBox(height: 8),
                 _DateTimeBox(
                   icon: Icons.event_busy,
                   text: _endDate != null
                       ? _formatDateTime(_endDate, _endTime)
-                      : 'Επίλεξε ημερομηνία λήξης',
+                      : 'myDeals.pickEndDate'.tr(),
                   hasValue: _endDate != null,
                   onTap: () => _pickDateTime(isStart: false),
                 ),
@@ -523,12 +531,13 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
                           width: 20,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: AppColors.background))
-                      : const Text('Αποστολή πρότασης'),
+                      : Text('myDeals.sendProposal'.tr()),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Όταν και οι 2 πατήσετε "Συμφωνώ", το deal γίνεται ενεργό.',
-                  style: TextStyle(color: AppColors.textHint, fontSize: 11),
+                Text(
+                  'myDeals.bothAgreeHint'.tr(),
+                  style: const TextStyle(
+                      color: AppColors.textHint, fontSize: 11),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -677,17 +686,16 @@ class _HintBanner extends StatelessWidget {
         Row(children: [
           const Icon(Icons.lightbulb_outline, color: AppColors.deal, size: 18),
           const SizedBox(width: 8),
-          const Text('Συμβουλή',
-              style: TextStyle(
+          Text('myDeals.tip'.tr(),
+              style: const TextStyle(
                   color: AppColors.deal,
                   fontSize: 13,
                   fontWeight: FontWeight.w700)),
         ]),
         const SizedBox(height: 6),
-        const Text(
-          'Στον τίτλο, όταν πατάς @, εμφανίζονται προτάσεις με τα ονόματα '
-          'των 2 χρηστών. Επίλεξε από εκεί για να μη γίνει λάθος.',
-          style: TextStyle(
+        Text(
+          'myDeals.tipBody'.tr(),
+          style: const TextStyle(
               color: AppColors.textPrimary, fontSize: 12, height: 1.4),
         ),
         if (myName.isNotEmpty && otherName.isNotEmpty) ...[
@@ -699,7 +707,8 @@ class _HintBanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
-              'Παράδειγμα: @$myName δίνει εργαλείο στον @$otherName',
+              'myDeals.exampleFull'
+                  .tr(namedArgs: {'my': myName, 'other': otherName}),
               style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 11, height: 1.4),
             ),

@@ -78,7 +78,7 @@ class ListingModel {
       imageUrls: List<String>.from(d['imageUrls'] ?? []),
       tags: List<String>.from(d['tags'] ?? []),
       searchKeywords: List<String>.from(d['searchKeywords'] ?? []),
-      location: d['location'] as GeoPoint,
+      location: d['location'] as GeoPoint? ?? const GeoPoint(0, 0),
       availableFrom: (d['availableFrom'] as Timestamp?)?.toDate(),
       availableUntil: (d['availableUntil'] as Timestamp?)?.toDate(),
       hasFromTime: d['hasFromTime'] ?? false,

@@ -1,14 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 enum NotificationType { newMessage, dealStarted, dealExpired, newRating, newComment }
 
 extension NotificationTypeX on NotificationType {
   String get title { switch (this) {
-    case NotificationType.newMessage:  return 'Νέο μήνυμα';
-    case NotificationType.dealStarted: return 'Deal κλείστηκε!';
-    case NotificationType.dealExpired: return 'Deal ολοκληρώθηκε';
-    case NotificationType.newRating:   return 'Νέα αξιολόγηση';
-    case NotificationType.newComment:  return 'Νέο σχόλιο';
+    case NotificationType.newMessage:  return 'notif.newMessage'.tr();
+    case NotificationType.dealStarted: return 'notif.dealStarted'.tr();
+    case NotificationType.dealExpired: return 'notif.dealExpired'.tr();
+    case NotificationType.newRating:   return 'notif.newRating'.tr();
+    case NotificationType.newComment:  return 'notif.newComment'.tr();
   }}
   static NotificationType fromString(String? v) =>
       NotificationType.values.firstWhere((e) => e.name == v,

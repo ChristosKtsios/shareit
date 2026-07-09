@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../../deals/data/deal_repository.dart';
@@ -24,10 +25,10 @@ class ChatDealBottomSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final durations = [
-      ('1 μέρα',      const Duration(days: 1)),
-      ('3 μέρες',     const Duration(days: 3)),
-      ('1 εβδομάδα',  const Duration(days: 7)),
-      ('2 εβδομάδες', const Duration(days: 14)),
+      ('dealsheet.day1'.tr(),   const Duration(days: 1)),
+      ('dealsheet.days3'.tr(),  const Duration(days: 3)),
+      ('dealsheet.week1'.tr(),  const Duration(days: 7)),
+      ('dealsheet.weeks2'.tr(), const Duration(days: 14)),
     ];
 
     return Container(
@@ -46,12 +47,12 @@ class ChatDealBottomSheet extends ConsumerWidget {
               borderRadius: BorderRadius.circular(2)),
           )),
           const SizedBox(height: 20),
-          const Text('Κλείσιμο Deal',
-              style: TextStyle(color: AppColors.textPrimary,
+          Text('deal.close'.tr(),
+              style: const TextStyle(color: AppColors.textPrimary,
                   fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          const Text('Διάλεξε τη διάρκεια της ανταλλαγής:',
-              style: TextStyle(
+          Text('dealsheet.chooseDuration'.tr(),
+              style: const TextStyle(
                   color: AppColors.textSecondary, fontSize: 14)),
           const SizedBox(height: 16),
           ...durations.map((e) => ListTile(
@@ -82,10 +83,10 @@ class ChatDealBottomSheet extends ConsumerWidget {
                 user1Uid:     ownerUid,
                 user2Uid:     seekerUid,
               );
-              await ref.read(chatRepoProvider).send(
+              await ref.read(chatRepoProvider).sendDealClosedMessage(
                 chatId:   chatId,
                 senderId: uid,
-                text:     '🤝 Deal κλείστηκε για ${e.$1}!',
+                durationDays: e.$2.inDays,
               );
             },
           )),

@@ -1,31 +1,47 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../../core/services/location_permission_gate.dart';
+import '../../../core/services/location_service.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/widgets/shimmer_loader.dart';
-import 'dart:math' as math;
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../chat/data/chat_repository.dart';
 import '../data/listing_model.dart';
 import '../data/listing_repository.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../profile/data/user_repository.dart';
 
-final _listingDetailProvider =
-    FutureProvider.family<ListingModel?, String>((ref, id) =>
-        ListingRepository().getListingById(id));
+final _listingDetailProvider = FutureProvider.family<ListingModel?, String>(
+    (ref, id) => ListingRepository().getListingById(id));
+
+/// Placeholder labels από παλιές αγγελίες που δεν έχουν πραγματική διεύθυνση.
+const _placeholderLabels = {
+  'Τρέχουσα τοποθεσία',
+  'Επιλεγμένη τοποθεσία',
+  'Δεν βρέθηκε τοποθεσία',
+  '',
+};
+
+/// Reverse-geocode μιας αγγελίας κατά την προβολή, για να δείχνει σωστή περιοχή
+/// ακόμα κι όταν έχει αποθηκευμένο placeholder label. Key: "lat,lng".
+final _placeLabelProvider =
+    FutureProvider.family<String?, String>((ref, latLng) async {
+  final parts = latLng.split(',');
+  return LocationService.reverseGeocode(
+      double.parse(parts[0]), double.parse(parts[1]));
+});
 
 final _userPositionProvider = FutureProvider<Position?>((ref) async {
   try {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return null;
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
+    final perm = await LocationPermissionGate.ensure();
     if (perm == LocationPermission.denied ||
         perm == LocationPermission.deniedForever) {
       return null;
@@ -44,8 +60,25 @@ class ListingDetailScreen extends ConsumerWidget {
   const ListingDetailScreen({super.key, required this.listingId});
 
   String _formatDistance(double meters) {
-    if (meters < 1000) return '${meters.toStringAsFixed(0)} μ. μακριά';
-    return '${(meters / 1000).toStringAsFixed(meters < 10000 ? 1 : 0)} χλμ μακριά';
+    if (meters < 1000) {
+      return 'ld.metersAway'.tr(namedArgs: {'n': meters.toStringAsFixed(0)});
+    }
+    return 'ld.kmAway'.tr(namedArgs: {
+      'n': (meters / 1000).toStringAsFixed(meters < 10000 ? 1 : 0)
+    });
+  }
+
+  Future<void> _openInMaps(double lat, double lng) async {
+    final url = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  String _formatDateTime(DateTime dt, bool hasTime, String locale) {
+    if (!hasTime) return DateFormat('d MMM yyyy', locale).format(dt);
+    return DateFormat('d MMM yyyy, HH:mm', locale).format(dt);
   }
 
   @override
@@ -58,19 +91,20 @@ class ListingDetailScreen extends ConsumerWidget {
       body: listingAsync.when(
         loading: () => const Center(
             child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (_, __) => const Center(
+        error: (_, __) => Center(
             child: Text(AppStrings.errorGeneric,
-                style: TextStyle(color: AppColors.textSecondary))),
+                style: const TextStyle(color: AppColors.textSecondary))),
         data: (listing) {
           if (listing == null) {
-            return const Center(
-                child: Text('Η αγγελία δεν βρέθηκε.',
-                    style: TextStyle(color: AppColors.textSecondary)));
+            return Center(
+                child: Text('ld.notFound'.tr(),
+                    style: const TextStyle(color: AppColors.textSecondary)));
           }
 
           final isOffer = listing.type == ListingType.offer;
           final badgeColor = isOffer ? AppColors.offer : AppColors.seek;
-          final badgeLabel = isOffer ? 'ΠΡΟΣΦΟΡΑ' : 'ΖΗΤΩ';
+          final badgeLabel =
+              isOffer ? 'ld.offerBadge'.tr() : 'ld.seekBadge'.tr();
 
           double? distMeters;
           final userPos = userPosAsync.asData?.value;
@@ -83,9 +117,24 @@ class ListingDetailScreen extends ConsumerWidget {
             );
           }
 
+          // Αν η αγγελία έχει placeholder label (παλιές αγγελίες), κάνε
+          // reverse-geocoding από τις συντεταγμένες για πραγματική περιοχή.
+          var placeLabel = listing.locationLabel;
+          if (_placeholderLabels.contains(placeLabel.trim())) {
+            final geocoded = ref
+                .watch(_placeLabelProvider(
+                    '${listing.location.latitude},${listing.location.longitude}'))
+                .asData
+                ?.value;
+            if (geocoded != null && geocoded.isNotEmpty) {
+              placeLabel = geocoded;
+            } else if (placeLabel.trim().isEmpty) {
+              placeLabel = 'ld.locationOnMap'.tr();
+            }
+          }
+
           return CustomScrollView(
             slivers: [
-              // ── Hero Image + Floating buttons ──
               SliverToBoxAdapter(
                 child: _HeroSection(
                   listing: listing,
@@ -97,36 +146,41 @@ class ListingDetailScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(16),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    // Title
                     Text(listing.title,
                         style: const TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 22,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 6),
-                    Row(children: [
-                      const Icon(Icons.location_on_outlined,
-                          color: AppColors.textSecondary, size: 14),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          distMeters != null
-                              ? '${listing.locationLabel} · ${_formatDistance(distMeters)}'
-                              : listing.locationLabel,
-                          style: const TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12),
+                    GestureDetector(
+                      onTap: () => _openInMaps(listing.location.latitude,
+                          listing.location.longitude),
+                      child: Row(children: [
+                        const Icon(Icons.location_on_outlined,
+                            color: AppColors.primary, size: 14),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            distMeters != null
+                                ? '$placeLabel · ${_formatDistance(distMeters)}'
+                                : placeLabel,
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                decoration: TextDecoration.underline),
+                          ),
                         ),
-                      ),
-                    ]),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.open_in_new,
+                            color: AppColors.primary, size: 12),
+                      ]),
+                    ),
                     const SizedBox(height: 16),
-
-                    // Owner card
                     _OwnerCard(listing: listing),
                     const SizedBox(height: 16),
-
-                    // Description
-                    const Text('ΠΕΡΙΓΡΑΦΗ',
-                        style: TextStyle(
+                    Text('ld.descriptionLabel'.tr(),
+                        style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -138,8 +192,78 @@ class ListingDetailScreen extends ConsumerWidget {
                             fontSize: 14,
                             height: 1.5)),
                     const SizedBox(height: 16),
-
-                    // Tags
+                    if (listing.availableFrom != null ||
+                        listing.availableUntil != null) ...[
+                      Text('ld.availabilityLabel'.tr(),
+                          style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.deal.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: AppColors.deal.withValues(alpha: 0.3),
+                              width: 0.5),
+                        ),
+                        child: Column(children: [
+                          if (listing.availableFrom != null)
+                            Row(children: [
+                              const Icon(Icons.play_arrow,
+                                  color: AppColors.deal, size: 16),
+                              const SizedBox(width: 8),
+                              Text('ld.fromColon'.tr(),
+                                  style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _formatDateTime(listing.availableFrom!,
+                                      listing.hasFromTime,
+                                      context.locale.languageCode),
+                                  style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ]),
+                          if (listing.availableFrom != null &&
+                              listing.availableUntil != null)
+                            const SizedBox(height: 8),
+                          if (listing.availableUntil != null)
+                            Row(children: [
+                              const Icon(Icons.flag_outlined,
+                                  color: AppColors.danger, size: 16),
+                              const SizedBox(width: 8),
+                              Text('ld.untilColon'.tr(),
+                                  style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _formatDateTime(listing.availableUntil!,
+                                      listing.hasUntilTime,
+                                      context.locale.languageCode),
+                                  style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ]),
+                        ]),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     if (listing.tags.isNotEmpty) ...[
                       Wrap(
                         spacing: 6,
@@ -164,8 +288,6 @@ class ListingDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 16),
                     ],
-
-                    // Action buttons
                     _ActionButtons(listing: listing),
                     const SizedBox(height: 32),
                   ]),
@@ -179,8 +301,7 @@ class ListingDetailScreen extends ConsumerWidget {
   }
 }
 
-// ── HERO SECTION ──
-class _HeroSection extends StatelessWidget {
+class _HeroSection extends StatefulWidget {
   final ListingModel listing;
   final Color badgeColor;
   final String badgeLabel;
@@ -191,33 +312,94 @@ class _HeroSection extends StatelessWidget {
   });
 
   @override
+  State<_HeroSection> createState() => _HeroSectionState();
+}
+
+class _HeroSectionState extends State<_HeroSection> {
+  int _imageIndex = 0;
+  @override
   Widget build(BuildContext context) {
+    final listing = widget.listing;
+    final badgeColor = widget.badgeColor;
+    final badgeLabel = widget.badgeLabel;
     final hasImage = listing.imageUrls.isNotEmpty;
     return Stack(children: [
-      // Image or gradient
-      GestureDetector(
-        onTap: hasImage
-            ? () => context.push('/listing/${listing.id}/images',
-                extra: listing.imageUrls)
-            : null,
-        child: SizedBox(
-          width: double.infinity,
-          height: 240,
-          child: hasImage
-              ? CachedNetworkImage(
-                  imageUrl: listing.imageUrls.first,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => Container(
-                      color: AppColors.surfaceVariant,
-                      child: const Center(
-                          child: CircularProgressIndicator(
-                              color: AppColors.primary, strokeWidth: 2))),
-                  errorWidget: (_, __, ___) => const _GradientFallback(),
-                )
-              : const _GradientFallback(),
-        ),
+      SizedBox(
+        width: double.infinity,
+        height: 240,
+        child: hasImage
+            ? Stack(children: [
+                PageView.builder(
+                  itemCount: listing.imageUrls.length,
+                  onPageChanged: (i) => setState(() => _imageIndex = i),
+                  itemBuilder: (_, i) => GestureDetector(
+                    onTap: () => context.push(
+                        '/listing/${listing.id}/images?i=$i',
+                        extra: List<String>.from(listing.imageUrls)),
+                    child: CachedNetworkImage(
+                      imageUrl: listing.imageUrls[i],
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                          color: AppColors.surfaceVariant,
+                          child: const Center(
+                              child: CircularProgressIndicator(
+                                  color: AppColors.primary, strokeWidth: 2))),
+                      errorWidget: (_, __, ___) => const _GradientFallback(),
+                    ),
+                  ),
+                ),
+                if (listing.imageUrls.length > 1)
+                  Positioned(
+                    bottom: 14,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        listing.imageUrls.length,
+                        (i) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: i == _imageIndex ? 20 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: i == _imageIndex
+                                ? AppColors.primary
+                                : Colors.white.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (listing.imageUrls.length > 1)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.photo_library_outlined,
+                            color: Colors.white, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${_imageIndex + 1}/${listing.imageUrls.length}',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ]),
+                    ),
+                  ),
+              ])
+            : const _GradientFallback(),
       ),
-      // Dark overlay για να φαίνεται το κουμπί καλύτερα
       Positioned.fill(
         child: IgnorePointer(
           child: Container(
@@ -236,7 +418,6 @@ class _HeroSection extends StatelessWidget {
           ),
         ),
       ),
-      // Back button
       Positioned(
         top: MediaQuery.of(context).padding.top + 8,
         left: 12,
@@ -245,13 +426,11 @@ class _HeroSection extends StatelessWidget {
           onTap: () => context.pop(),
         ),
       ),
-      // Heart button (save/unsave)
       Positioned(
         top: MediaQuery.of(context).padding.top + 8,
         right: 60,
         child: _SaveButton(listingId: listing.id),
       ),
-      // More options button (report)
       Positioned(
         top: MediaQuery.of(context).padding.top + 8,
         right: 12,
@@ -266,10 +445,10 @@ class _HeroSection extends StatelessWidget {
                       BorderRadius.vertical(top: Radius.circular(20))),
               builder: (_) => Column(mainAxisSize: MainAxisSize.min, children: [
                 ListTile(
-                  leading: const Icon(Icons.flag_outlined,
-                      color: AppColors.danger),
-                  title: const Text('Αναφορά αγγελίας',
-                      style: TextStyle(color: AppColors.danger)),
+                  leading:
+                      const Icon(Icons.flag_outlined, color: AppColors.danger),
+                  title: Text('ld.report'.tr(),
+                      style: const TextStyle(color: AppColors.danger)),
                   onTap: () {
                     Navigator.pop(context);
                     context.push(
@@ -279,13 +458,13 @@ class _HeroSection extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.share_outlined,
                       color: AppColors.textSecondary),
-                  title: const Text('Κοινοποίηση',
-                      style: TextStyle(color: AppColors.textPrimary)),
+                  title: Text('ld.share'.tr(),
+                      style: const TextStyle(color: AppColors.textPrimary)),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Σύντομα: κοινοποίηση')),
-                    );
+                    final text =
+                        '${listing.title}\n\n${listing.description}\n\n${'ld.onShareit'.tr()}';
+                    SharePlus.instance.share(ShareParams(text: text));
                   },
                 ),
               ]),
@@ -293,13 +472,11 @@ class _HeroSection extends StatelessWidget {
           },
         ),
       ),
-      // Badge
       Positioned(
         bottom: 12,
         right: 12,
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
             color: badgeColor,
             borderRadius: BorderRadius.circular(14),
@@ -312,7 +489,6 @@ class _HeroSection extends StatelessWidget {
                   letterSpacing: 0.5)),
         ),
       ),
-      // Image count if multiple
       if (listing.imageUrls.length > 1)
         Positioned(
           bottom: 12,
@@ -355,8 +531,7 @@ class _GradientFallback extends StatelessWidget {
         ),
       ),
       child: const Center(
-        child: Icon(Icons.image_outlined,
-            color: Colors.white54, size: 72),
+        child: Icon(Icons.image_outlined, color: Colors.white54, size: 72),
       ),
     );
   }
@@ -385,7 +560,6 @@ class _CircleIconButton extends StatelessWidget {
   }
 }
 
-// ── OWNER CARD ──
 class _OwnerCard extends StatelessWidget {
   final ListingModel listing;
   const _OwnerCard({required this.listing});
@@ -422,8 +596,7 @@ class _OwnerCard extends StatelessWidget {
 
         final fullName =
             lastName.isNotEmpty ? '$firstName $lastName' : firstName;
-        final initial =
-            firstName.isNotEmpty ? firstName[0].toUpperCase() : '?';
+        final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : '?';
 
         return GestureDetector(
           onTap: () => context.push('/profile/${listing.userId}'),
@@ -459,8 +632,7 @@ class _OwnerCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: AppColors.success,
                         shape: BoxShape.circle,
-                        border:
-                            Border.all(color: AppColors.surface, width: 2),
+                        border: Border.all(color: AppColors.surface, width: 2),
                       ),
                     ),
                   ),
@@ -481,10 +653,9 @@ class _OwnerCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Row(children: [
-                      const Icon(Icons.star,
-                          color: AppColors.deal, size: 13),
+                      const Icon(Icons.star, color: AppColors.deal, size: 13),
                       const SizedBox(width: 3),
-                      Text('${rating.toStringAsFixed(1)}',
+                      Text(rating.toStringAsFixed(1),
                           style: const TextStyle(
                               color: AppColors.deal,
                               fontSize: 12,
@@ -492,8 +663,7 @@ class _OwnerCard extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text('· $dealsCount deals',
                           style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 11)),
+                              color: AppColors.textSecondary, fontSize: 11)),
                     ]),
                   ],
                 ),
@@ -508,7 +678,6 @@ class _OwnerCard extends StatelessWidget {
   }
 }
 
-// ── ACTION BUTTONS ──
 class _ActionButtons extends ConsumerWidget {
   final ListingModel listing;
   const _ActionButtons({required this.listing});
@@ -518,19 +687,19 @@ class _ActionButtons extends ConsumerWidget {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Διαγραφή αγγελίας',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('Η αγγελία θα διαγραφεί οριστικά.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: Text('ld.deleteTitle'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('ld.deleteBody'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Άκυρο',
-                  style: TextStyle(color: AppColors.textSecondary))),
+              child: Text('common.cancel'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary))),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Διαγραφή',
-                  style: TextStyle(color: AppColors.danger))),
+              child: Text('common.delete'.tr(),
+                  style: const TextStyle(color: AppColors.danger))),
         ],
       ),
     );
@@ -562,8 +731,8 @@ class _ActionButtons extends ConsumerWidget {
             onPressed: () => context.push('/edit-listing/${listing.id}'),
             icon: const Icon(Icons.edit_outlined,
                 size: 18, color: AppColors.primary),
-            label: const Text('Επεξεργασία',
-                style: TextStyle(color: AppColors.primary)),
+            label: Text('profile.edit'.tr(),
+                style: const TextStyle(color: AppColors.primary)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.primary),
               minimumSize: const Size.fromHeight(52),
@@ -578,8 +747,8 @@ class _ActionButtons extends ConsumerWidget {
             onPressed: () => _confirmDelete(context),
             icon: const Icon(Icons.delete_outline,
                 size: 18, color: AppColors.danger),
-            label: const Text('Διαγραφή',
-                style: TextStyle(color: AppColors.danger)),
+            label: Text('common.delete'.tr(),
+                style: const TextStyle(color: AppColors.danger)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.danger),
               minimumSize: const Size.fromHeight(52),
@@ -594,27 +763,24 @@ class _ActionButtons extends ConsumerWidget {
     return Row(children: [
       Expanded(
         child: ElevatedButton.icon(
-          onPressed: currentUid == null
-              ? null
-              : () => _startChat(context, currentUid),
+          onPressed:
+              currentUid == null ? null : () => _startChat(context, currentUid),
           icon: const Icon(Icons.message_outlined,
               size: 18, color: AppColors.background),
-          label: const Text('Μήνυμα',
-              style: TextStyle(
-                  color: AppColors.background,
-                  fontWeight: FontWeight.w700)),
+          label: Text('ld.message'.tr(),
+              style: const TextStyle(
+                  color: AppColors.background, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             minimumSize: const Size.fromHeight(52),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
       ),
     ]);
   }
 }
-
 
 class _SaveButton extends ConsumerWidget {
   final String listingId;
@@ -625,13 +791,14 @@ class _SaveButton extends ConsumerWidget {
     final uid = ref.watch(currentUserProvider)?.uid;
     if (uid == null) return const SizedBox.shrink();
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('users').doc(uid).snapshots(),
+      stream:
+          FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snap) {
         bool saved = false;
         if (snap.hasData && snap.data!.exists) {
-          final ids = List<String>.from(
-              (snap.data!.data() as Map<String, dynamic>?)?['savedListingIds'] ?? []);
+          final ids = List<String>.from((snap.data!.data()
+                  as Map<String, dynamic>?)?['savedListingIds'] ??
+              []);
           saved = ids.contains(listingId);
         }
         return _CircleIconButton(
@@ -641,9 +808,8 @@ class _SaveButton extends ConsumerWidget {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(saved
-                      ? 'Αφαιρέθηκε από τα αγαπημένα'
-                      : 'Αποθηκεύτηκε στα αγαπημένα'),
+                  content:
+                      Text(saved ? 'ld.removedFav'.tr() : 'ld.savedFav'.tr()),
                   duration: const Duration(seconds: 1),
                 ),
               );

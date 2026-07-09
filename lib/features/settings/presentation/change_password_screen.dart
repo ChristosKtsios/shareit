@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/password_strength.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_provider.dart';
 
 class ChangePasswordScreen extends ConsumerStatefulWidget {
@@ -20,13 +23,15 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   void dispose() { _newPassCtrl.dispose(); _confirmCtrl.dispose(); super.dispose(); }
 
   Future<void> _submit() async {
-    final newPass = _newPassCtrl.text;
-    if (newPass.length < 6) {
-      setState(() => _error = 'Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες.');
+    final newPass = _newPassCtrl.text.trim();
+    // Ίδιοι κανόνες με την εγγραφή (8 χαρ., κεφαλαίο, αριθμό, σύμβολο).
+    final passError = AuthRepository.validatePassword(newPass);
+    if (passError != null) {
+      setState(() => _error = passError);
       return;
     }
-    if (newPass != _confirmCtrl.text) {
-      setState(() => _error = 'Οι κωδικοί δεν ταιριάζουν.');
+    if (newPass != _confirmCtrl.text.trim()) {
+      setState(() => _error = 'changePass.passwordsMismatch'.tr());
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -34,11 +39,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       await ref.read(authRepoProvider).updatePassword(newPass);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ο κωδικός άλλαξε επιτυχώς.')));
+          SnackBar(content: Text('changePass.success'.tr())));
         context.pop();
       }
     } catch (_) {
-      setState(() => _error = 'Σφάλμα. Μπορεί να χρειαστείς να συνδεθείς ξανά.');
+      setState(() => _error = 'changePass.errorRelogin'.tr());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -47,26 +52,29 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Αλλαγή κωδικού')),
+      appBar: AppBar(title: Text('settings.changePassword'.tr())),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Νέος κωδικός',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          Text('changePass.newPassword'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 6),
           TextField(
             controller: _newPassCtrl, obscureText: true,
+            onChanged: (_) => setState(() {}),
             style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(hintText: 'Τουλάχιστον 6 χαρακτήρες'),
+            decoration: InputDecoration(
+                hintText: 'changePass.passwordHint'.tr()),
           ),
+          PasswordStrengthIndicator(password: _newPassCtrl.text),
           const SizedBox(height: 16),
-          const Text('Επιβεβαίωση κωδικού',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          Text('changePass.confirmPassword'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 6),
           TextField(
             controller: _confirmCtrl, obscureText: true,
             style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(hintText: 'Ξανά τον ίδιο κωδικό'),
+            decoration: InputDecoration(hintText: 'changePass.confirmHint'.tr()),
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
@@ -78,7 +86,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             child: _loading
                 ? const SizedBox(height: 20, width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.background))
-                : const Text('Αλλαγή κωδικού'),
+                : Text('settings.changePassword'.tr()),
           ),
         ]),
       ),

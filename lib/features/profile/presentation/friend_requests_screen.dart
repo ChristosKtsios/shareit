@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -15,7 +16,7 @@ class FriendRequestsScreen extends ConsumerWidget {
     final uid = ref.watch(currentUserProvider)?.uid ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Αιτήματα φιλίας')),
+      appBar: AppBar(title: Text('inbox.friendRequests'.tr())),
       body: SafeArea(
         top: false,
         child: StreamBuilder<QuerySnapshot>(
@@ -32,17 +33,18 @@ class FriendRequestsScreen extends ConsumerWidget {
             }
             final docs = snap.data!.docs;
             if (docs.isEmpty) {
-              return const Center(
+              return Center(
                 child: Padding(
-                  padding: EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.group_outlined,
+                      const Icon(Icons.group_outlined,
                           color: AppColors.textHint, size: 48),
-                      SizedBox(height: 12),
-                      Text('Δεν έχεις εκκρεμή αιτήματα φιλίας.',
-                          style: TextStyle(color: AppColors.textSecondary)),
+                      const SizedBox(height: 12),
+                      Text('freq.noPending'.tr(),
+                          style: const TextStyle(
+                              color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
@@ -95,8 +97,8 @@ class _RequestTileState extends State<_RequestTile> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('freq.error'.tr(namedArgs: {'err': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -109,8 +111,8 @@ class _RequestTileState extends State<_RequestTile> {
       await FriendsRepository().reject(widget.requestId);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('freq.error'.tr(namedArgs: {'err': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -151,8 +153,9 @@ class _RequestTileState extends State<_RequestTile> {
           title: Text(name,
               style: const TextStyle(
                   color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
-          subtitle: const Text('Θέλει να γίνει φίλος σου',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          subtitle: Text('freq.wantsToBeFriend'.tr(),
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12)),
           trailing: _busy
               ? const SizedBox(
                   width: 24,
@@ -167,13 +170,13 @@ class _RequestTileState extends State<_RequestTile> {
                       icon: const Icon(Icons.check_circle,
                           color: AppColors.primary, size: 28),
                       onPressed: _accept,
-                      tooltip: 'Αποδοχή',
+                      tooltip: 'freq.accept'.tr(),
                     ),
                     IconButton(
                       icon: const Icon(Icons.cancel_outlined,
                           color: AppColors.danger, size: 26),
                       onPressed: _reject,
-                      tooltip: 'Απόρριψη',
+                      tooltip: 'freq.reject'.tr(),
                     ),
                   ],
                 ),

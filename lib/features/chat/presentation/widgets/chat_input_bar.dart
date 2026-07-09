@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -9,12 +10,14 @@ import '../../data/chat_repository.dart';
 class ChatInputBar extends ConsumerStatefulWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
+  final ValueChanged<String>? onChanged;
   final String chatId;
 
   const ChatInputBar({
     super.key,
     required this.controller,
     required this.onSend,
+    this.onChanged,
     required this.chatId,
   });
 
@@ -47,7 +50,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Σφάλμα αποστολής: $e')),
+          SnackBar(content: Text('${'msg.sendError'.tr()}: $e')),
         );
       }
     } finally {
@@ -84,6 +87,7 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar> {
         Expanded(
           child: TextField(
             controller: widget.controller,
+            onChanged: widget.onChanged,
             style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
             maxLines: 4,
             minLines: 1,

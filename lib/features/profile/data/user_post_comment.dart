@@ -10,6 +10,7 @@ class UserPostComment {
   final List<String> likes;
   final String? parentCommentId;
   final String? parentAuthorName;
+  final Map<String, List<String>> reactions;
 
   const UserPostComment({
     required this.id,
@@ -21,12 +22,16 @@ class UserPostComment {
     this.likes = const [],
     this.parentCommentId,
     this.parentAuthorName,
+    this.reactions = const {},
   });
 
   factory UserPostComment.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
     return UserPostComment(
       id: doc.id,
+      reactions: ((d['reactions'] as Map<String, dynamic>?) ?? {}).map(
+        (k, v) => MapEntry(k, List<String>.from(v ?? [])),
+      ),
       authorUid: d['authorUid'] ?? '',
       authorName: d['authorName'] ?? '',
       authorAvatar: d['authorAvatar'],

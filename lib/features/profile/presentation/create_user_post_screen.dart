@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
@@ -30,7 +30,7 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
   Future<void> _pickMedia() async {
     if (_media.length >= 10) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Μέγιστο 10 αρχεία')),
+        SnackBar(content: Text('userPost.max10Files'.tr())),
       );
       return;
     }
@@ -45,7 +45,7 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
     final text = _textCtrl.text.trim();
     if (text.isEmpty && _media.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Γράψε κείμενο ή πρόσθεσε αρχείο')),
+        SnackBar(content: Text('userPost.writeOrAttach'.tr())),
       );
       return;
     }
@@ -84,8 +84,8 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Το post δημοσιεύθηκε!'),
+          SnackBar(
+            content: Text('userPost.published'.tr()),
             backgroundColor: AppColors.success,
           ),
         );
@@ -94,7 +94,7 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Σφάλμα: $e')),
+          SnackBar(content: Text('pf.errorWith'.tr(namedArgs: {'e': '$e'}))),
         );
       }
     } finally {
@@ -106,7 +106,7 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Νέο Post'),
+        title: Text('userPost.newPost'.tr()),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
@@ -123,8 +123,8 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
                       color: AppColors.primary,
                     ),
                   )
-                : const Text('Δημοσίευση',
-                    style: TextStyle(
+                : Text('userPost.publish'.tr(),
+                    style: const TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w700,
                       fontSize: 15,
@@ -149,11 +149,11 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
                 controller: _textCtrl,
                 maxLines: 8,
                 minLines: 4,
-                style: const TextStyle(
-                    color: AppColors.textPrimary, fontSize: 15),
-                decoration: const InputDecoration(
-                  hintText: 'Τι σκέφτεσαι;',
-                  hintStyle: TextStyle(color: AppColors.textHint),
+                style:
+                    const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+                decoration: InputDecoration(
+                  hintText: 'userPost.whatsOnMind'.tr(),
+                  hintStyle: const TextStyle(color: AppColors.textHint),
                   border: InputBorder.none,
                 ),
               ),
@@ -164,8 +164,7 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
@@ -216,8 +215,9 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
                   color: AppColors.primary),
               label: Text(
                 _media.isEmpty
-                    ? 'Προσθήκη φωτογραφίας/βίντεο'
-                    : 'Προσθήκη ακόμα (${_media.length}/10)',
+                    ? 'userPost.addPhotoVideo'.tr()
+                    : 'userPost.addMore'
+                        .tr(namedArgs: {'n': '${_media.length}'}),
                 style: const TextStyle(color: AppColors.primary),
               ),
               style: OutlinedButton.styleFrom(

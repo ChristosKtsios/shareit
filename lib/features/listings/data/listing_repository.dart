@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import '../../../core/utils/greek_text.dart';
 import 'listing_model.dart';
+import 'tags_repository.dart';
 
 class ListingRepository {
   final _col = FirebaseFirestore.instance.collection('listings');
@@ -16,20 +18,25 @@ class ListingRepository {
     final data = doc.data();
     final urls =
         (data?['imageUrls'] as List?)?.map((e) => e.toString()).toList() ?? [];
+    final tags =
+        (data?['tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
 
-    // Διαγραφή εικόνων από Storage (αν αποτύχει κάποια, συνεχίζουμε)
     for (final url in urls) {
       try {
         await FirebaseStorage.instance.refFromURL(url).delete();
       } catch (_) {}
     }
 
-    // Διαγραφή του document
     await _col.doc(id).delete();
+
+    // Μείωσε τους trending-tag counters (best-effort).
+    if (tags.isNotEmpty) {
+      try {
+        await TagsRepository().decrementTags(tags);
+      } catch (_) {}
+    }
   }
 
-  /// Cleanup των ληγμένων αγγελιών του χρήστη που έχουν autoDelete=true.
-  /// Καλείται στο app launch του owner.
   Future<int> cleanupExpiredForUser(String uid) async {
     final now = DateTime.now();
     final snap = await _col
@@ -54,6 +61,7 @@ class ListingRepository {
       'title': listing.title,
       'description': listing.description,
       'tags': listing.tags,
+      'searchKeywords': listing.searchKeywords,
       'locationLabel': listing.locationLabel,
       'imageUrls': listing.imageUrls,
       'location': listing.location,
@@ -64,6 +72,9 @@ class ListingRepository {
       'availableUntil': listing.availableUntil != null
           ? Timestamp.fromDate(listing.availableUntil!)
           : null,
+      'hasFromTime': listing.hasFromTime,
+      'hasUntilTime': listing.hasUntilTime,
+      'autoDelete': listing.autoDelete,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -71,21 +82,34 @@ class ListingRepository {
   Future<void> deactivate(String id) async =>
       await _col.doc(id).update({'isActive': false});
 
+  /// Helper για να φιλτράρουμε hidden αγγελίες client-side.
+  /// (Firestore δεν επιτρέπει "where != true" εύκολα)
+  List<ListingModel> _filterVisible(List<DocumentSnapshot> docs) {
+    return docs
+        .where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final isHidden = data['isHidden'] as bool? ?? false;
+          return !isHidden;
+        })
+        .map(ListingModel.fromFirestore)
+        .toList();
+  }
+
   Stream<List<ListingModel>> watchActive() => _col
       .where('isActive', isEqualTo: true)
       .orderBy('createdAt', descending: true)
       .limit(50)
       .snapshots()
-      .map((s) => s.docs.map(ListingModel.fromFirestore).toList());
+      .map((s) => _filterVisible(s.docs));
 
   Stream<List<ListingModel>> watchUserListings(String uid) => _col
       .where('userId', isEqualTo: uid)
       .where('isActive', isEqualTo: true)
       .orderBy('createdAt', descending: true)
       .snapshots()
-      .map((s) => s.docs.map(ListingModel.fromFirestore).toList());
+      .map((s) => _filterVisible(s.docs));
 
-  Future<({List<ListingModel> listings, DocumentSnapshot? lastDoc})>
+  Future<({List<ListingModel> listings, DocumentSnapshot? lastDoc, int fetched})>
       getPageWithCursor({DocumentSnapshot? lastDoc}) async {
     var q = _col
         .where('isActive', isEqualTo: true)
@@ -93,19 +117,25 @@ class ListingRepository {
         .limit(_pageSize);
     if (lastDoc != null) q = q.startAfterDocument(lastDoc);
     final snap = await q.get();
-    final listings = snap.docs.map(ListingModel.fromFirestore).toList();
+    final listings = _filterVisible(snap.docs);
     final newLastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
-    return (listings: listings, lastDoc: newLastDoc);
+    // fetched = ΩΜΟ πλήθος (πριν το φιλτράρισμα κρυμμένων) — ώστε το hasMore να
+    // μη σταματάει το pagination όταν μια σελίδα περιέχει κρυμμένες αγγελίες.
+    return (listings: listings, lastDoc: newLastDoc, fetched: snap.docs.length);
   }
 
   Future<ListingModel?> getById(String id) async {
     final doc = await _col.doc(id).get();
-    return doc.exists ? ListingModel.fromFirestore(doc) : null;
+    if (!doc.exists) return null;
+    final data = doc.data() as Map<String, dynamic>;
+    final isHidden = data['isHidden'] as bool? ?? false;
+    if (isHidden) return null; // Hidden αγγελίες δεν εμφανίζονται καν
+    return ListingModel.fromFirestore(doc);
   }
 
   Future<List<ListingModel>> search({
     required String keyword,
-    String? tag,
+    Set<String> tags = const {},
     ListingType? type,
   }) async {
     final lowerKeyword = keyword.toLowerCase().trim();
@@ -119,10 +149,15 @@ class ListingRepository {
     }
 
     final snap = await q.limit(40).get();
-    var results = snap.docs.map(ListingModel.fromFirestore).toList();
+    var results = _filterVisible(snap.docs);
 
-    if (tag != null && tag.isNotEmpty) {
-      results = results.where((l) => l.tags.contains(tag)).toList();
+    // Multi-tag filter (OR): keep listings matching ANY selected tag.
+    // Accent-insensitive: "ψάχνω" ταιριάζει και με "ψαχνω".
+    if (tags.isNotEmpty) {
+      final wanted = tags.map(GreekText.fold).toSet();
+      results = results
+          .where((l) => l.tags.any((t) => wanted.contains(GreekText.fold(t))))
+          .toList();
     }
     return results;
   }
@@ -134,13 +169,11 @@ class ListingRepository {
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .get();
-    return snap.docs.map(ListingModel.fromFirestore).toList();
+    return _filterVisible(snap.docs);
   }
 
   Future<void> createListing(ListingModel l) => create(l);
 
-  /// Πραγματική διαγραφή — αντικαθιστά το παλιό deleteListing που έκανε
-  /// μόνο isActive=false και άφηνε την αγγελία στη βάση.
   Future<void> deleteListing(String id) => deleteFully(id);
 
   Future<ListingModel?> getListingById(String id) => getById(id);

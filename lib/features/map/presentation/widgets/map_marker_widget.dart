@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -73,7 +74,7 @@ class MapMarkerBuilder {
     )..layout();
     emojiPainter.paint(canvas, Offset(12 * scale, 12 * scale));
 
-    final typeText = isOffer ? 'Προσφέρω' : 'Αναζητώ';
+    final typeText = isOffer ? 'listing.offer'.tr() : 'listing.seek'.tr();
     final typePainter = TextPainter(
       text: TextSpan(
           text: typeText,
@@ -152,7 +153,7 @@ class MapMarkerBuilder {
     // ── Title με το ΟΝΟΜΑ του χρήστη + τίτλο της αγγελίας ──
     // Format: "Όνομα · Τίτλος αγγελίας"
     final titleX = avatarX + avatarSize + 6 * scale;
-    final maxTitleLen = 14;
+    const maxTitleLen = 14;
     final shortTitle = listing.title.length > maxTitleLen
         ? '${listing.title.substring(0, maxTitleLen)}...'
         : listing.title;

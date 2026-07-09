@@ -39,54 +39,29 @@ class FriendsRepository {
     });
   }
 
-  /// Αποδοχή αιτήματος — με detailed logging για debug.
-  /// Κάνει 3 ξεχωριστά operations αντί για batch ώστε να εντοπίζουμε
-  /// ποιο συγκεκριμένα αποτυγχάνει (αν αποτυγχάνει).
+  /// Αποδοχή αιτήματος — atomic WriteBatch ώστε και τα 3 writes να γίνουν
+  /// μαζί ή καθόλου (αποφεύγουμε μονόπλευρη φιλία αν αποτύχει κάποιο βήμα).
+  /// Όλα τα writes είναι συμβατά με τους κανόνες:
+  ///  - friendRequests update: ο acceptor είναι ο toUid
+  ///  - users/{fromUid}: diff μόνο 'friends' (επιτρέπεται)
+  ///  - users/{toUid}: δικό μου doc (isOwner)
   Future<void> accept({
     required String requestId,
     required String fromUid,
     required String toUid,
   }) async {
-    debugPrint('🤝 FriendsRepo.accept START: req=$requestId, '
-        'from=$fromUid, to=$toUid');
-
-    // Step 1: Mark request as accepted
-    try {
-      await _db.collection('friendRequests').doc(requestId).update({
-        'status': 'accepted',
-        'respondedAt': FieldValue.serverTimestamp(),
-      });
-      debugPrint('✅ Step 1 OK: request marked accepted');
-    } catch (e) {
-      debugPrint('❌ Step 1 FAIL (request update): $e');
-      rethrow;
-    }
-
-    // Step 2: Add toUid (current user) στα friends του fromUid
-    try {
-      await _db.collection('users').doc(fromUid).update({
-        'friends': FieldValue.arrayUnion([toUid]),
-      });
-      debugPrint('✅ Step 2 OK: $toUid added to friends of $fromUid');
-    } catch (e) {
-      debugPrint('❌ Step 2 FAIL (update fromUid friends): $e');
-      // Δεν κάνουμε rethrow γιατί το step 1 ήδη έγινε.
-      // Καλύτερα να συνεχίσουμε με το step 3 για να κάνουμε τουλάχιστον
-      // το δικό μας user document σωστό.
-    }
-
-    // Step 3: Add fromUid στα friends του toUid (current user — δικό μου)
-    try {
-      await _db.collection('users').doc(toUid).update({
-        'friends': FieldValue.arrayUnion([fromUid]),
-      });
-      debugPrint('✅ Step 3 OK: $fromUid added to friends of $toUid');
-    } catch (e) {
-      debugPrint('❌ Step 3 FAIL (update toUid friends): $e');
-      rethrow;
-    }
-
-    debugPrint('🎉 FriendsRepo.accept COMPLETE');
+    final batch = _db.batch();
+    batch.update(_db.collection('friendRequests').doc(requestId), {
+      'status': 'accepted',
+      'respondedAt': FieldValue.serverTimestamp(),
+    });
+    batch.update(_db.collection('users').doc(fromUid), {
+      'friends': FieldValue.arrayUnion([toUid]),
+    });
+    batch.update(_db.collection('users').doc(toUid), {
+      'friends': FieldValue.arrayUnion([fromUid]),
+    });
+    await batch.commit();
   }
 
   /// Απόρριψη αιτήματος.

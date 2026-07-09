@@ -114,6 +114,34 @@ class UserPostRepository {
     });
   }
 
+  Future<void> toggleCommentReaction({
+    required String postId,
+    required String commentId,
+    required String uid,
+    required String emoji,
+  }) async {
+    final ref = _db
+        .collection('userPosts')
+        .doc(postId)
+        .collection('comments')
+        .doc(commentId);
+    final snap = await ref.get();
+    final reactions =
+        Map<String, dynamic>.from(snap.data()?['reactions'] ?? {});
+    final users = List<String>.from(reactions[emoji] ?? []);
+    if (users.contains(uid)) {
+      users.remove(uid);
+    } else {
+      users.add(uid);
+    }
+    if (users.isEmpty) {
+      reactions.remove(emoji);
+    } else {
+      reactions[emoji] = users;
+    }
+    await ref.update({'reactions': reactions});
+  }
+
   Future<void> deleteComment(String postId, String commentId) async {
     await _db
         .collection('userPosts')

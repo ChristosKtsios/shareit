@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,8 +28,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Συμφώνησες με την πρόταση!'),
+          SnackBar(
+            content: Text('deals.agreed'.tr()),
             backgroundColor: AppColors.offer,
           ),
         );
@@ -37,7 +38,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+            .showSnackBar(SnackBar(content: Text('${'common.error'.tr()}: $e')));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -49,19 +50,19 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Απόρριψη πρότασης;',
+        title: Text('deals.rejectProposalQ'.tr(),
             style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('Η πρόταση θα ακυρωθεί.',
+        content: Text('deals.willCancel'.tr(),
             style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Άκυρο',
+            child: Text('common.cancel'.tr(),
                 style: TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Απόρριψη',
+            child: Text('deals.reject'.tr(),
                 style: TextStyle(color: AppColors.danger)),
           ),
         ],
@@ -73,13 +74,57 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       await ref.read(dealRepoProvider).cancel(deal.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Η πρόταση απορρίφθηκε')));
+            SnackBar(content: Text('chatx.proposalRejected'.tr())));
         context.pop();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+            .showSnackBar(SnackBar(content: Text('${'common.error'.tr()}: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _processing = false);
+    }
+  }
+
+  /// Ακύρωση από τον ΑΠΟΣΤΟΛΕΑ — μόνο όσο η πρόταση είναι pending.
+  Future<void> _cancel(DealModel deal) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('deals.cancelProposalQ'.tr(),
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: Text(
+            'deals.cancelProposalBody'.tr(),
+            style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('deals.back'.tr(),
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('deals.cancelProposal'.tr(),
+                style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _processing = true);
+    try {
+      await ref.read(dealRepoProvider).cancel(deal.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('deals.proposalCancelled'.tr())));
+        context.pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('${'common.error'.tr()}: $e')));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -96,7 +141,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
   Widget build(BuildContext context) {
     final myUid = ref.watch(currentUserProvider)?.uid ?? '';
     return Scaffold(
-      appBar: AppBar(title: const Text('Πρόταση Deal')),
+      appBar: AppBar(title: Text('msg.dealProposal'.tr())),
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('deals')
@@ -108,8 +153,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                 child: CircularProgressIndicator(color: AppColors.primary));
           }
           if (!snap.data!.exists) {
-            return const Center(
-                child: Text('Το deal δεν βρέθηκε',
+            return Center(
+                child: Text('deals.dealNotFound'.tr(),
                     style: TextStyle(color: AppColors.textSecondary)));
           }
           final deal = DealModel.fromFirestore(snap.data!);
@@ -126,8 +171,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
             displayProposal = myProposal ?? otherProposal;
           }
           if (displayProposal == null) {
-            return const Center(
-                child: Text('Δεν υπάρχει πρόταση ακόμα',
+            return Center(
+                child: Text('deals.noProposalYet'.tr(),
                     style: TextStyle(color: AppColors.textSecondary)));
           }
           final iAmSender = myProposal != null &&
@@ -141,29 +186,33 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
           final isCancelled = deal.status == DealStatus.cancelled;
           final canAct =
               isMe && iAmReceiver && !isActive && !isCompleted && !isCancelled;
+          // Ο αποστολέας μπορεί να ακυρώσει ΜΟΝΟ όσο εκκρεμεί (pending) —
+          // δηλαδή πριν ο παραλήπτης αποδεχτεί (active) ή απορρίψει (cancelled).
+          final canCancel =
+              isMe && iAmSender && !isActive && !isCompleted && !isCancelled;
           return Column(children: [
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
                   if (isActive)
-                    const _StatusBanner(
+                    _StatusBanner(
                         icon: Icons.check_circle,
-                        label: 'Ενεργό Deal',
+                        label: 'deals.activeDeal'.tr(),
                         color: AppColors.offer),
                   if (isCompleted)
-                    const _StatusBanner(
+                    _StatusBanner(
                         icon: Icons.task_alt,
-                        label: 'Ολοκληρωμένο',
+                        label: 'deals.completed'.tr(),
                         color: AppColors.primary),
                   if (isCancelled)
-                    const _StatusBanner(
+                    _StatusBanner(
                         icon: Icons.cancel,
-                        label: 'Ακυρώθηκε',
+                        label: 'deals.cancelled'.tr(),
                         color: AppColors.danger),
                   if (isActive || isCompleted || isCancelled)
                     const SizedBox(height: 16),
-                  const Text('Τίτλος',
+                  Text('deals.title'.tr(),
                       style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
@@ -177,7 +226,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                           fontWeight: FontWeight.w700,
                           height: 1.3)),
                   const SizedBox(height: 20),
-                  const Text('Λεπτομέρειες',
+                  Text('deals.details'.tr(),
                       style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
@@ -198,12 +247,12 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                   const SizedBox(height: 20),
                   _DateRow(
                       icon: Icons.event_available,
-                      label: 'Έναρξη',
+                      label: 'deals.start'.tr(),
                       value: _formatDateTime(displayProposal.startDate)),
                   const SizedBox(height: 10),
                   _DateRow(
                       icon: Icons.event_busy,
-                      label: 'Λήξη',
+                      label: 'deals.end'.tr(),
                       value: _formatDateTime(displayProposal.endDate),
                       color: AppColors.deal),
                   if (iAmSender && !isActive && !isCompleted && !isCancelled)
@@ -218,13 +267,13 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                               color: AppColors.deal.withValues(alpha: 0.4),
                               width: 1),
                         ),
-                        child: const Row(children: [
-                          Icon(Icons.hourglass_top,
+                        child: Row(children: [
+                          const Icon(Icons.hourglass_top,
                               color: AppColors.deal, size: 20),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                                'Έστειλες την πρότασή σου. Περιμένει αποδοχή του άλλου χρήστη.',
+                                'deals.sentWaiting'.tr(),
                                 style: TextStyle(
                                     color: AppColors.deal,
                                     fontSize: 13,
@@ -242,13 +291,13 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                           color: AppColors.offer.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Row(children: [
-                          Icon(Icons.check_circle,
+                        child: Row(children: [
+                          const Icon(Icons.check_circle,
                               color: AppColors.offer, size: 20),
-                          SizedBox(width: 10),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                                'Και οι 2 χρήστες συμφώνησαν. Το deal είναι ενεργό!',
+                                'deals.bothAgreed'.tr(),
                                 style: TextStyle(
                                     color: AppColors.offer,
                                     fontSize: 13,
@@ -277,7 +326,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                         style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: AppColors.danger),
                             minimumSize: const Size.fromHeight(48)),
-                        child: const Text('ΑΠΟΡΡΙΨΗ',
+                        child: Text('deals.rejectCaps'.tr(),
                             style: TextStyle(
                                 color: AppColors.danger,
                                 fontWeight: FontWeight.w700)),
@@ -298,11 +347,41 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                                 width: 18,
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
-                            : const Text('ΣΥΜΦΩΝΩ',
+                            : Text('deals.agreeCaps'.tr(),
                                 style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ]),
+                ),
+              ),
+            if (canCancel)
+              SafeArea(
+                top: false,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    border: Border(
+                        top: BorderSide(color: AppColors.border, width: 0.5)),
+                  ),
+                  child: OutlinedButton.icon(
+                    onPressed: _processing ? null : () => _cancel(deal),
+                    icon: _processing
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppColors.danger))
+                        : const Icon(Icons.cancel_outlined,
+                            color: AppColors.danger),
+                    label: Text('deals.cancelProposalCaps'.tr(),
+                        style: TextStyle(
+                            color: AppColors.danger,
+                            fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.danger),
+                        minimumSize: const Size.fromHeight(48)),
+                  ),
                 ),
               ),
           ]);

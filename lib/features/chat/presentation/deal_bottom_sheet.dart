@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../deals/data/deal_repository.dart';
 
@@ -29,18 +30,18 @@ class DealBottomSheet extends StatelessWidget {
       child: Column(mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Κλείσιμο Deal',
-              style: TextStyle(color: AppColors.textPrimary,
+          Text('deal.close'.tr(),
+              style: const TextStyle(color: AppColors.textPrimary,
                   fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          const Text('Διάλεξε τη διάρκεια της ανταλλαγής:',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+          Text('dealsheet.chooseDuration'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           const SizedBox(height: 16),
           ...[
-            ('1 μέρα',      const Duration(days: 1)),
-            ('3 μέρες',     const Duration(days: 3)),
-            ('1 εβδομάδα',  const Duration(days: 7)),
-            ('2 εβδομάδες', const Duration(days: 14)),
+            ('dealsheet.day1'.tr(),   const Duration(days: 1)),
+            ('dealsheet.days3'.tr(),  const Duration(days: 3)),
+            ('dealsheet.week1'.tr(),  const Duration(days: 7)),
+            ('dealsheet.weeks2'.tr(), const Duration(days: 14)),
           ].map((e) => ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(e.$1,

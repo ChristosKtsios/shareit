@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -36,28 +37,29 @@ class _FriendsListScreenState extends ConsumerState<FriendsListScreen> {
     // PRIVACY GUARD - μόνο ο ίδιος βλέπει
     if (targetUid != currentUid) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Φίλοι')),
-        body: const Center(
+        appBar: AppBar(title: Text('friends.title'.tr())),
+        body: Center(
           child: Padding(
-            padding: EdgeInsets.all(40),
+            padding: const EdgeInsets.all(40),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.lock_outline, color: AppColors.textHint, size: 60),
-                SizedBox(height: 16),
+                const Icon(Icons.lock_outline,
+                    color: AppColors.textHint, size: 60),
+                const SizedBox(height: 16),
                 Text(
-                  'Η λίστα φίλων είναι ιδιωτική',
-                  style: TextStyle(
+                  'friends.private'.tr(),
+                  style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 Text(
-                  'Μόνο ο ίδιος ο χρήστης μπορεί να δει τους φίλους του.',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  'friends.privateBody'.tr(),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -68,7 +70,7 @@ class _FriendsListScreenState extends ConsumerState<FriendsListScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Οι φίλοι μου')),
+      appBar: AppBar(title: Text('friends.myFriends'.tr())),
       body: Column(children: [
         // Search bar
         Padding(
@@ -78,7 +80,7 @@ class _FriendsListScreenState extends ConsumerState<FriendsListScreen> {
             onChanged: (v) => setState(() => _query = v.toLowerCase().trim()),
             style: const TextStyle(color: AppColors.textPrimary),
             decoration: InputDecoration(
-              hintText: 'Αναζήτηση φίλου...',
+              hintText: 'friends.searchHint'.tr(),
               prefixIcon: const Icon(Icons.search,
                   color: AppColors.textSecondary, size: 20),
               suffixIcon: _query.isNotEmpty
@@ -119,26 +121,26 @@ class _FriendsListScreenState extends ConsumerState<FriendsListScreen> {
                   []);
 
               if (friendIds.isEmpty) {
-                return const Center(
+                return Center(
                   child: Padding(
-                    padding: EdgeInsets.all(40),
+                    padding: const EdgeInsets.all(40),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.people_outline,
+                        const Icon(Icons.people_outline,
                             color: AppColors.textHint, size: 60),
-                        SizedBox(height: 12),
+                        const SizedBox(height: 12),
                         Text(
-                          'Δεν έχεις φίλους ακόμα',
-                          style: TextStyle(
+                          'friends.noFriends'.tr(),
+                          style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: 14,
                               fontWeight: FontWeight.w600),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          'Στείλε αιτήματα φιλίας από τα προφίλ άλλων χρηστών.',
-                          style: TextStyle(
+                          'friends.noFriendsBody'.tr(),
+                          style: const TextStyle(
                               color: AppColors.textSecondary, fontSize: 12),
                           textAlign: TextAlign.center,
                         ),
@@ -213,7 +215,7 @@ class _FriendsList extends StatelessWidget {
                       color: AppColors.textHint, size: 60),
                   const SizedBox(height: 12),
                   Text(
-                    'Δεν βρέθηκε φίλος με όνομα "$query"',
+                    'friends.noMatch'.tr(namedArgs: {'q': query}),
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 13),
                     textAlign: TextAlign.center,
@@ -333,15 +335,15 @@ class _FriendTile extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Αφαίρεση φίλου',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: Text('Θες να αφαιρέσεις τον/την $name από τους φίλους σου;',
+        title: Text('friends.removeTitle'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('friends.removeBody'.tr(namedArgs: {'name': name}),
             style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Άκυρο',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
             onPressed: () async {
@@ -352,12 +354,14 @@ class _FriendTile extends StatelessWidget {
               );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Ο/Η $name αφαιρέθηκε')),
+                  SnackBar(
+                      content: Text(
+                          'friends.removed'.tr(namedArgs: {'name': name}))),
                 );
               }
             },
-            child: const Text('Αφαίρεση',
-                style: TextStyle(color: AppColors.danger)),
+            child: Text('friends.remove'.tr(),
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),

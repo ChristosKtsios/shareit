@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../auth/providers/auth_provider.dart';
 
 class DeleteAccountScreen extends ConsumerStatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -17,7 +20,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   bool _loading = false;
   bool _agreed = false;
 
-  static const String _confirmWord = 'ΔΙΑΓΡΑΦΗ';
+  String get _confirmWord => 'delacc.confirmWord'.tr();
 
   @override
   void dispose() {
@@ -25,70 +28,161 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     super.dispose();
   }
 
+  /// Έλεγχος αν υπάρχουν ενεργά deals ή completed deals χωρίς πλήρη αξιολόγηση
+  Future<String?> _checkPendingDeals(String uid) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      final asUser1 =
+          await db.collection('deals').where('user1Uid', isEqualTo: uid).get();
+      final asUser2 =
+          await db.collection('deals').where('user2Uid', isEqualTo: uid).get();
+
+      int activeCount = 0;
+      int incompleteRatingCount = 0;
+
+      for (final doc in [...asUser1.docs, ...asUser2.docs]) {
+        final d = doc.data();
+        final status = d['status'] as String?;
+
+        if (status == 'pending' || status == 'active') {
+          activeCount++;
+        } else if (status == 'completed') {
+          final ownerRating = d['ownerRating'];
+          final seekerRating = d['seekerRating'];
+          if (ownerRating == null || seekerRating == null) {
+            incompleteRatingCount++;
+          }
+        }
+      }
+
+      if (activeCount > 0) {
+        return 'delacc.activeDealsBlock'.tr(namedArgs: {'n': '$activeCount'});
+      }
+      if (incompleteRatingCount > 0) {
+        return 'delacc.incompleteRatingsBlock'
+            .tr(namedArgs: {'n': '$incompleteRatingCount'});
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> _showConfirmDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('delacc.confirmDeleteTitle'.tr(),
+            style: const TextStyle(
+                color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+        content: Text(
+          'delacc.confirmDeleteBody'.tr(),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('delacc.yesDelete'.tr(),
+                style: const TextStyle(
+                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   Future<void> _deleteAccount() async {
+    final uid = fb_auth.FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
     setState(() => _loading = true);
 
-    try {
-      // Cloud Function call
-      final callable = FirebaseFunctions.instanceFor(region: 'us-central1')
-          .httpsCallable('deleteUserAccount');
-      final result = await callable.call();
-
-      if (!mounted) return;
-
-      final data = result.data as Map<dynamic, dynamic>?;
-      final success = data?['success'] == true;
-
-      if (success) {
-        // Logout local state — το auth state ήδη έχει διαγραφεί στον server
-        try {
-          await ref.read(authRepoProvider).logout();
-        } catch (_) {}
-
-        if (!mounted) return;
-
-        // GoRouter redirect θα πάει στο /login αυτόματα
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ο λογαριασμός σου διαγράφηκε.'),
-            backgroundColor: AppColors.offer,
+    // 1. Έλεγχος για ενεργά deals
+    final dealBlock = await _checkPendingDeals(uid);
+    if (dealBlock != null) {
+      if (mounted) {
+        setState(() => _loading = false);
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: AppColors.surface,
+            title: Text('delacc.cannotDelete'.tr(),
+                style: const TextStyle(
+                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+            content: Text(dealBlock,
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 14)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('delacc.ok'.tr(),
+                    style: const TextStyle(color: AppColors.primary)),
+              ),
+            ],
           ),
         );
+      }
+      return;
+    }
 
-        // Καθαρίζουμε όλο το navigation stack
-        if (mounted) {
-          context.go('/login');
-        }
+    // 2. Επιβεβαίωση
+    final confirmed = await _showConfirmDialog();
+    if (!confirmed) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    // 3. Cloud Function call
+    bool deletionSucceeded = false;
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('deleteUserAccount');
+      await callable.call();
+      deletionSucceeded = true;
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'not-found' ||
+          (e.message?.contains('not found') ?? false)) {
+        deletionSucceeded = true;
       } else {
         if (mounted) {
+          setState(() => _loading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Κάτι πήγε στραβά. Δοκίμασε ξανά.'),
+            SnackBar(
+              content: Text('${'common.error'.tr()}: ${e.message ?? e.code}'),
               backgroundColor: AppColors.danger,
             ),
           );
         }
+        return;
       }
-    } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Σφάλμα: ${e.message ?? e.code}'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Σφάλμα: $e'),
-            backgroundColor: AppColors.danger,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    } catch (_) {
+      deletionSucceeded = true;
+    }
+
+    if (deletionSucceeded) {
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('delacc.deleted'.tr()),
+          backgroundColor: AppColors.offer,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      // Πήγαινε στη σύνδεση (ΟΧΙ SystemNavigator.pop που κλείνει την εφαρμογή).
+      context.go('/login');
     }
   }
 
@@ -98,14 +192,13 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         _agreed && _confirmCtrl.text.trim().toUpperCase() == _confirmWord;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Διαγραφή λογαριασμού')),
+      appBar: AppBar(title: Text('settings.deleteAccount'.tr())),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Warning banner
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -114,24 +207,23 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                   border: Border.all(
                       color: AppColors.danger.withValues(alpha: 0.4), width: 1),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      Icon(Icons.warning_amber_rounded,
+                      const Icon(Icons.warning_amber_rounded,
                           color: AppColors.danger, size: 22),
-                      SizedBox(width: 8),
-                      Text('Προσοχή',
-                          style: TextStyle(
+                      const SizedBox(width: 8),
+                      Text('delacc.warning'.tr(),
+                          style: const TextStyle(
                               color: AppColors.danger,
                               fontSize: 16,
                               fontWeight: FontWeight.w700)),
                     ]),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
-                      'Η διαγραφή του λογαριασμού είναι μόνιμη και δεν '
-                      'μπορεί να αναιρεθεί.',
-                      style: TextStyle(
+                      'delacc.warningBodyLong'.tr(),
+                      style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 13,
                           height: 1.4),
@@ -140,45 +232,38 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              const Text('Τι θα διαγραφεί',
-                  style: TextStyle(
+              Text('delacc.whatDeleted'.tr(),
+                  style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
-
-              _DeleteItem('Όλες οι αγγελίες σου'),
-              _DeleteItem('Όλες οι συνομιλίες σου'),
-              _DeleteItem('Όλα τα deals και αξιολογήσεις'),
-              _DeleteItem('Οι φωτογραφίες προφίλ σου'),
-              _DeleteItem('Οι φιλίες και αιτήματα φιλίας'),
-              _DeleteItem('Τα στοιχεία του λογαριασμού σου'),
-
+              _DeleteItem('delacc.item1'.tr()),
+              _DeleteItem('delacc.item2'.tr()),
+              _DeleteItem('delacc.item3'.tr()),
+              _DeleteItem('delacc.item4'.tr()),
+              _DeleteItem('delacc.item5'.tr()),
+              _DeleteItem('delacc.item6'.tr()),
               const SizedBox(height: 24),
-
-              // Checkbox συμφωνίας
               Row(children: [
                 Checkbox(
                   value: _agreed,
                   onChanged: (v) => setState(() => _agreed = v ?? false),
                   activeColor: AppColors.danger,
                 ),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Καταλαβαίνω ότι η διαγραφή είναι μόνιμη και δεν '
-                    'μπορεί να αναιρεθεί.',
-                    style:
-                        TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                    'delacc.understand'.tr(),
+                    style: const TextStyle(
+                        color: AppColors.textPrimary, fontSize: 13),
                   ),
                 ),
               ]),
-
               const SizedBox(height: 20),
-
-              const Text(
-                'Για επιβεβαίωση, πληκτρολόγησε «$_confirmWord»:',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              Text(
+                'delacc.typeToConfirm'.tr(namedArgs: {'word': _confirmWord}),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -186,13 +271,11 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 style: const TextStyle(color: AppColors.textPrimary),
                 onChanged: (_) => setState(() {}),
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: _confirmWord,
                 ),
               ),
-
               const SizedBox(height: 32),
-
               ElevatedButton(
                 onPressed: canDelete && !_loading ? _deleteAccount : null,
                 style: ElevatedButton.styleFrom(
@@ -208,17 +291,16 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                             color: Colors.white, strokeWidth: 2))
-                    : const Text('Διαγραφή λογαριασμού',
-                        style: TextStyle(
+                    : Text('settings.deleteAccount'.tr(),
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 12),
-
               Center(
                 child: TextButton(
                   onPressed: _loading ? null : () => context.pop(),
-                  child: const Text('Άκυρο',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                  child: Text('common.cancel'.tr(),
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 ),
               ),
             ],

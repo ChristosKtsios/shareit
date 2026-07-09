@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_helpers.dart';
 import '../data/deal_model.dart';
@@ -39,7 +40,7 @@ class _DealTimerWidgetState extends State<DealTimerWidget> {
         Icon(Icons.timer_outlined, color: color, size: 14),
         const SizedBox(width: 4),
         Text(
-          expired ? 'Έληξε' : DateHelpers.formatTimer(_remaining),
+          expired ? 'chatx.expired'.tr() : DateHelpers.formatTimer(_remaining),
           style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w700),
         ),
       ]);
@@ -52,11 +53,11 @@ class _DealTimerWidgetState extends State<DealTimerWidget> {
       child: Row(children: [
         Icon(Icons.handshake_outlined, color: color, size: 18),
         const SizedBox(width: 8),
-        Text('Deal ενεργό',
+        Text('deal.active'.tr(),
             style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
         const Spacer(),
         Text(
-          expired ? 'Ολοκληρώθηκε' : DateHelpers.formatTimer(_remaining),
+          expired ? 'deal.done'.tr() : DateHelpers.formatTimer(_remaining),
           style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w700,
               fontFeatures: const [FontFeature.tabularFigures()]),
         ),

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/listing_card.dart';
 import '../../../core/widgets/shimmer_loader.dart';
 import '../../listings/data/listing_model.dart';
-import '../../search/presentation/widgets/search_filters_widget.dart';
+import '../../search/presentation/widgets/distance_slider_widget.dart';
 import '../providers/feed_provider.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
@@ -47,13 +47,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       appBar: AppBar(
         titleSpacing: 16,
         title: Row(children: [
-          Text('Share',
+          const Text('Share',
               style: TextStyle(
                   color: AppColors.primary,
                   fontWeight: FontWeight.w900,
                   fontSize: 22,
                   letterSpacing: -0.5)),
-          Text('It',
+          const Text('It',
               style: TextStyle(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w900,
@@ -88,12 +88,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             children: [
               _Chip(
-                  label: 'Όλα',
+                  label: 'filters.all'.tr(),
                   selected: state.type == null,
                   onTap: () => notifier.setType(null)),
               const SizedBox(width: 6),
               _Chip(
-                  label: '🤲 Προσφέρω',
+                  label: 'filters.offer'.tr(),
                   selected: state.type == ListingType.offer,
                   color: AppColors.offer,
                   onTap: () => notifier.setType(state.type == ListingType.offer
@@ -101,7 +101,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       : ListingType.offer)),
               const SizedBox(width: 6),
               _Chip(
-                  label: '🔍 Αναζητώ',
+                  label: 'filters.seek'.tr(),
                   selected: state.type == ListingType.seek,
                   color: AppColors.seek,
                   onTap: () => notifier.setType(state.type == ListingType.seek
@@ -111,7 +111,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           ),
         ),
 
-        // Distance slider — επιλογή απόστασης κατευθείαν στην οθόνη
+        // Distance slider — απόσταση 1–100 χλμ (με persistence)
+        DistanceSliderWidget(
+          value: state.distanceKm,
+          onChanged: notifier.setDistance,
+        ),
 
         const Divider(height: 0),
 
@@ -121,7 +125,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: AppColors.surfaceVariant,
             child: Row(children: [
-              Text('${listings.length} αγγελίες',
+              Text('feed.countListings'.tr(namedArgs: {'n': '${listings.length}'}),
                   style: const TextStyle(
                       color: AppColors.textSecondary, fontSize: 12)),
             ]),
@@ -132,15 +136,16 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           child: state.listings.isEmpty && state.isLoading
               ? const ShimmerList(count: 5)
               : listings.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.search_off,
+                        const Icon(Icons.search_off,
                             color: AppColors.textHint, size: 48),
-                        SizedBox(height: 12),
-                        Text('Δεν υπάρχουν αγγελίες\nγια αυτό το φίλτρο.',
-                            style: TextStyle(color: AppColors.textSecondary),
+                        const SizedBox(height: 12),
+                        Text('feed.emptyFilter'.tr(),
+                            style: const TextStyle(
+                                color: AppColors.textSecondary),
                             textAlign: TextAlign.center),
                       ],
                     ))
@@ -164,12 +169,12 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                             );
                           }
                           if (i == listings.length && !state.hasMore) {
-                            return const Padding(
-                              padding: EdgeInsets.all(16),
+                            return Padding(
+                              padding: const EdgeInsets.all(16),
                               child: Center(
                                 child: Text(
-                                  'Δεν υπάρχουν άλλες αγγελίες',
-                                  style: TextStyle(
+                                  'feed.noMore'.tr(),
+                                  style: const TextStyle(
                                       color: AppColors.textHint, fontSize: 12),
                                 ),
                               ),
@@ -230,10 +235,4 @@ class _Chip extends StatelessWidget {
     );
   }
 }
-
-/// Distance picker inline (χωρίς bottom sheet).
-/// Δείχνει chips για κάθε επιλογή απόστασης από SearchDistance.values.
-class _DistancePicker extends StatelessWidget {
-  final SearchDistance current;
-  final ValueChanged<SearchDistance> onChanged;
 

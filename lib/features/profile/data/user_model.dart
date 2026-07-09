@@ -11,6 +11,7 @@ class UserModel {
   final DateTime createdAt;
   final DateTime? lastSeen;
   final bool showOnlineStatus;
+  final bool isPrivateProfile;
 
   const UserModel({
     required this.uid,
@@ -29,6 +30,7 @@ class UserModel {
     required this.createdAt,
     this.lastSeen,
     this.showOnlineStatus = true,
+    this.isPrivateProfile = false,
   });
 
   String get fullName => '$firstName $lastName';
@@ -60,6 +62,7 @@ class UserModel {
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastSeen: (d['lastSeen'] as Timestamp?)?.toDate(),
       showOnlineStatus: d['showOnlineStatus'] ?? true,
+      isPrivateProfile: d['isPrivateProfile'] ?? false,
     );
   }
 
@@ -78,6 +81,7 @@ class UserModel {
         'savedListingIds': savedListingIds,
         'photos': photos,
         'createdAt': FieldValue.serverTimestamp(),
+        'isPrivateProfile': isPrivateProfile,
         'showOnlineStatus': showOnlineStatus,
       };
 }

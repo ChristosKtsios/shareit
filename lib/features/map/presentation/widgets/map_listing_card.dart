@@ -1,10 +1,14 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../listings/data/listing_model.dart';
+import '../../providers/map_provider.dart';
 
-class MapListingCard extends StatelessWidget {
+class MapListingCard extends ConsumerWidget {
   final ListingModel listing;
   final VoidCallback onClose;
 
@@ -14,11 +18,35 @@ class MapListingCard extends StatelessWidget {
     required this.onClose,
   });
 
+  String _formatDistance(double meters) {
+    if (meters < 1000) return '${meters.round()} ${'map.unitM'.tr()}';
+    return '${(meters / 1000).toStringAsFixed(meters < 10000 ? 1 : 0)} ${'map.unitKm'.tr()}';
+  }
+
+  String _formatDateTime(DateTime dt, bool hasTime, String locale) {
+    if (!hasTime) return DateFormat('d MMM', locale).format(dt);
+    return DateFormat('d MMM, HH:mm', locale).format(dt);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isOffer = listing.type == ListingType.offer;
     final color = isOffer ? AppColors.offer : AppColors.seek;
-    final label = isOffer ? '🤲 Προσφέρω' : '🔍 Αναζητώ';
+    final label = isOffer ? 'map.offerLabel'.tr() : 'map.seekLabel'.tr();
+    final locale = context.locale.languageCode;
+    final hasAvailability =
+        listing.availableFrom != null || listing.availableUntil != null;
+
+    // Απόσταση από την τρέχουσα θέση του χρήστη (αν υπάρχει).
+    final userPos = ref.watch(mapProvider).userPosition;
+    final double? distMeters = userPos == null
+        ? null
+        : Geolocator.distanceBetween(
+            userPos.latitude,
+            userPos.longitude,
+            listing.location.latitude,
+            listing.location.longitude,
+          );
 
     return GestureDetector(
       onTap: () => context.push('/listing/${listing.id}'),
@@ -39,7 +67,6 @@ class MapListingCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row: user info (LIVE από Firestore) + close
             StreamBuilder<DocumentSnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('users')
@@ -123,7 +150,6 @@ class MapListingCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Title
             Text(listing.title,
                 style: const TextStyle(
                     color: AppColors.textPrimary,
@@ -133,7 +159,6 @@ class MapListingCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 6),
 
-            // Description
             if (listing.description.isNotEmpty) ...[
               Text(listing.description,
                   style: const TextStyle(
@@ -143,7 +168,6 @@ class MapListingCard extends StatelessWidget {
               const SizedBox(height: 10),
             ],
 
-            // Photos carousel (αν υπάρχουν)
             if (listing.imageUrls.isNotEmpty) ...[
               SizedBox(
                 height: 70,
@@ -171,7 +195,6 @@ class MapListingCard extends StatelessWidget {
               const SizedBox(height: 10),
             ],
 
-            // Tags
             if (listing.tags.isNotEmpty) ...[
               Wrap(
                 spacing: 4,
@@ -196,6 +219,70 @@ class MapListingCard extends StatelessWidget {
               const SizedBox(height: 8),
             ],
 
+            // ΝΕΟ: Διαθεσιμότητα με ώρες
+            if (hasAvailability) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.deal.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: AppColors.deal.withValues(alpha: 0.3), width: 0.5),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (listing.availableFrom != null)
+                      Row(children: [
+                        const Icon(Icons.play_arrow,
+                            color: AppColors.deal, size: 12),
+                        const SizedBox(width: 4),
+                        Text('map.fromColon'.tr(),
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                        Expanded(
+                          child: Text(
+                            _formatDateTime(listing.availableFrom!,
+                                listing.hasFromTime, locale),
+                            style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ]),
+                    if (listing.availableFrom != null &&
+                        listing.availableUntil != null)
+                      const SizedBox(height: 3),
+                    if (listing.availableUntil != null)
+                      Row(children: [
+                        const Icon(Icons.flag_outlined,
+                            color: AppColors.danger, size: 12),
+                        const SizedBox(width: 4),
+                        Text('map.untilColon'.tr(),
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                        Expanded(
+                          child: Text(
+                            _formatDateTime(listing.availableUntil!,
+                                listing.hasUntilTime, locale),
+                            style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ]),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
             Row(children: [
               const Icon(Icons.location_on_outlined,
                   size: 12, color: AppColors.textHint),
@@ -207,8 +294,29 @@ class MapListingCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ),
+              if (distMeters != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.near_me,
+                        size: 11, color: AppColors.primary),
+                    const SizedBox(width: 3),
+                    Text('${_formatDistance(distMeters)} ${'map.away'.tr()}',
+                        style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ],
               const SizedBox(width: 8),
-              Text('Πάτα για περισσότερα →',
+              Text('map.tapMore'.tr(),
                   style: TextStyle(
                       color: color, fontSize: 11, fontWeight: FontWeight.w600)),
             ]),

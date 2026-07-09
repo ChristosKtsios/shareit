@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/date_helpers.dart';
 import '../../data/deal_model.dart';
@@ -77,9 +78,9 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
               ),
               child: Text(
                 isCompleted
-                    ? 'Ολοκληρώθηκε'
+                    ? 'deal.done'.tr()
                     : expired
-                        ? 'Σε επεξεργασία...'
+                        ? 'dcard.processing'.tr()
                         : DateHelpers.formatTimer(_remaining),
                 style: TextStyle(
                     color: color,
@@ -111,10 +112,11 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
               if (widget.deal.endDate != null)
                 _InfoRow(
                   icon: Icons.event_outlined,
-                  text: 'Λήξη: '
-                      '${DateHelpers.formatDate(widget.deal.endDate!)} '
-                      '${widget.deal.endDate!.hour.toString().padLeft(2, '0')}:'
-                      '${widget.deal.endDate!.minute.toString().padLeft(2, '0')}',
+                  text: 'dcard.endAt'.tr(namedArgs: {
+                    'v': '${DateHelpers.formatDate(widget.deal.endDate!)} '
+                        '${widget.deal.endDate!.hour.toString().padLeft(2, '0')}:'
+                        '${widget.deal.endDate!.minute.toString().padLeft(2, '0')}'
+                  }),
                   color: color,
                 ),
               if (expired && !isCompleted) ...[
@@ -125,16 +127,15 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
                     color: AppColors.surfaceVariant,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(children: [
-                    Icon(Icons.info_outline,
+                  child: Row(children: [
+                    const Icon(Icons.info_outline,
                         color: AppColors.textHint, size: 14),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Το deal ολοκληρώνεται αυτόματα. Μπορεί να πάρει '
-                        'μερικά λεπτά μέχρι να ενημερωθεί.',
-                        style:
-                            TextStyle(color: AppColors.textHint, fontSize: 11),
+                        'dcard.autoComplete'.tr(),
+                        style: const TextStyle(
+                            color: AppColors.textHint, fontSize: 11),
                       ),
                     ),
                   ]),
@@ -147,8 +148,8 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
                   onPressed: () => context.push('/chat/${widget.deal.chatId}'),
                   icon: const Icon(Icons.chat_bubble_outline,
                       size: 16, color: AppColors.primary),
-                  label: const Text('Συνομιλία',
-                      style: TextStyle(color: AppColors.primary)),
+                  label: Text('chatx.conversation'.tr(),
+                      style: const TextStyle(color: AppColors.primary)),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: AppColors.primary),
                     shape: RoundedRectangleBorder(
@@ -162,7 +163,7 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
                     onPressed: () =>
                         context.push('/rate-deal/${widget.deal.id}'),
                     icon: const Icon(Icons.star_outline, size: 16),
-                    label: const Text('Αξιολόγησε'),
+                    label: Text('chatx.statusRate'.tr()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -180,7 +181,7 @@ class _DealActiveCardState extends ConsumerState<DealActiveCard> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      expired ? 'Σύντομα...' : 'Σε εξέλιξη',
+                      expired ? 'dcard.soon'.tr() : 'dcard.inProgress'.tr(),
                       style: const TextStyle(
                           color: AppColors.textHint,
                           fontSize: 12,

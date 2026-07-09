@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -57,8 +58,8 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Σφάλμα: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('pf.errorWith'.tr(namedArgs: {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -71,7 +72,7 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
     await ref.read(userRepoProvider).update(uid, {'avatarUrl': url});
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Η εικόνα προφίλ ενημερώθηκε!')));
+          SnackBar(content: Text('photos.profileUpdated'.tr())));
     }
   }
 
@@ -80,18 +81,18 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Διαγραφή φωτογραφίας',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('Είσαι σίγουρος;',
-            style: TextStyle(color: AppColors.textSecondary)),
+        title: Text('photos.deletePhoto'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('photos.areYouSure'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Άκυρο')),
+              child: Text('common.cancel'.tr())),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Διαγραφή',
-                  style: TextStyle(color: AppColors.danger))),
+              child: Text('common.delete'.tr(),
+                  style: const TextStyle(color: AppColors.danger))),
         ],
       ),
     );
@@ -126,10 +127,10 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
       loading: () => const Scaffold(
           body: Center(
               child: CircularProgressIndicator(color: AppColors.primary))),
-      error: (_, __) => const Scaffold(
+      error: (_, __) => Scaffold(
           body: Center(
-              child: Text('Σφάλμα',
-                  style: TextStyle(color: AppColors.textSecondary)))),
+              child: Text('common.error'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary)))),
       data: (user) {
         if (user == null) return const Scaffold();
         if (!_initialized) {
@@ -139,7 +140,7 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
         }
 
         return Scaffold(
-          appBar: AppBar(title: const Text('Φωτογραφίες')),
+          appBar: AppBar(title: Text('photos.title'.tr())),
           body: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(children: [
@@ -150,14 +151,15 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
                   color: AppColors.primarySurface,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Row(children: [
-                  Icon(Icons.info_outline, color: AppColors.primary, size: 16),
-                  SizedBox(width: 8),
+                child: Row(children: [
+                  const Icon(Icons.info_outline,
+                      color: AppColors.primary, size: 16),
+                  const SizedBox(width: 8),
                   Expanded(
                       child: Text(
-                    'Ανέβασε όσες φωτογραφίες θες. '
-                    'Πάτα μια φωτογραφία για να την ορίσεις ως εικόνα προφίλ.',
-                    style: TextStyle(color: AppColors.primary, fontSize: 12),
+                    'photos.infoText'.tr(),
+                    style: const TextStyle(
+                        color: AppColors.primary, fontSize: 12),
                   )),
                 ]),
               ),
@@ -165,7 +167,9 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
 
               // Counter + Add
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Text('${_photos.length} φωτογραφίες',
+                Text(
+                    'photos.photoCount'
+                        .tr(namedArgs: {'n': '${_photos.length}'}),
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 13)),
                 GestureDetector(
@@ -188,8 +192,8 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
                           : const Icon(Icons.add_photo_alternate_outlined,
                               color: AppColors.primary, size: 16),
                       const SizedBox(width: 6),
-                      const Text('Προσθήκη',
-                          style: TextStyle(
+                      Text('photos.add'.tr(),
+                          style: const TextStyle(
                               color: AppColors.primary,
                               fontSize: 13,
                               fontWeight: FontWeight.w600)),
@@ -208,17 +212,20 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
                         const Icon(Icons.photo_library_outlined,
                             color: AppColors.textHint, size: 48),
                         const SizedBox(height: 12),
-                        const Text('Δεν έχεις φωτογραφίες ακόμα.',
-                            style: TextStyle(color: AppColors.textSecondary)),
+                        Text('photos.noPhotosYet'.tr(),
+                            style: const TextStyle(
+                                color: AppColors.textSecondary)),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           onPressed: _uploading ? null : _pickAndUpload,
                           icon: const Icon(Icons.add_photo_alternate_outlined,
                               size: 18),
-                          label: const Text('Πρόσθεσε φωτογραφίες'),
+                          label: Text('photos.addPhotos'.tr()),
                         ),
                       ]))
                     : GridView.builder(
+                        padding: EdgeInsets.only(
+                            bottom: MediaQuery.of(context).padding.bottom + 16),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 3,
@@ -249,8 +256,8 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
                                           color: AppColors.primary,
                                           borderRadius:
                                               BorderRadius.circular(8)),
-                                      child: const Text('Προφίλ',
-                                          style: TextStyle(
+                                      child: Text('photos.profileBadge'.tr(),
+                                          style: const TextStyle(
                                               color: AppColors.background,
                                               fontSize: 10,
                                               fontWeight: FontWeight.w600)),

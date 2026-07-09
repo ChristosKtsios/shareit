@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
@@ -16,18 +17,19 @@ class MyListingsScreen extends ConsumerWidget {
     final listingsAsync = ref.watch(myListingsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text(AppStrings.myListings)),
+      appBar: AppBar(title: Text(AppStrings.myListings)),
       body: listingsAsync.when(
         loading: () => const ShimmerList(count: 4),
-        error:   (_, __) => const Center(child: Text(AppStrings.errorGeneric,
-            style: TextStyle(color: AppColors.textSecondary))),
+        error: (_, __) => Center(
+            child: Text(AppStrings.errorGeneric,
+                style: const TextStyle(color: AppColors.textSecondary))),
         data: (listings) {
           if (listings.isEmpty) {
             return EmptyState(
               icon: Icons.post_add_outlined,
-              title: 'Δεν έχεις δημοσιεύσει αγγελίες ακόμα',
-              subtitle: 'Δημιούργησε την πρώτη σου αγγελία!',
-              actionLabel: 'Δημιούργησε αγγελία',
+              title: 'mylist.emptyTitle'.tr(),
+              subtitle: 'mylist.emptySubtitle'.tr(),
+              actionLabel: 'mylist.createListing'.tr(),
               onAction: () => context.push('/listing/new'),
             );
           }
@@ -38,7 +40,7 @@ class MyListingsScreen extends ConsumerWidget {
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, i) => ListingCard(
               listing: listings[i],
-              onTap:   () => context.push('/listing/${listings[i].id}'),
+              onTap: () => context.push('/listing/${listings[i].id}'),
             ),
           );
         },

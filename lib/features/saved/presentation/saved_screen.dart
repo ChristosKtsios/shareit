@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/listing_card.dart';
 import '../../../core/widgets/shimmer_loader.dart';
@@ -15,18 +16,18 @@ class SavedScreen extends ConsumerWidget {
     final savedAsync = ref.watch(savedListingsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Αποθηκευμένες')),
+      appBar: AppBar(title: Text('saved.title'.tr())),
       body: savedAsync.when(
         loading: () => const ShimmerList(count: 4),
-        error: (_, __) => const Center(
-            child: Text('Σφάλμα φόρτωσης.',
-                style: TextStyle(color: AppColors.textSecondary))),
+        error: (_, __) => Center(
+            child: Text('notif.loadError'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary))),
         data: (listings) {
           if (listings.isEmpty) {
-            return const EmptyState(
+            return EmptyState(
               icon: Icons.bookmark_outline,
-              title: 'Δεν έχεις αποθηκευμένες αγγελίες',
-              subtitle: 'Πάτα το ❤️ σε όποια αγγελία σε ενδιαφέρει για να την έχεις εδώ.',
+              title: 'saved.emptyTitle'.tr(),
+              subtitle: 'saved.emptySubtitle'.tr(),
             );
           }
           return ListView.separated(

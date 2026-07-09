@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/listing_model.dart';
 import '../../data/tags_repository.dart';
@@ -83,7 +84,9 @@ class _ListingTagsWidgetState extends State<ListingTagsWidget> {
     }
     if (widget.tags.length >= widget.maxTags) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Μέγιστα ${widget.maxTags} tags')),
+        SnackBar(
+            content: Text('ltags.maxTags'
+                .tr(namedArgs: {'n': '${widget.maxTags}'}))),
       );
       return;
     }
@@ -113,9 +116,10 @@ class _ListingTagsWidgetState extends State<ListingTagsWidget> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Tags αναζήτησης',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            Text(
+              'ltags.searchTags'.tr(),
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13),
             ),
             Text(
               '${widget.tags.length}/${widget.maxTags}',
@@ -126,8 +130,9 @@ class _ListingTagsWidgetState extends State<ListingTagsWidget> {
         const SizedBox(height: 4),
         Text(
           remaining > 0
-              ? 'Πρόσθεσε τουλάχιστον $remaining ακόμα tag${remaining == 1 ? "" : "s"}'
-              : 'Μπορείς να προσθέσεις ${widget.maxTags - widget.tags.length} ακόμα',
+              ? 'ltags.addMore'.tr(namedArgs: {'n': '$remaining'})
+              : 'ltags.canAddMore'.tr(
+                  namedArgs: {'n': '${widget.maxTags - widget.tags.length}'}),
           style: TextStyle(
               color: remaining > 0 ? AppColors.deal : AppColors.textHint,
               fontSize: 11),
@@ -160,10 +165,10 @@ class _ListingTagsWidgetState extends State<ListingTagsWidget> {
                 onChanged: _onChanged,
                 onSubmitted: _addTag,
                 textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  hintText: 'π.χ. δράπανο, εργαλεία, Ιωάννινα...',
-                  prefixIcon:
-                      Icon(Icons.tag, color: AppColors.textSecondary, size: 18),
+                decoration: InputDecoration(
+                  hintText: 'ltags.inputHint'.tr(),
+                  prefixIcon: const Icon(Icons.tag,
+                      color: AppColors.textSecondary, size: 18),
                 ),
               ),
             ),
@@ -207,13 +212,14 @@ class _ListingTagsWidgetState extends State<ListingTagsWidget> {
         // Auto-suggestions από τίτλο/περιγραφή
         if (unusedAutoSuggestions.isNotEmpty && _suggestions.isEmpty) ...[
           const SizedBox(height: 16),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.auto_awesome, color: AppColors.primary, size: 14),
-              SizedBox(width: 4),
+              const Icon(Icons.auto_awesome,
+                  color: AppColors.primary, size: 14),
+              const SizedBox(width: 4),
               Text(
-                'Από την περιγραφή σου',
-                style: TextStyle(
+                'ltags.fromDescription'.tr(),
+                style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600),
@@ -236,14 +242,14 @@ class _ListingTagsWidgetState extends State<ListingTagsWidget> {
         // Trending tags
         if (_trending.isNotEmpty && _suggestions.isEmpty) ...[
           const SizedBox(height: 16),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.local_fire_department,
+              const Icon(Icons.local_fire_department,
                   color: AppColors.deal, size: 14),
-              SizedBox(width: 4),
+              const SizedBox(width: 4),
               Text(
-                'Δημοφιλή',
-                style: TextStyle(
+                'ltags.popular'.tr(),
+                style: const TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600),
@@ -323,7 +329,8 @@ class _SuggestionTile extends StatelessWidget {
                       color: AppColors.textPrimary, fontSize: 14)),
             ),
             Text(
-              '${suggestion.count} ${suggestion.count == 1 ? "αγγελία" : "αγγελίες"}',
+              'ltags.listingCount'
+                  .tr(namedArgs: {'n': '${suggestion.count}'}),
               style: const TextStyle(color: AppColors.textHint, fontSize: 11),
             ),
           ],

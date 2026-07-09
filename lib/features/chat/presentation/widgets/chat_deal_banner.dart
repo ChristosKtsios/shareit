@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
 import '../../../../core/utils/date_helpers.dart';
@@ -66,7 +67,7 @@ class _ChatDealBannerState extends State<ChatDealBanner> {
                   fontFeatures: const [FontFeature.tabularFigures()]),
             )
           else
-            Text('Αξιολόγησε →',
+            Text('dealbanner.rate'.tr(),
                 style: TextStyle(
                     color: color,
                     fontSize: 13,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 
@@ -17,7 +18,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   bool _loading = false;
   bool _agreed = false;
 
-  static const String _confirmWord = 'ΔΙΑΓΡΑΦΗ';
+  String get _confirmWord => 'delacc.confirmWord'.tr();
 
   @override
   void dispose() {
@@ -49,8 +50,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
 
         // GoRouter redirect θα πάει στο /login αυτόματα
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ο λογαριασμός σου διαγράφηκε.'),
+          SnackBar(
+            content: Text('delacc.deleted'.tr()),
             backgroundColor: AppColors.offer,
           ),
         );
@@ -62,8 +63,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Κάτι πήγε στραβά. Δοκίμασε ξανά.'),
+            SnackBar(
+              content: Text('delacc.somethingWrong'.tr()),
               backgroundColor: AppColors.danger,
             ),
           );
@@ -73,7 +74,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Σφάλμα: ${e.message ?? e.code}'),
+            content: Text('${'common.error'.tr()}: ${e.message ?? e.code}'),
             backgroundColor: AppColors.danger,
           ),
         );
@@ -82,7 +83,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Σφάλμα: $e'),
+            content: Text('${'common.error'.tr()}: $e'),
             backgroundColor: AppColors.danger,
           ),
         );
@@ -98,7 +99,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         _agreed && _confirmCtrl.text.trim().toUpperCase() == _confirmWord;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Διαγραφή λογαριασμού')),
+      appBar: AppBar(title: Text('settings.deleteAccount'.tr())),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -114,24 +115,23 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                   border: Border.all(
                       color: AppColors.danger.withValues(alpha: 0.4), width: 1),
                 ),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      Icon(Icons.warning_amber_rounded,
+                      const Icon(Icons.warning_amber_rounded,
                           color: AppColors.danger, size: 22),
-                      SizedBox(width: 8),
-                      Text('Προσοχή',
-                          style: TextStyle(
+                      const SizedBox(width: 8),
+                      Text('delacc.warning'.tr(),
+                          style: const TextStyle(
                               color: AppColors.danger,
                               fontSize: 16,
                               fontWeight: FontWeight.w700)),
                     ]),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
-                      'Η διαγραφή του λογαριασμού είναι μόνιμη και δεν '
-                      'μπορεί να αναιρεθεί.',
-                      style: TextStyle(
+                      'delacc.warningBodyShort'.tr(),
+                      style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 13,
                           height: 1.4),
@@ -141,19 +141,19 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
               ),
               const SizedBox(height: 20),
 
-              const Text('Τι θα διαγραφεί',
-                  style: TextStyle(
+              Text('delacc.whatDeleted'.tr(),
+                  style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
 
-              _DeleteItem('Όλες οι αγγελίες σου'),
-              _DeleteItem('Όλες οι συνομιλίες σου'),
-              _DeleteItem('Όλα τα deals και αξιολογήσεις'),
-              _DeleteItem('Οι φωτογραφίες προφίλ σου'),
-              _DeleteItem('Οι φιλίες και αιτήματα φιλίας'),
-              _DeleteItem('Τα στοιχεία του λογαριασμού σου'),
+              _DeleteItem('delacc.item1'.tr()),
+              _DeleteItem('delacc.item2'.tr()),
+              _DeleteItem('delacc.item3'.tr()),
+              _DeleteItem('delacc.item4'.tr()),
+              _DeleteItem('delacc.item5'.tr()),
+              _DeleteItem('delacc.item6'.tr()),
 
               const SizedBox(height: 24),
 
@@ -164,21 +164,21 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                   onChanged: (v) => setState(() => _agreed = v ?? false),
                   activeColor: AppColors.danger,
                 ),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Καταλαβαίνω ότι η διαγραφή είναι μόνιμη και δεν '
-                    'μπορεί να αναιρεθεί.',
-                    style:
-                        TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                    'delacc.understand'.tr(),
+                    style: const TextStyle(
+                        color: AppColors.textPrimary, fontSize: 13),
                   ),
                 ),
               ]),
 
               const SizedBox(height: 20),
 
-              const Text(
-                'Για επιβεβαίωση, πληκτρολόγησε «$_confirmWord»:',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              Text(
+                'delacc.typeToConfirm'.tr(namedArgs: {'word': _confirmWord}),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -186,7 +186,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 style: const TextStyle(color: AppColors.textPrimary),
                 onChanged: (_) => setState(() {}),
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: _confirmWord,
                 ),
               ),
@@ -208,8 +208,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                             color: Colors.white, strokeWidth: 2))
-                    : const Text('Διαγραφή λογαριασμού',
-                        style: TextStyle(
+                    : Text('settings.deleteAccount'.tr(),
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w600)),
               ),
               const SizedBox(height: 12),
@@ -217,8 +217,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
               Center(
                 child: TextButton(
                   onPressed: _loading ? null : () => context.pop(),
-                  child: const Text('Άκυρο',
-                      style: TextStyle(color: AppColors.textSecondary)),
+                  child: Text('common.cancel'.tr(),
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 ),
               ),
             ],

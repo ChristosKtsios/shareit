@@ -1,20 +1,24 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
     function isAuth()          { return request.auth != null; }
     function isOwner(uid)      { return request.auth.uid == uid; }
     function isParticipant()   { return request.auth.uid in resource.data.participants; }
-    function notBlocked(uid)   { return !(request.auth.uid in get(/databases/$(database)/documents/users/$(uid)).data.blockedUids); }
 
-    // Users
     match /users/{uid} {
       allow read:   if isAuth();
       allow create: if isOwner(uid);
-      allow update: if isOwner(uid);
+      allow update: if isOwner(uid)
+                    || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']));
     }
 
-    // Listings
+    match /friendRequests/{reqId} {
+      allow read:   if isAuth() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.fromUid == request.auth.uid;
+      allow update: if isAuth() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow delete: if isAuth() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+    }
+
     match /listings/{id} {
       allow read:   if isAuth();
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
@@ -23,43 +27,100 @@ service cloud.firestore {
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
 
-    // Chats
     match /chats/{chatId} {
       allow read, update: if isAuth() && isParticipant();
       allow create:       if isAuth();
+      allow delete:       if isAuth() && isParticipant();
       match /messages/{msgId} {
-        allow read:   if isAuth() && isParticipant();
-        allow create: if isAuth() && isParticipant() && request.resource.data.senderId == request.auth.uid;
+        allow read:   if isAuth() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        // Οι συμμετέχοντες μπορούν να ενημερώνουν ΜΟΝΟ read receipts / reactions.
+        // Και αν αλλάζει το reactions, επιτρέπεται να μεταβληθεί ΜΟΝΟ το δικό
+        // τους κλειδί (reactions[request.auth.uid]) — όχι αντιδράσεις άλλων.
+        allow update: if isAuth()
+                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+                      && (
+                        // (α) read receipts / reactions — κάθε συμμετέχων, αλλά
+                        //     στο reactions μόνο το ΔΙΚΟ του κλειδί.
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'reactions'])
+                          && (!('reactions' in request.resource.data.diff(resource.data).affectedKeys())
+                              || request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid])))
+                        // (β) επεξεργασία κειμένου ΜΟΝΟ από τον αποστολέα.
+                        || (resource.data.senderId == request.auth.uid
+                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt']))
+                      );
+        allow delete: if isAuth() && exists(/databases/$(database)/documents/chats/$(chatId))
+                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isAuth()
+                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+                      && request.resource.data.senderId == request.auth.uid
+                      && !(request.auth.uid in get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/chats/$(chatId)).data.participants[0])).data.get('blockedUids', []))
+                      && !(request.auth.uid in get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/chats/$(chatId)).data.participants[1])).data.get('blockedUids', []));
       }
     }
 
-    // Deals
     match /deals/{id} {
-      allow read:   if isAuth() && (resource.data.ownerUid == request.auth.uid || resource.data.seekerUid == request.auth.uid);
+      allow read:   if isAuth();
       allow create: if isAuth();
-      allow update: if isAuth() && (resource.data.ownerUid == request.auth.uid || resource.data.seekerUid == request.auth.uid);
+      // Συμμετέχων μπορεί να ενημερώσει. ΕΞΑΙΡΕΣΗ: μετάβαση σε 'cancelled'
+      // επιτρέπεται ΜΟΝΟ όταν το τρέχον status είναι 'pending' — δεν ακυρώνεται
+      // accepted/active/completed deal ακόμα κι από παρακαμμένο client.
+      allow update: if isAuth()
+                    && (resource.data.user1Uid == request.auth.uid || resource.data.user2Uid == request.auth.uid)
+                    && (request.resource.data.status != 'cancelled' || resource.data.status == 'pending');
+      allow delete: if isAuth() && (resource.data.user1Uid == request.auth.uid || resource.data.user2Uid == request.auth.uid);
     }
 
-    // Wall posts
     match /wallPosts/{id} {
-      allow read:  if isAuth();
+      allow read:   if isAuth();
       allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
+      // Author may edit; anyone else may only toggle likes or bump the comment count.
+      allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
+                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentsCount']));
+      allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
       match /comments/{cid} {
         allow read:   if isAuth();
-        allow create: if isAuth();
+        allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
+        // Comment author may edit/soft-delete; anyone else may only toggle likes or reactions.
+        allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
+                          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'reactions']));
+        allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
       }
     }
 
-    // Notifications — μόνο ο παραλήπτης
+    match /userPosts/{id} {
+      allow read:   if isAuth();
+      allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
+      // Author may edit; anyone else may only toggle likes or bump the comment count.
+      allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
+                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentsCount']));
+      allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
+      match /comments/{cid} {
+        allow read:   if isAuth();
+        allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
+        // Comment author may edit/delete; anyone else may only toggle likes or reactions.
+        allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
+                          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'reactions']));
+        allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
+      }
+    }
+
     match /notifications/{id} {
       allow read, update: if isAuth() && resource.data.targetUid == request.auth.uid;
       allow create:       if isAuth();
     }
 
-    // Reports — write only
+    match /tags/{tag} {
+      // Trending-tag counters. Any signed-in user may read them and bump the
+      // count when publishing a listing.
+      allow read:  if isAuth();
+      allow write: if isAuth();
+    }
+
     match /reports/{id} {
       allow create: if isAuth() && request.resource.data.reporterUid == request.auth.uid;
-      allow read:   if false;
+      // Reporters may read only their own reports (needed for client-side
+      // dedup). Counter/flag updates on the target happen server-side.
+      allow read:   if isAuth() && resource.data.reporterUid == request.auth.uid;
     }
   }
 }

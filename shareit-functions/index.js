@@ -2,7 +2,8 @@
  * ShareIt Cloud Functions - v2 με νέα δομή deal
  */
 
-const {onDocumentWritten} = require("firebase-functions/v2/firestore");
+const {onDocumentWritten, onDocumentCreated} =
+  require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
@@ -131,29 +132,39 @@ async function completeDeal(dealId, dealData) {
     return false;
   }
 
-  const batch = db.batch();
-
-  batch.update(db.collection("deals").doc(dealId), {
+  // Σημ.: το dealsCount ΔΕΝ αυξάνεται εδώ. Αυξάνεται μία φορά στο
+  // onDealUpdate όταν ανιχνευθεί η μετάβαση status → "completed", ώστε να
+  // μετριέται ακριβώς μία φορά ανεξάρτητα από ποιο path ολοκλήρωσε το deal.
+  await db.collection("deals").doc(dealId).update({
     status: "completed",
     completedAt: FieldValue.serverTimestamp(),
   });
 
-  batch.set(
-      db.collection("users").doc(user1Uid),
-      {dealsCount: FieldValue.increment(1)},
-      {merge: true},
-  );
-  batch.set(
-      db.collection("users").doc(user2Uid),
-      {dealsCount: FieldValue.increment(1)},
-      {merge: true},
-  );
-
-  await batch.commit();
   await markWallPostsCompleted(dealId);
 
   logger.info(`Deal ${dealId} ολοκληρώθηκε.`);
   return true;
+}
+
+/**
+ * Εφαρμόζει ένα rating στο προφίλ του target user (admin privileges).
+ *
+ * @param {string} targetUid Ο χρήστης που αξιολογείται
+ * @param {number} rating Το rating (1-5)
+ */
+async function applyRating(targetUid, rating) {
+  if (!targetUid || typeof rating !== "number") return;
+  const userRef = db.collection("users").doc(targetUid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists) return;
+    const d = snap.data() || {};
+    const cur = typeof d.rating === "number" ? d.rating : 0;
+    const cnt = typeof d.ratingCount === "number" ? d.ratingCount : 0;
+    const newCnt = cnt + 1;
+    const newAvg = ((cur * cnt) + rating) / newCnt;
+    tx.update(userRef, {rating: newAvg, ratingCount: newCnt});
+  });
 }
 
 exports.onDealUpdate = onDocumentWritten("deals/{dealId}", async (event) => {
@@ -162,6 +173,47 @@ exports.onDealUpdate = onDocumentWritten("deals/{dealId}", async (event) => {
 
   const before = event.data && event.data.before && event.data.before.data();
   const dealId = event.params.dealId;
+
+  // ── RATINGS ──────────────────────────────────────────────
+  // ownerRating = δόθηκε από user1 → εφαρμόζεται στον user2.
+  // seekerRating = δόθηκε από user2 → εφαρμόζεται στον user1.
+  // Εφαρμόζεται μόνο στη μετάβαση null → value (μία φορά ανά rating).
+  if (after.ownerRating != null && (!before || before.ownerRating == null)) {
+    try {
+      await applyRating(after.user2Uid, after.ownerRating);
+    } catch (e) {
+      logger.error(`applyRating(owner) ${dealId}: ${e.message}`);
+    }
+  }
+  if (after.seekerRating != null && (!before || before.seekerRating == null)) {
+    try {
+      await applyRating(after.user1Uid, after.seekerRating);
+    } catch (e) {
+      logger.error(`applyRating(seeker) ${dealId}: ${e.message}`);
+    }
+  }
+
+  // ── dealsCount ───────────────────────────────────────────
+  // Αυξάνεται ΜΙΑ φορά στη μετάβαση status → "completed", ανεξάρτητα από το
+  // ποιο path (onDealUpdate expiry, scheduler, κ.λπ.) ολοκλήρωσε το deal.
+  const wasCompleted = before && before.status === "completed";
+  const isCompleted = after.status === "completed";
+  if (isCompleted && !wasCompleted) {
+    try {
+      const batch = db.batch();
+      if (after.user1Uid) {
+        batch.set(db.collection("users").doc(after.user1Uid),
+            {dealsCount: FieldValue.increment(1)}, {merge: true});
+      }
+      if (after.user2Uid) {
+        batch.set(db.collection("users").doc(after.user2Uid),
+            {dealsCount: FieldValue.increment(1)}, {merge: true});
+      }
+      await batch.commit();
+    } catch (e) {
+      logger.error(`dealsCount increment ${dealId}: ${e.message}`);
+    }
+  }
 
   const wasActive = before && before.status === "active";
   const isActive = after.status === "active";
@@ -189,6 +241,52 @@ exports.onDealUpdate = onDocumentWritten("deals/{dealId}", async (event) => {
 
   return null;
 });
+
+const REPORT_AUTO_HIDE_THRESHOLD = 3;
+
+/**
+ * Όταν δημιουργείται report, αυξάνει τον counter στο target (listing ή user)
+ * και κάνει auto-hide στο listing όταν περάσει το threshold. Τρέχει με admin
+ * privileges γιατί ο reporter δεν επιτρέπεται να γράψει σε ξένο doc.
+ */
+exports.onReportCreated = onDocumentCreated(
+    "reports/{reportId}",
+    async (event) => {
+      const data = event.data && event.data.data();
+      if (!data) return null;
+
+      const listingId = data.listingId;
+      const targetUid = data.targetUid;
+
+      try {
+        if (listingId) {
+          const ref = db.collection("listings").doc(listingId);
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            if (!snap.exists) return;
+            const count = ((snap.data().reportCount || 0)) + 1;
+            const update = {reportCount: count, isReported: true};
+            if (count >= REPORT_AUTO_HIDE_THRESHOLD) {
+              update.isHidden = true;
+              update.hiddenReason = "auto_threshold";
+            }
+            tx.update(ref, update);
+          });
+        } else if (targetUid) {
+          const ref = db.collection("users").doc(targetUid);
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            if (!snap.exists) return;
+            const count = ((snap.data().reportCount || 0)) + 1;
+            tx.update(ref, {reportCount: count, isReported: true});
+          });
+        }
+      } catch (e) {
+        logger.error(`onReportCreated ${event.params.reportId}: ${e.message}`);
+      }
+      return null;
+    },
+);
 
 exports.checkExpiredDeals = onSchedule(
     {schedule: "every 1 hours", timeZone: "Europe/Athens"},

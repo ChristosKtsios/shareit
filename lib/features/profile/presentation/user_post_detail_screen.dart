@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -100,10 +101,10 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     UserPostCard(post: post),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(20, 12, 20, 8),
-                      child: Text('Σχόλια',
-                          style: TextStyle(
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                      child: Text('userPost.comments'.tr(),
+                          style: const TextStyle(
                               color: AppColors.textPrimary,
                               fontSize: 14,
                               fontWeight: FontWeight.w700)),
@@ -123,19 +124,25 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
                         }
                         final comments = csnap.data!;
                         if (comments.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.all(20),
+                          return Padding(
+                            padding: const EdgeInsets.all(20),
                             child: Center(
-                              child: Text('Δεν υπάρχουν σχόλια ακόμα.',
-                                  style: TextStyle(
+                              child: Text('userPost.noComments'.tr(),
+                                  style: const TextStyle(
                                       color: AppColors.textHint,
                                       fontSize: 12)),
                             ),
                           );
                         }
-                        // Top-level: σχόλια χωρίς parent
-                        final topLevel =
-                            comments.where((c) => c.parentCommentId == null).toList();
+                        // Top-level: σχόλια χωρίς parent — ΚΑΙ απαντήσεις των
+                        // οποίων ο parent διαγράφηκε (αλλιώς θα «χάνονταν» και
+                        // δεν θα ταίριαζε το commentsCount).
+                        final ids = comments.map((c) => c.id).toSet();
+                        final topLevel = comments
+                            .where((c) =>
+                                c.parentCommentId == null ||
+                                !ids.contains(c.parentCommentId))
+                            .toList();
                         return Column(
                           children: topLevel.map((c) {
                             final replies = comments
@@ -179,7 +186,9 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
               const Icon(Icons.reply, size: 14, color: AppColors.textHint),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('Απάντηση στον $_replyToAuthorName',
+                child: Text(
+                    'userPost.replyingTo'
+                        .tr(namedArgs: {'name': '$_replyToAuthorName'}),
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 12)),
               ),
@@ -222,8 +231,9 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
                     maxLines: 4,
                     decoration: InputDecoration(
                       hintText: _replyToCommentId != null
-                          ? 'Απάντηση στον $_replyToAuthorName...'
-                          : 'Γράψε ένα σχόλιο...',
+                          ? 'userPost.replyingToHint'
+                              .tr(namedArgs: {'name': '$_replyToAuthorName'})
+                          : 'userPost.writeComment'.tr(),
                       hintStyle: const TextStyle(
                           color: AppColors.textHint, fontSize: 14),
                       border: InputBorder.none,
@@ -308,7 +318,9 @@ class _CommentTile extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
+                GestureDetector(
+                  onLongPress: () => _showReactionsPicker(context, currentUid),
+                  child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
@@ -338,7 +350,49 @@ class _CommentTile extends ConsumerWidget {
                               height: 1.3)),
                     ],
                   ),
-                ),
+                ),),
+                // Reactions display
+                if (comment.reactions.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, left: 8),
+                    child: Wrap(
+                      spacing: 4,
+                      children: comment.reactions.entries.map((entry) {
+                        final emoji = entry.key;
+                        final users = entry.value;
+                        if (users.isEmpty) return const SizedBox.shrink();
+                        return GestureDetector(
+                          onTap: currentUid == null
+                              ? null
+                              : () => UserPostRepository().toggleCommentReaction(
+                                    postId: postId,
+                                    commentId: comment.id,
+                                    uid: currentUid,
+                                    emoji: emoji,
+                                  ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: AppColors.border, width: 0.5),
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Text(emoji,
+                                  style: const TextStyle(fontSize: 11)),
+                              const SizedBox(width: 3),
+                              Text('${users.length}',
+                                  style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 10)),
+                            ]),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 // Actions row: Like + Reply + count
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 8),
@@ -371,8 +425,8 @@ class _CommentTile extends ConsumerWidget {
                     const SizedBox(width: 14),
                     GestureDetector(
                       onTap: onReply,
-                      child: const Text('Απάντηση',
-                          style: TextStyle(
+                      child: Text('userPost.reply'.tr(),
+                          style: const TextStyle(
                               color: AppColors.textHint,
                               fontSize: 11,
                               fontWeight: FontWeight.w600)),
@@ -392,6 +446,36 @@ class _CommentTile extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showReactionsPicker(BuildContext ctx, String? uid) {
+    if (uid == null) return;
+    showModalBottomSheet(
+      context: ctx,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: ['👍', '❤️', '😂', '😮', '😢', '🔥'].map((e) {
+            return GestureDetector(
+              onTap: () {
+                UserPostRepository().toggleCommentReaction(
+                  postId: postId,
+                  commentId: comment.id,
+                  uid: uid,
+                  emoji: e,
+                );
+                Navigator.pop(ctx);
+              },
+              child: Text(e, style: const TextStyle(fontSize: 28)),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

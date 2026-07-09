@@ -22,6 +22,7 @@ class WallPostModel {
   final String dealStatus;
   final List<String> allowedCommenters;
   final int commentsCount;
+  final List<String> likes;
   final DateTime createdAt;
   final DateTime? completedAt;
 
@@ -47,6 +48,7 @@ class WallPostModel {
     required this.dealStatus,
     required this.allowedCommenters,
     required this.commentsCount,
+    this.likes = const [],
     required this.createdAt,
     this.completedAt,
   });
@@ -92,6 +94,7 @@ class WallPostModel {
       allowedCommenters:
           List<String>.from(d['allowedCommenters'] as List? ?? []),
       commentsCount: (d['commentsCount'] as num?)?.toInt() ?? 0,
+      likes: List<String>.from(d['likes'] ?? []),
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       completedAt: (d['completedAt'] as Timestamp?)?.toDate(),
     );

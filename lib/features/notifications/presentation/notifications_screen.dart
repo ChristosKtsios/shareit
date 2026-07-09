@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,26 +18,26 @@ class NotificationsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ειδοποιήσεις'),
+        title: Text('notif.title'.tr()),
         actions: [
           TextButton(
             onPressed: () => markAllRead(uid),
-            child: const Text('Όλα διαβασμένα',
-                style: TextStyle(color: AppColors.primary, fontSize: 13)),
+            child: Text('notif.allRead'.tr(),
+                style: const TextStyle(color: AppColors.primary, fontSize: 13)),
           ),
         ],
       ),
       body: notificationsAsync.when(
         loading: () => const Center(
             child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (_, __) => const Center(
-            child: Text('Σφάλμα φόρτωσης.',
-                style: TextStyle(color: AppColors.textSecondary))),
+        error: (_, __) => Center(
+            child: Text('notif.loadError'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary))),
         data: (notifications) {
           if (notifications.isEmpty) {
-            return const Center(
-              child: Text('Δεν υπάρχουν ειδοποιήσεις.',
-                  style: TextStyle(color: AppColors.textSecondary)));
+            return Center(
+              child: Text('notif.empty'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary)));
           }
           return ListView.separated(
             itemCount: notifications.length,
@@ -84,7 +85,7 @@ class _NotificationTile extends StatelessWidget {
         ),
         child: Icon(_icon, color: AppColors.primary, size: 20),
       ),
-      title: Text(notification.title,
+      title: Text(notification.type.title,
           style: TextStyle(
             color: AppColors.textPrimary,
             fontSize: 13,

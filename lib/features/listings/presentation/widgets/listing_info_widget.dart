@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -73,8 +74,8 @@ class ListingInfoWidget extends StatelessWidget {
                             fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 2),
-                      const Text('Δες το προφίλ',
-                          style: TextStyle(
+                      Text('linfo.viewProfile'.tr(),
+                          style: const TextStyle(
                               color: AppColors.primary, fontSize: 12)),
                     ],
                   ),
@@ -99,7 +100,8 @@ class ListingInfoWidget extends StatelessWidget {
       // Ημερομηνία δημιουργίας
       _InfoRow(
         icon: Icons.access_time,
-        text: 'Δημοσιεύτηκε ${DateHelpers.timeAgo(listing.createdAt)}',
+        text: 'linfo.postedAgo'
+            .tr(namedArgs: {'t': DateHelpers.timeAgo(listing.createdAt)}),
         color: AppColors.textSecondary,
       ),
 
@@ -108,10 +110,11 @@ class ListingInfoWidget extends StatelessWidget {
         const SizedBox(height: 8),
         _InfoRow(
           icon: Icons.event_outlined,
-          text: 'Διαθέσιμο ως '
-              '${listing.availableUntil!.day}/'
-              '${listing.availableUntil!.month}/'
-              '${listing.availableUntil!.year}',
+          text: 'linfo.availableUntil'.tr(namedArgs: {
+            'd': '${listing.availableUntil!.day}/'
+                '${listing.availableUntil!.month}/'
+                '${listing.availableUntil!.year}'
+          }),
           color: AppColors.deal,
         ),
       ],

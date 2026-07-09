@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/services/location_permission_gate.dart';
 import '../../listings/data/listing_model.dart';
 import '../../listings/data/listing_repository.dart';
 import '../../search/presentation/widgets/search_filters_widget.dart';
@@ -10,7 +12,7 @@ class FeedState {
   final String? tagFilter;
   final ListingType? type;
   final SearchSort sort;
-  final SearchDistance distance;
+  final double distanceKm; // ακτίνα φίλτρου σε χλμ (1–100)
   final Position? userPosition;
   final bool isLoading;
   final bool hasMore;
@@ -21,7 +23,7 @@ class FeedState {
     this.tagFilter,
     this.type,
     this.sort = SearchSort.recent,
-    this.distance = SearchDistance.all,
+    this.distanceKm = 100,
     this.userPosition,
     this.isLoading = false,
     this.hasMore = true,
@@ -29,16 +31,20 @@ class FeedState {
   });
 
   List<ListingModel> get filtered {
-    var list = listings;
+    // Αντίγραφο: το state.listings μπορεί να είναι const [] (unmodifiable) και
+    // το sort() παρακάτω θα το τροποποιούσε in-place → «Cannot modify an
+    // unmodifiable list». Το copy το κάνει πάντα modifiable ΚΑΙ προστατεύει το
+    // state από in-place μετάλλαξη.
+    var list = [...listings];
 
     if (type != null) list = list.where((l) => l.type == type).toList();
     if (tagFilter != null) {
       list = list.where((l) => l.tags.contains(tagFilter)).toList();
     }
 
-    if (distance != SearchDistance.all &&
-        userPosition != null &&
-        distance.km != null) {
+    // Φίλτρο απόστασης: εφαρμόζεται όταν έχουμε θέση χρήστη. Το distanceKm είναι
+    // πάντα εντός 1–100 (όρια slider), οπότε δεν φορτώνει υπερβολικά δεδομένα.
+    if (userPosition != null) {
       list = list.where((l) {
         final dist = Geolocator.distanceBetween(
           userPosition!.latitude,
@@ -46,7 +52,7 @@ class FeedState {
           l.location.latitude,
           l.location.longitude,
         );
-        return dist <= (distance.km! * 1000);
+        return dist <= (distanceKm * 1000);
       }).toList();
     }
 
@@ -70,7 +76,7 @@ class FeedState {
     String? tagFilter,
     ListingType? type,
     SearchSort? sort,
-    SearchDistance? distance,
+    double? distanceKm,
     Position? userPosition,
     bool? isLoading,
     bool? hasMore,
@@ -84,7 +90,7 @@ class FeedState {
         tagFilter: clearTag ? null : (tagFilter ?? this.tagFilter),
         type: clearType ? null : (type ?? this.type),
         sort: sort ?? this.sort,
-        distance: distance ?? this.distance,
+        distanceKm: distanceKm ?? this.distanceKm,
         userPosition: userPosition ?? this.userPosition,
         isLoading: isLoading ?? this.isLoading,
         hasMore: hasMore ?? this.hasMore,
@@ -95,28 +101,41 @@ class FeedState {
 class FeedNotifier extends StateNotifier<FeedState> {
   final _repo = ListingRepository();
 
+  static const _distancePrefKey = 'feed_distance_km';
+
   FeedNotifier() : super(const FeedState()) {
     _init();
   }
 
   Future<void> _init() async {
+    await _loadDistance();
     await _loadLocation();
     await loadFirstPage();
+  }
+
+  /// Φόρτωση της τελευταίας αποθηκευμένης απόστασης (persist). Clamp στα όρια
+  /// 1–100 για ασφάλεια, ώστε να μη φορτώνει υπερβολικά δεδομένα.
+  Future<void> _loadDistance() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final km = prefs.getDouble(_distancePrefKey);
+      if (km != null) {
+        state = state.copyWith(distanceKm: km.clamp(1.0, 100.0));
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadLocation() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return;
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
+      final perm = await LocationPermissionGate.ensure();
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) {
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
+          locationSettings:
+              const LocationSettings(accuracy: LocationAccuracy.high));
       state = state.copyWith(userPosition: pos);
     } catch (_) {}
   }
@@ -129,7 +148,7 @@ class FeedNotifier extends StateNotifier<FeedState> {
     state = state.copyWith(
       listings: result.listings,
       lastDoc: result.lastDoc,
-      hasMore: result.listings.length >= 20,
+      hasMore: result.fetched >= 20,
       isLoading: false,
     );
   }
@@ -143,7 +162,7 @@ class FeedNotifier extends StateNotifier<FeedState> {
     state = state.copyWith(
       listings: [...state.listings, ...result.listings],
       lastDoc: result.lastDoc,
-      hasMore: result.listings.length >= 20,
+      hasMore: result.fetched >= 20,
       isLoading: false,
     );
   }
@@ -160,8 +179,13 @@ class FeedNotifier extends StateNotifier<FeedState> {
     state = state.copyWith(sort: s);
   }
 
-  void setDistance(SearchDistance d) {
-    state = state.copyWith(distance: d);
+  Future<void> setDistance(double km) async {
+    final clamped = km.clamp(1.0, 100.0);
+    state = state.copyWith(distanceKm: clamped);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_distancePrefKey, clamped);
+    } catch (_) {}
   }
 
   Future<void> refresh() => loadFirstPage();

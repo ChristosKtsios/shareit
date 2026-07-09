@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -20,14 +20,16 @@ class EditListingScreen extends ConsumerStatefulWidget {
   final String listingId;
   const EditListingScreen({super.key, required this.listingId});
   @override
-  ConsumerState<EditListingScreen> createState() =>
-      _EditListingScreenState();
+  ConsumerState<EditListingScreen> createState() => _EditListingScreenState();
 }
 
 class _EditListingScreenState extends ConsumerState<EditListingScreen> {
   ListingType _type = ListingType.offer;
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _tagCtrl = TextEditingController();
+  final List<String> _tags = [];
+  static const _maxTags = 5;
 
   DateTime? _availableFrom;
   DateTime? _availableUntil;
@@ -45,28 +47,43 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchLocation();
+    // ΔΕΝ κάνουμε auto-fetch τοποθεσίας εδώ — η αγγελία έχει ήδη τοποθεσία που
+    // φορτώνει το _loadListing. Ο χρήστης την αλλάζει με το _openLocationPicker.
     _loadListing();
   }
 
   Future<void> _loadListing() async {
     final listing = await ListingRepository().getById(widget.listingId);
-    if (listing == null || !mounted) return;
+    if (!mounted) return;
+    if (listing == null) {
+      setState(() => _locationLoading = false);
+      return;
+    }
     setState(() {
       _titleCtrl.text = listing.title;
       _descCtrl.text = listing.description;
       _type = listing.type;
       _imageUrls = List<String>.from(listing.imageUrls);
+      _tags
+        ..clear()
+        ..addAll(listing.tags);
       _location = listing.location;
       _locationLabel = listing.locationLabel;
       _locationLoading = false;
-      _availableFrom = listing.availableFrom;
-      _availableUntil = listing.availableUntil;
+      // FIX: ξεχωρίζουμε ημερομηνία από ώρα — μόνο αν το listing είχε ώρα
       if (listing.availableFrom != null) {
-        _fromTime = TimeOfDay.fromDateTime(listing.availableFrom!);
+        final d = listing.availableFrom!;
+        _availableFrom = DateTime(d.year, d.month, d.day);
+        if (listing.hasFromTime) {
+          _fromTime = TimeOfDay(hour: d.hour, minute: d.minute);
+        }
       }
       if (listing.availableUntil != null) {
-        _untilTime = TimeOfDay.fromDateTime(listing.availableUntil!);
+        final d = listing.availableUntil!;
+        _availableUntil = DateTime(d.year, d.month, d.day);
+        if (listing.hasUntilTime) {
+          _untilTime = TimeOfDay(hour: d.hour, minute: d.minute);
+        }
       }
     });
   }
@@ -75,30 +92,27 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
+    _tagCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchLocation() async {
-    setState(() => _locationLoading = true);
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-      if (mounted) {
-        setState(() {
-          _location = GeoPoint(pos.latitude, pos.longitude);
-          _locationLabel = 'Τρέχουσα τοποθεσία';
-          _locationLoading = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _locationLabel = 'Δεν βρέθηκε τοποθεσία';
-          _locationLoading = false;
-        });
-      }
+  void _addTag(String raw) {
+    final tag = raw
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'^#+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (tag.isEmpty || tag.length > 20) return;
+    if (_tags.contains(tag) || _tags.length >= _maxTags) {
+      _tagCtrl.clear();
+      return;
     }
+    setState(() => _tags.add(tag));
+    _tagCtrl.clear();
   }
+
+  void _removeTag(String tag) => setState(() => _tags.remove(tag));
 
   Future<void> _openLocationPicker() async {
     final current = _location != null
@@ -120,7 +134,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
 
   Future<void> _pickImage() async {
     if (_imageUrls.length >= 5) {
-      _snack('Μέγιστος αριθμός φωτογραφιών: 5');
+      _snack('cl.maxPhotos'.tr());
       return;
     }
 
@@ -142,9 +156,9 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 14, 20, 14),
-              child: Text('Πρόσθεσε φωτογραφία',
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
+              child: Text('cl.addPhoto'.tr(),
                   style: TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 16,
@@ -152,21 +166,21 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt, color: AppColors.primary),
-              title: const Text('Τράβηξε φωτογραφία',
+              title: Text('cl.takePhoto'.tr(),
                   style: TextStyle(color: AppColors.textPrimary)),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
             ListTile(
               leading:
                   const Icon(Icons.photo_library, color: AppColors.primary),
-              title: const Text('Επίλεξε από γκαλερί',
+              title: Text('cl.pickGallery'.tr(),
                   style: TextStyle(color: AppColors.textPrimary)),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Άκυρο',
+              child: Text('common.cancel'.tr(),
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             const SizedBox(height: 8),
@@ -191,7 +205,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       final url = await ref2.getDownloadURL();
       setState(() => _imageUrls = [..._imageUrls, url]);
     } catch (e) {
-      _snack('Σφάλμα: $e');
+      _snack('${'common.error'.tr()}: $e');
     } finally {
       if (mounted) setState(() => _uploadingImage = false);
     }
@@ -279,7 +293,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
 
   Future<void> _publish() async {
     if (_titleCtrl.text.trim().isEmpty) {
-      _snack('Γράψε τίτλο για την αγγελία.');
+      _snack('cl.writeTitle'.tr());
       return;
     }
     if (_location == null) {
@@ -287,10 +301,14 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       return;
     }
 
-    final from = _availableFrom;
-    final until = _availableUntil;
-    if (until != null && from != null && until.isBefore(from)) {
-      _snack('Η λήξη δεν μπορεί να είναι πριν την έναρξη.');
+    // FIX: validation με ΠΛΗΡΕΣ DateTime (ημερομηνία + ώρα)
+    final combinedFrom = _combineDateTime(_availableFrom, _fromTime);
+    final combinedUntil = _combineDateTime(_availableUntil, _untilTime);
+
+    if (combinedUntil != null &&
+        combinedFrom != null &&
+        combinedUntil.isBefore(combinedFrom)) {
+      _snack('cl.endBeforeStart'.tr());
       return;
     }
 
@@ -329,12 +347,12 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       title: title,
       description: desc,
       imageUrls: _imageUrls,
-      tags: const [],
+      tags: _tags,
       searchKeywords: keywords,
       location: _location!,
       locationLabel: _locationLabel,
-      availableFrom: _combineDateTime(_availableFrom, _fromTime),
-      availableUntil: _combineDateTime(_availableUntil, _untilTime),
+      availableFrom: combinedFrom,
+      availableUntil: combinedUntil,
       hasFromTime: _fromTime != null,
       hasUntilTime: _untilTime != null,
       autoDelete: effectiveAutoDelete,
@@ -347,7 +365,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       await ListingRepository().updateListing(widget.listingId, listing);
 
       if (mounted) {
-        _snack('Η αγγελία δημοσιεύθηκε!');
+        _snack('cl.updated'.tr());
         context.pop();
       }
     } catch (e) {
@@ -378,15 +396,14 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // SECTION 1: ΤΥΠΟΣ
-              const _SectionHeader(
-                  icon: Icons.swap_horiz, title: '1. Τι θέλεις να κάνεις;'),
+              _SectionHeader(
+                  icon: Icons.swap_horiz, title: 'cl.step1'.tr()),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
                   child: _BigTypeChip(
                       emoji: '🤲',
-                      label: 'Προσφέρω',
+                      label: AppStrings.offer,
                       selected: _type == ListingType.offer,
                       color: AppColors.offer,
                       onTap: () => setState(() => _type = ListingType.offer)),
@@ -395,23 +412,21 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                 Expanded(
                   child: _BigTypeChip(
                       emoji: '🔍',
-                      label: 'Αναζητώ',
+                      label: AppStrings.seek,
                       selected: _type == ListingType.seek,
                       color: AppColors.seek,
                       onTap: () => setState(() => _type = ListingType.seek)),
                 ),
               ]),
-
               const SizedBox(height: 28),
-
-              // SECTION 2: ΒΑΣΙΚΑ
               _SectionHeader(
                   icon: Icons.edit_note,
                   title:
-                      '2. Πες μας τι ${_type == ListingType.offer ? "προσφέρεις" : "ψάχνεις"}'),
+                      _type == ListingType.offer
+                          ? 'cl.step2Offer'.tr()
+                          : 'cl.step2Seek'.tr()),
               const SizedBox(height: 12),
-
-              const Text('Τίτλος *',
+              Text('cl.titleLabel'.tr(),
                   style:
                       TextStyle(color: AppColors.textSecondary, fontSize: 13)),
               const SizedBox(height: 6),
@@ -421,19 +436,18 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                 maxLength: 80,
                 decoration: InputDecoration(
                   hintText: _type == ListingType.offer
-                      ? 'π.χ. Δανείζω εργαλεία'
-                      : 'π.χ. Ψάχνω βοήθεια για μετακόμιση',
+                      ? 'cl.titleHintOffer'.tr()
+                      : 'cl.titleHintSeek'.tr(),
                   counterText: '',
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Ο τίτλος θα εμφανίζεται στον χάρτη',
+              Text(
+                'cl.titleHelp'.tr(),
                 style: TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
               const SizedBox(height: 16),
-
-              const Text(AppStrings.description,
+              Text(AppStrings.description,
                   style:
                       TextStyle(color: AppColors.textSecondary, fontSize: 13)),
               const SizedBox(height: 6),
@@ -442,22 +456,63 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                 maxLines: 5,
                 maxLength: 500,
                 style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                     hintText:
-                        'Γράψε λεπτομέρειες — τι ακριβώς, κατάσταση, όροι...'),
+                        'cl.descHint'.tr()),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Συμβουλή: γράψε λέξεις-κλειδιά στην περιγραφή για να σε βρίσκουν εύκολα στην αναζήτηση.',
+              Text(
+                'cl.descTip'.tr(),
                 style: TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 16),
 
-              // SECTION 3: ΦΩΤΟΓΡΑΦΙΕΣ
+              Text('cl.tagsLabel'.tr(namedArgs: {'max': '$_maxTags'}),
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 6),
+              if (_tags.length < _maxTags)
+                TextField(
+                  controller: _tagCtrl,
+                  style: const TextStyle(color: AppColors.textPrimary),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: _addTag,
+                  decoration: InputDecoration(
+                    hintText: 'cl.tagsHint'.tr(),
+                    prefixIcon: const Icon(Icons.tag,
+                        color: AppColors.textSecondary, size: 20),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.add, color: AppColors.primary),
+                      onPressed: () => _addTag(_tagCtrl.text),
+                    ),
+                  ),
+                ),
+              if (_tags.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _tags
+                      .map((t) => Chip(
+                            label: Text('#$t',
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13)),
+                            backgroundColor: AppColors.surfaceVariant,
+                            deleteIconColor: AppColors.textSecondary,
+                            onDeleted: () => _removeTag(t),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ))
+                      .toList(),
+                ),
+              ],
+
+              const SizedBox(height: 28),
               _SectionHeader(
                   icon: Icons.photo_library_outlined,
-                  title: '3. Φωτογραφίες',
+                  title: 'cl.step3'.tr(),
                   trailing: Text('${_imageUrls.length}/5',
                       style: const TextStyle(
                           color: AppColors.textHint, fontSize: 12))),
@@ -499,12 +554,9 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                   },
                 ),
               ),
-
               const SizedBox(height: 28),
-
-              // SECTION 4: ΤΟΠΟΘΕΣΙΑ
-              const _SectionHeader(
-                  icon: Icons.location_on_outlined, title: '4. Τοποθεσία'),
+              _SectionHeader(
+                  icon: Icons.location_on_outlined, title: 'cl.step4'.tr()),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(
@@ -539,7 +591,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                       Expanded(
                           child: Text(
                         _locationLoading
-                            ? 'Εντοπισμός τοποθεσίας...'
+                            ? 'cl.locating'.tr()
                             : _locationLabel,
                         style: TextStyle(
                             color: _locationLoading
@@ -561,11 +613,11 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: AppColors.primary, width: 1),
                     ),
-                    child: const Row(children: [
-                      Icon(Icons.map_outlined,
+                    child: Row(children: [
+                      const Icon(Icons.map_outlined,
                           color: AppColors.primary, size: 18),
-                      SizedBox(width: 6),
-                      Text('Χάρτης',
+                      const SizedBox(width: 6),
+                      Text('nav.map'.tr(),
                           style: TextStyle(
                               color: AppColors.primary,
                               fontSize: 13,
@@ -574,22 +626,18 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                   ),
                 ),
               ]),
-
               const SizedBox(height: 28),
-
-              // SECTION 5: ΔΙΑΘΕΣΙΜΟΤΗΤΑ
-              const _SectionHeader(
+              _SectionHeader(
                   icon: Icons.event_outlined,
-                  title: '5. Διαθεσιμότητα (προαιρετικό)'),
+                  title: 'cl.step5'.tr()),
               const SizedBox(height: 4),
-              const Text(
-                'Πες από πότε μέχρι πότε είσαι διαθέσιμος.',
+              Text(
+                'cl.availHelp'.tr(),
                 style: TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
               const SizedBox(height: 12),
-
               _AvailabilityRow(
-                label: 'Από',
+                label: 'cl.from'.tr(),
                 date: _availableFrom,
                 time: _fromTime,
                 onPickDate: () => _pickDate(isFrom: true),
@@ -603,9 +651,8 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                 formatTime: _formatTime,
               ),
               const SizedBox(height: 10),
-
               _AvailabilityRow(
-                label: 'Έως',
+                label: 'cl.until'.tr(),
                 date: _availableUntil,
                 time: _untilTime,
                 onPickDate: () => _pickDate(isFrom: false),
@@ -619,9 +666,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                 formatDate: _formatDate,
                 formatTime: _formatTime,
               ),
-
               const SizedBox(height: 12),
-
               Opacity(
                 opacity: canAutoDelete ? 1.0 : 0.5,
                 child: Row(children: [
@@ -638,14 +683,14 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(AppStrings.autoDelete,
+                        Text(AppStrings.autoDelete,
                             style: TextStyle(
                                 color: AppColors.textSecondary, fontSize: 13)),
                         if (!canAutoDelete)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 2),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
                             child: Text(
-                              'Διαθέσιμο μόνο αν βάλεις ημερομηνία λήξης.',
+                              'cl.autoDeleteHelp'.tr(),
                               style: TextStyle(
                                   color: AppColors.textHint, fontSize: 11),
                             ),
@@ -655,9 +700,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                   ),
                 ]),
               ),
-
               const SizedBox(height: 32),
-
               ElevatedButton(
                 onPressed: _loading || _locationLoading ? null : _publish,
                 child: _loading
@@ -666,7 +709,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                         width: 20,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: AppColors.background))
-                    : const Text(AppStrings.publish),
+                    : Text(AppStrings.publish),
               ),
             ],
           ),
@@ -733,7 +776,7 @@ class _AvailabilityRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    date != null ? formatDate(date!) : 'Ημερομηνία',
+                    date != null ? formatDate(date!) : 'cl.date'.tr(),
                     style: TextStyle(
                         color: date != null
                             ? AppColors.textPrimary
@@ -778,7 +821,7 @@ class _AvailabilityRow extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    time != null ? formatTime(time!) : 'Ώρα',
+                    time != null ? formatTime(time!) : 'cl.time'.tr(),
                     style: TextStyle(
                         color: time != null
                             ? AppColors.textPrimary
@@ -896,13 +939,13 @@ class _AddPhotoButton extends StatelessWidget {
               ? const Center(
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: AppColors.primary))
-              : const Column(
+              : Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                      Icon(Icons.add_photo_alternate_outlined,
+                      const Icon(Icons.add_photo_alternate_outlined,
                           color: AppColors.primary, size: 28),
-                      SizedBox(height: 4),
-                      Text('Πρόσθεσε\nφωτογραφία',
+                      const SizedBox(height: 4),
+                      Text('cl.addPhotoMultiline'.tr(),
                           style: TextStyle(
                               color: AppColors.textHint, fontSize: 10),
                           textAlign: TextAlign.center),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../../../core/services/location_permission_gate.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/listing_card.dart';
@@ -32,21 +34,24 @@ class SearchResultsWidget extends StatelessWidget {
         const SizedBox(height: 16),
         ElevatedButton(
           onPressed: () => notifier.search(state.query),
-          child: const Text('Δοκίμασε ξανά'),
+          child: Text('srch.tryAgain'.tr()),
         ),
       ]));
     }
 
-    if (state.query.isEmpty) {
-      return const Center(child: Column(
+    // Prompt μόνο όταν δεν υπάρχει ΤΙΠΟΤΑ προς αναζήτηση — ίδια λογική με το
+    // search() (query ΚΑΙ tags κενά). Αλλιώς (π.χ. tag-only search) θα κρύβαμε
+    // αποτελέσματα ενώ ο μετρητής θα έδειχνε «1 αποτέλεσμα».
+    if (state.query.isEmpty && state.tags.isEmpty) {
+      return Center(child: Column(
         mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.search, color: AppColors.textHint, size: 48),
-        SizedBox(height: 12),
-        Text('Γράψε κάτι για να ψάξεις.',
-            style: TextStyle(color: AppColors.textHint)),
-        SizedBox(height: 8),
-        Text('π.χ. σκύλος, τρυπάνι, μαθήματα...',
-            style: TextStyle(
+        const Icon(Icons.search, color: AppColors.textHint, size: 48),
+        const SizedBox(height: 12),
+        Text('srch.searchPrompt'.tr(),
+            style: const TextStyle(color: AppColors.textHint)),
+        const SizedBox(height: 8),
+        Text('srch.searchExamples'.tr(),
+            style: const TextStyle(
                 color: AppColors.textHint, fontSize: 12)),
       ]));
     }
@@ -57,14 +62,14 @@ class SearchResultsWidget extends StatelessWidget {
         const Icon(Icons.search_off,
             color: AppColors.textHint, size: 48),
         const SizedBox(height: 12),
-        Text('Δεν βρέθηκαν αγγελίες για "${state.query}"',
+        Text('srch.noResults'.tr(namedArgs: {'q': state.query}),
             style: const TextStyle(
                 color: AppColors.textSecondary),
             textAlign: TextAlign.center),
         const SizedBox(height: 8),
-        const Text(
-          'Δοκίμασε διαφορετικές λέξεις ή αύξησε την απόσταση.',
-          style: TextStyle(
+        Text(
+          'srch.noResultsHint'.tr(),
+          style: const TextStyle(
               color: AppColors.textHint, fontSize: 12),
           textAlign: TextAlign.center),
       ]));
@@ -104,13 +109,21 @@ class SearchResultsWidget extends StatelessWidget {
   Future<Position?> _getCurrentPosition() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-        if (perm == LocationPermission.denied) return null;
+      final perm = await LocationPermissionGate.ensure();
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return null;
       }
-      if (perm == LocationPermission.deniedForever) return null;
-      return await Geolocator.getCurrentPosition();
+      // Γρήγορο: τελευταία γνωστή θέση (ακαριαία) για την εμφάνιση απόστασης
+      // στις κάρτες — αν λείπει, πέφτουμε σε medium fix με timeout.
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return last;
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
     } catch (_) {
       return null;
     }

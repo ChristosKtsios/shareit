@@ -55,6 +55,19 @@ class WallPostRepository {
     await batch.commit();
   }
 
+  /// Toggle like σε wall post.
+  Future<void> toggleLike({
+    required String postId,
+    required String uid,
+    required bool like,
+  }) async {
+    await _db.collection('wallPosts').doc(postId).update({
+      'likes': like
+          ? FieldValue.arrayUnion([uid])
+          : FieldValue.arrayRemove([uid]),
+    });
+  }
+
   /// Soft delete σχολίου — δεν σβήνεται, μένει με isDeleted=true.
   /// Το commentsCount ΔΕΝ μειώνεται (γιατί το σχόλιο μένει).
   Future<void> deleteComment({

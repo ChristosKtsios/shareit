@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
@@ -36,21 +37,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         title: Row(children: [
           const Icon(Icons.security, color: AppColors.primary, size: 22),
           const SizedBox(width: 8),
-          Text('Αλλαγή $fieldName',
+          Text('editProfile.changeField'.tr(namedArgs: {'field': fieldName}),
               style:
                   const TextStyle(color: AppColors.textPrimary, fontSize: 16)),
         ]),
         content: Text(
-          'Η αλλαγή του $fieldName απαιτεί επιβεβαίωση και από το παλιό και '
-          'από το νέο στοιχείο για την ασφάλειά σου.\n\n'
-          'Η διαδικασία θα είναι σύντομα διαθέσιμη.',
+          'editProfile.changeFieldBody'.tr(namedArgs: {'field': fieldName}),
           style: const TextStyle(color: AppColors.textSecondary, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Εντάξει',
-                style: TextStyle(color: AppColors.primary)),
+            child: Text('editProfile.ok'.tr(),
+                style: const TextStyle(color: AppColors.primary)),
           ),
         ],
       ),
@@ -63,8 +62,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
     if (first.isEmpty || last.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Το όνομα και το επώνυμο είναι υποχρεωτικά'),
+        SnackBar(
+          content: Text('editProfile.nameRequired'.tr()),
           backgroundColor: AppColors.danger,
         ),
       );
@@ -79,19 +78,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         'lastName': last,
         'showOnlineStatus': _showOnlineStatus,
       });
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Τα στοιχεία αποθηκεύτηκαν'),
+          SnackBar(
+            content: Text('editProfile.saved'.tr()),
             backgroundColor: AppColors.offer,
           ),
         );
         context.pop();
       }
     } catch (_) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(AppStrings.errorGeneric)),
+          SnackBar(content: Text(AppStrings.errorGeneric)),
         );
       }
     } finally {
@@ -107,10 +106,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       loading: () => const Scaffold(
           body: Center(
               child: CircularProgressIndicator(color: AppColors.primary))),
-      error: (_, __) => const Scaffold(
+      error: (_, __) => Scaffold(
           body: Center(
               child: Text(AppStrings.errorGeneric,
-                  style: TextStyle(color: AppColors.textSecondary)))),
+                  style: const TextStyle(color: AppColors.textSecondary)))),
       data: (user) {
         if (user == null) return const Scaffold();
         if (!_initialized) {
@@ -122,7 +121,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text(AppStrings.editProfile),
+            title: Text(AppStrings.editProfile),
             leading: IconButton(
                 icon: const Icon(Icons.close), onPressed: () => context.pop()),
           ),
@@ -167,15 +166,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 Center(
                   child: TextButton(
                     onPressed: () => context.push('/profile/photos'),
-                    child: const Text('Αλλαγή φωτογραφίας',
-                        style:
-                            TextStyle(color: AppColors.primary, fontSize: 13)),
+                    child: Text('editProfile.changePhoto'.tr(),
+                        style: const TextStyle(
+                            color: AppColors.primary, fontSize: 13)),
                   ),
                 ),
                 const SizedBox(height: 24),
 
                 // ── Section: Προσωπικά στοιχεία ──
-                const _SectionTitle('Προσωπικά στοιχεία'),
+                _SectionTitle('editProfile.personalInfo'.tr()),
                 const SizedBox(height: 12),
 
                 Row(children: [
@@ -183,7 +182,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                        const _FieldLabel('Όνομα *'),
+                        _FieldLabel('editProfile.firstNameLabel'.tr()),
                         const SizedBox(height: 6),
                         TextField(
                             controller: _firstCtrl,
@@ -195,7 +194,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                        const _FieldLabel('Επώνυμο *'),
+                        _FieldLabel('editProfile.lastNameLabel'.tr()),
                         const SizedBox(height: 6),
                         TextField(
                             controller: _lastCtrl,
@@ -207,13 +206,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 const SizedBox(height: 28),
 
                 // ── Section: Στοιχεία επικοινωνίας ──
-                const _SectionTitle('Στοιχεία επικοινωνίας'),
+                _SectionTitle('editProfile.contactInfo'.tr()),
                 const SizedBox(height: 4),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 2),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Text(
-                    'Η αλλαγή απαιτεί επιβεβαίωση για ασφάλεια.',
-                    style: TextStyle(
+                    'editProfile.changeSecurityNote'.tr(),
+                    style: const TextStyle(
                         color: AppColors.textHint, fontSize: 11, height: 1.4),
                   ),
                 ),
@@ -231,14 +230,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 // Κινητό — read-only με Αλλαγή
                 _ReadOnlyField(
                   icon: Icons.phone_outlined,
-                  label: 'Κινητό',
+                  label: 'editProfile.mobile'.tr(),
                   value: user.phone,
-                  onChange: () => _showComingSoon(context, 'κινητού'),
+                  onChange: () => context.push('/settings/change-phone'),
                 ),
 
                 const SizedBox(height: 20),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceVariant,
                     borderRadius: BorderRadius.circular(12),
@@ -246,17 +246,16 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   ),
                   child: SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Εμφάνιση online status',
-                        style: TextStyle(
+                    title: Text('editProfile.showOnlineStatus'.tr(),
+                        style: const TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 14,
                             fontWeight: FontWeight.w500)),
-                    subtitle: const Text(
-                        'Άλλοι χρήστες θα βλέπουν αν είσαι online',
-                        style: TextStyle(
+                    subtitle: Text('editProfile.showOnlineStatusSub'.tr(),
+                        style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 11)),
                     value: _showOnlineStatus,
-                    activeColor: AppColors.primary,
+                    activeThumbColor: AppColors.primary,
                     onChanged: (v) => setState(() => _showOnlineStatus = v),
                   ),
                 ),
@@ -278,8 +277,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           width: 20,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: AppColors.background))
-                      : const Text('Αποθήκευση',
-                          style: TextStyle(
+                      : Text('common.save'.tr(),
+                          style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ],
@@ -357,8 +356,8 @@ class _ReadOnlyField extends StatelessWidget {
               onPressed: onChange,
               icon: const Icon(Icons.edit_outlined,
                   size: 14, color: AppColors.primary),
-              label: const Text('Αλλαγή',
-                  style: TextStyle(
+              label: Text('editProfile.change'.tr(),
+                  style: const TextStyle(
                       color: AppColors.primary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600)),

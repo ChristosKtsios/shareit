@@ -1,3 +1,4 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,7 +10,10 @@ import '../providers/report_provider.dart';
 class ReportScreen extends ConsumerStatefulWidget {
   final String targetUid;
   final String? listingId;
-  const ReportScreen({super.key, required this.targetUid, this.listingId});
+  final String? chatId;
+  final String? messageId;
+  const ReportScreen({super.key, required this.targetUid, this.listingId,
+      this.chatId, this.messageId});
 
   @override
   ConsumerState<ReportScreen> createState() => _ReportScreenState();
@@ -26,7 +30,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   Future<void> _submit() async {
     if (_reason == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Διάλεξε αιτία αναφοράς.')));
+        SnackBar(content: Text('report.chooseReason'.tr())));
       return;
     }
     setState(() => _loading = true);
@@ -38,16 +42,18 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
         reason:      _reason!,
         details:     _detailsCtrl.text.trim().isNotEmpty ? _detailsCtrl.text.trim() : null,
         listingId:   widget.listingId,
+        chatId:      widget.chatId,
+        messageId:   widget.messageId,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Η αναφορά υποβλήθηκε. Ευχαριστούμε.')));
+          SnackBar(content: Text('report.submitted'.tr())));
         context.pop();
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Σφάλμα. Δοκίμασε ξανά.')));
+        SnackBar(content: Text('report.errorRetry'.tr())));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -58,17 +64,19 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Αναφορά'),
+        title: Text('chatx.report'.tr()),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
       ),
-      body: Padding(
+      body: SafeArea(
+        top: false,
+        child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Ποια είναι η αιτία;',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          Text('report.whatReason'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 12),
 
           ...ReportReason.values.map((r) => _ReasonTile(
@@ -78,14 +86,14 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           )),
           const SizedBox(height: 20),
 
-          const Text('Περισσότερες λεπτομέρειες (προαιρετικό)',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          Text('report.moreDetails'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 8),
           TextField(
             controller: _detailsCtrl,
             maxLines: 3,
             style: const TextStyle(color: AppColors.textPrimary),
-            decoration: const InputDecoration(hintText: 'Περίγραψε το πρόβλημα...'),
+            decoration: InputDecoration(hintText: 'report.describeProblem'.tr()),
           ),
           const Spacer(),
 
@@ -96,9 +104,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                 ? const SizedBox(height: 20, width: 20,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
-                : const Text('Υποβολή αναφοράς'),
+                : Text('report.submit'.tr()),
           ),
         ]),
+        ),
       ),
     );
   }
