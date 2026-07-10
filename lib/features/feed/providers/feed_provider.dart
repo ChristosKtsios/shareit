@@ -7,12 +7,18 @@ import '../../listings/data/listing_model.dart';
 import '../../listings/data/listing_repository.dart';
 import '../../search/presentation/widgets/search_filters_widget.dart';
 
+/// Όρια ακτίνας φίλτρου feed. Το «Παντού» (χωρίς φίλτρο απόστασης) αναπαρίσταται
+/// με το [kFeedEverywhereKm] — το τελευταίο σκαλί του slider, πάνω από τα 100 χλμ.
+const double kFeedMinKm = 1;
+const double kFeedMaxKm = 100;
+const double kFeedEverywhereKm = 101;
+
 class FeedState {
   final List<ListingModel> listings;
   final String? tagFilter;
   final ListingType? type;
   final SearchSort sort;
-  final double distanceKm; // ακτίνα φίλτρου σε χλμ (1–100)
+  final double distanceKm; // 1–100 χλμ, ή kFeedEverywhereKm (101) = «Παντού»
   final Position? userPosition;
   final bool isLoading;
   final bool hasMore;
@@ -23,7 +29,7 @@ class FeedState {
     this.tagFilter,
     this.type,
     this.sort = SearchSort.recent,
-    this.distanceKm = 100,
+    this.distanceKm = kFeedEverywhereKm,
     this.userPosition,
     this.isLoading = false,
     this.hasMore = true,
@@ -42,9 +48,10 @@ class FeedState {
       list = list.where((l) => l.tags.contains(tagFilter)).toList();
     }
 
-    // Φίλτρο απόστασης: εφαρμόζεται όταν έχουμε θέση χρήστη. Το distanceKm είναι
-    // πάντα εντός 1–100 (όρια slider), οπότε δεν φορτώνει υπερβολικά δεδομένα.
-    if (userPosition != null) {
+    // Φίλτρο απόστασης: εφαρμόζεται όταν έχουμε θέση χρήστη ΚΑΙ η ακτίνα είναι
+    // εντός 1–100 χλμ. Στο «Παντού» (distanceKm > 100) ΔΕΝ εφαρμόζεται φίλτρο →
+    // όλες οι αγγελίες (το pagination φορτώνει σελίδα-σελίδα, χωρίς lag).
+    if (userPosition != null && distanceKm <= kFeedMaxKm) {
       list = list.where((l) {
         final dist = Geolocator.distanceBetween(
           userPosition!.latitude,
@@ -120,7 +127,8 @@ class FeedNotifier extends StateNotifier<FeedState> {
       final prefs = await SharedPreferences.getInstance();
       final km = prefs.getDouble(_distancePrefKey);
       if (km != null) {
-        state = state.copyWith(distanceKm: km.clamp(1.0, 100.0));
+        state = state.copyWith(
+            distanceKm: km.clamp(kFeedMinKm, kFeedEverywhereKm));
       }
     } catch (_) {}
   }
@@ -180,7 +188,7 @@ class FeedNotifier extends StateNotifier<FeedState> {
   }
 
   Future<void> setDistance(double km) async {
-    final clamped = km.clamp(1.0, 100.0);
+    final clamped = km.clamp(kFeedMinKm, kFeedEverywhereKm);
     state = state.copyWith(distanceKm: clamped);
     try {
       final prefs = await SharedPreferences.getInstance();

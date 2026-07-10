@@ -21,6 +21,8 @@ class DistanceSliderWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final km = 'map.unitKm'.tr();
+    // Το τελευταίο σκαλί (value >= max) σημαίνει «Παντού» (χωρίς όριο απόστασης).
+    final isEverywhere = value >= max;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: AppColors.surface,
@@ -29,7 +31,9 @@ class DistanceSliderWidget extends StatelessWidget {
           const Icon(Icons.location_on, color: AppColors.primary, size: 16),
           const SizedBox(width: 6),
           Text(
-            'dist.range'.tr(namedArgs: {'n': '${value.toInt()}'}),
+            isEverywhere
+                ? 'dist.everywhere'.tr()
+                : 'dist.range'.tr(namedArgs: {'n': '${value.toInt()}'}),
             style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 13,
@@ -59,7 +63,7 @@ class DistanceSliderWidget extends StatelessWidget {
             Text('${min.toInt()} $km',
                 style: const TextStyle(
                     color: AppColors.textHint, fontSize: 11)),
-            Text('${max.toInt()} $km',
+            Text('dist.everywhere'.tr(),
                 style: const TextStyle(
                     color: AppColors.textHint, fontSize: 11)),
           ],

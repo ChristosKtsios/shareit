@@ -111,10 +111,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           ),
         ),
 
-        // Distance slider — απόσταση 1–100 χλμ (με persistence)
+        // Distance slider — 1–100 χλμ + τελευταίο σκαλί «Παντού» (με persistence)
         DistanceSliderWidget(
           value: state.distanceKm,
           onChanged: notifier.setDistance,
+          max: kFeedEverywhereKm,
         ),
 
         const Divider(height: 0),
