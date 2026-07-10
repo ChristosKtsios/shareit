@@ -17,8 +17,13 @@ import '../data/listing_repository.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../profile/data/user_repository.dart';
 
-final _listingDetailProvider = FutureProvider.family<ListingModel?, String>(
-    (ref, id) => ListingRepository().getListingById(id));
+/// Live + autoDispose: το παλιό `FutureProvider.family` (χωρίς autoDispose)
+/// κρατούσε την αγγελία cached για όλη τη ζωή της app, οπότε φωτογραφίες που
+/// προστίθεντο αργότερα ΔΕΝ εμφανίζονταν εδώ (ενώ ο χάρτης, που είναι stream,
+/// τις έδειχνε). Με stream + autoDispose τα δεδομένα είναι πάντα φρέσκα.
+final _listingDetailProvider =
+    StreamProvider.autoDispose.family<ListingModel?, String>(
+        (ref, id) => ListingRepository().watchById(id));
 
 /// Placeholder labels από παλιές αγγελίες που δεν έχουν πραγματική διεύθυνση.
 const _placeholderLabels = {

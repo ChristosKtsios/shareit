@@ -124,6 +124,17 @@ class ListingRepository {
     return (listings: listings, lastDoc: newLastDoc, fetched: snap.docs.length);
   }
 
+  /// Live stream μιας αγγελίας. Χρησιμοποιείται από την οθόνη λεπτομερειών ώστε
+  /// να βλέπει ΠΑΝΤΑ φρέσκα δεδομένα (π.χ. φωτογραφίες που προστέθηκαν μετά),
+  /// όπως ακριβώς κάνει ο χάρτης με το [watchActive].
+  Stream<ListingModel?> watchById(String id) =>
+      _col.doc(id).snapshots().map((doc) {
+        if (!doc.exists) return null;
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['isHidden'] as bool? ?? false) return null;
+        return ListingModel.fromFirestore(doc);
+      });
+
   Future<ListingModel?> getById(String id) async {
     final doc = await _col.doc(id).get();
     if (!doc.exists) return null;
