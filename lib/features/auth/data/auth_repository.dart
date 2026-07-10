@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../../core/services/fcm_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -211,6 +212,19 @@ class AuthRepository {
       });
     }
     await _db.collection('users').doc(uid).set(docData, SetOptions(merge: true));
+
+    // Κράτα αντίγραφο του ονόματος και στο Firebase Auth (displayName), ώστε να
+    // είναι ανακτήσιμο αν ποτέ χαθεί/λείψει το πεδίο στο Firestore doc.
+    try {
+      await user.updateDisplayName(
+          '${firstName.trim()} ${lastName.trim()}'.trim());
+    } catch (_) {
+      // Μη κρίσιμο — το όνομα υπάρχει ήδη στο Firestore.
+    }
+
+    // Το doc μόλις δημιουργήθηκε → αποθήκευσε τώρα το FCM token (το init είχε
+    // τρέξει νωρίτερα, όταν δεν υπήρχε ακόμα doc).
+    await FcmService.syncToken(uid);
 
     // ============================================================
     // ΒΗΜΑ 3: UPLOAD ΦΩΤΟΓΡΑΦΙΑΣ (αν υπάρχει)

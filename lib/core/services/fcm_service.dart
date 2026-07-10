@@ -93,22 +93,45 @@ class FcmService {
     }
   }
 
-  /// Αποθήκευση FCM token με set+merge.
-  /// Αν το user document δεν υπάρχει ακόμα -> το δημιουργεί με μόνο
-  /// το fcmToken. Αν υπάρχει -> ενημερώνει μόνο αυτό το πεδίο.
-  static Future<void> _saveToken(String uid, String token) async =>
-      await _db.collection('users').doc(uid).set(
-        {'fcmToken': token},
-        SetOptions(merge: true),
-      );
+  /// Αποθήκευση FCM token — **UPDATE-ONLY**.
+  ///
+  /// ΚΡΙΣΙΜΟ: ΔΕΝ χρησιμοποιούμε `set(merge:true)`, γιατί αυτό **δημιουργεί** το
+  /// user document. Επειδή το [init] τρέχει σε κάθε authStateChanges, ένα
+  /// set+merge έφτιαχνε «ghost» docs με μόνο fcmToken (χωρίς όνομα/email) για
+  /// κάθε auth event που δεν ολοκλήρωνε profile write — γι' αυτό οι χρήστες
+  /// εμφανίζονταν ως «Χρήστης». Με `update()` το write αποτυγχάνει σιωπηλά αν
+  /// δεν υπάρχει doc· το token αποθηκεύεται στο επόμενο άνοιγμα.
+  static Future<void> _saveToken(String uid, String token) async {
+    try {
+      await _db.collection('users').doc(uid).update({'fcmToken': token});
+    } catch (e, s) {
+      logSwallowed(e, s, 'fcm _saveToken (doc missing?)');
+    }
+  }
+
+  /// Αποθηκεύει τώρα το token — καλείται **αφού** δημιουργηθεί το user document
+  /// (εγγραφή / πρώτο Google sign-in). Χρειάζεται γιατί το [init] τρέχει στο
+  /// authStateChanges, δηλαδή ΠΡΙΝ γραφτεί το doc, οπότε το update-only write
+  /// αποτυγχάνει σιωπηλά για τους ολοκαίνουργιους χρήστες.
+  static Future<void> syncToken(String uid) async {
+    try {
+      final token = await _fcm.getToken();
+      if (token != null) await _saveToken(uid, token);
+    } catch (e, s) {
+      logSwallowed(e, s, 'fcm syncToken');
+    }
+  }
 
   /// Αποθηκεύει τη γλώσσα του χρήστη (el/en/es) στο user doc, ώστε οι Cloud
   /// Functions να στέλνουν τα push notifications στη γλώσσα του ΠΑΡΑΛΗΠΤΗ.
-  static Future<void> saveLanguage(String uid, String lang) async =>
-      await _db.collection('users').doc(uid).set(
-        {'language': lang},
-        SetOptions(merge: true),
-      );
+  /// Update-only για τον ίδιο λόγο με το [_saveToken].
+  static Future<void> saveLanguage(String uid, String lang) async {
+    try {
+      await _db.collection('users').doc(uid).update({'language': lang});
+    } catch (e, s) {
+      logSwallowed(e, s, 'fcm saveLanguage (doc missing?)');
+    }
+  }
 
   static final navigatorKey = GlobalKey<NavigatorState>();
 }

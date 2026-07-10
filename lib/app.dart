@@ -9,6 +9,8 @@ import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
 import 'core/services/fcm_service.dart';
 import 'core/services/location_permission_gate.dart';
+import 'core/services/profile_gate.dart';
+import 'features/auth/presentation/complete_profile_screen.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/auth/presentation/register_screen.dart';
 import 'features/auth/presentation/forgot_password_screen.dart';
@@ -89,6 +91,17 @@ final _routerProvider = Provider<GoRouter>((ref) {
         final done = prefs.getBool(AppConstants.onboardingKey) ?? false;
         if (!done) return '/onboarding';
       }
+
+      // ── Gate: user document χωρίς όνομα → υποχρεωτική συμπλήρωση προφίλ.
+      // (Το αποτέλεσμα είναι cached ανά uid, ώστε να μη γίνεται read σε κάθε
+      // πλοήγηση. Σε σφάλμα επιστρέφει false → δεν μπλοκάρει τον χρήστη.)
+      if (isLoggedIn) {
+        final needsProfile = await ProfileGate.needsCompletion();
+        if (needsProfile && loc != '/complete-profile') {
+          return '/complete-profile';
+        }
+        if (!needsProfile && loc == '/complete-profile') return '/map';
+      }
       return null;
     },
     routes: [
@@ -96,6 +109,9 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(
+          path: '/complete-profile',
+          builder: (_, __) => const CompleteProfileScreen()),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(
           path: '/forgot-password',

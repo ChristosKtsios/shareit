@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/services/fcm_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/countries.dart';
@@ -349,6 +350,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             'termsAcceptedAt': FieldValue.serverTimestamp(),
             'createdAt': FieldValue.serverTimestamp(),
           });
+
+          // Το doc μόλις δημιουργήθηκε → αποθήκευσε τώρα το FCM token (το
+          // FcmService.init είχε τρέξει πριν υπάρξει doc, με update-only write).
+          await FcmService.syncToken(user.uid);
         } else {
           // Υπάρχων χρήστης — ενημέρωση μόνο αν λείπει firstName
           final data = doc.data() as Map<String, dynamic>;

@@ -821,5 +821,10 @@
   "locpick": {
     "title": "Choose location",
     "tapMapHint": "Tap the map to choose a location"
+  },
+  "completeProfile": {
+    "title": "Complete your profile",
+    "subtitle": "We need your name so other users can recognise you.",
+    "saved": "Profile updated!"
   }
 }
