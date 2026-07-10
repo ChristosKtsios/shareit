@@ -6,6 +6,11 @@ class UserModel {
   final int ratingCount;
   final String? avatarUrl, fcmToken;
   final bool isVerified;
+
+  /// Επαληθευμένο κινητό μέσω OTP — η **μοναδική** πηγή αλήθειας για το αν ο
+  /// χρήστης θεωρείται «επαληθευμένος». (Το [isVerified] μπαίνει `true` σε κάθε
+  /// εγγραφή/Google sign-in, οπότε δεν είναι σήμα εμπιστοσύνης.)
+  final bool phoneVerified;
   final List<String> blockedUids, savedListingIds;
   final List<String> photos;
   final DateTime createdAt;
@@ -24,6 +29,7 @@ class UserModel {
     this.avatarUrl,
     this.fcmToken,
     this.isVerified = false,
+    this.phoneVerified = false,
     this.blockedUids = const [],
     this.savedListingIds = const [],
     this.photos = const [],
@@ -56,6 +62,7 @@ class UserModel {
       avatarUrl: d['avatarUrl'] ?? d['photoUrl'],
       fcmToken: d['fcmToken'],
       isVerified: d['isVerified'] ?? false,
+      phoneVerified: d['phoneVerified'] ?? false,
       blockedUids: List<String>.from(d['blockedUids'] ?? []),
       savedListingIds: List<String>.from(d['savedListingIds'] ?? []),
       photos: List<String>.from(d['photos'] ?? []),
@@ -77,6 +84,7 @@ class UserModel {
         'avatarUrl': avatarUrl,
         'fcmToken': fcmToken,
         'isVerified': isVerified,
+        'phoneVerified': phoneVerified,
         'blockedUids': blockedUids,
         'savedListingIds': savedListingIds,
         'photos': photos,

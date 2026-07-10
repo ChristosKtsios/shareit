@@ -44,7 +44,8 @@ class ProfileScreen extends ConsumerWidget {
           final rating = (data['rating'] as num?)?.toDouble() ?? 0.0;
           final ratingCount = (data['ratingCount'] as num?)?.toInt() ?? 0;
           final dealsCount = (data['dealsCount'] as num?)?.toInt() ?? 0;
-          final isVerified = data['isVerified'] as bool? ?? false;
+          // «Επαληθευμένος» = επαληθευμένο κινητό (OTP). Το `isVerified` δεν
+          // χρησιμοποιείται εδώ: μπαίνει `true` σε κάθε εγγραφή/Google sign-in.
           final phoneVerified = data['phoneVerified'] as bool? ?? false;
           final avatarUrl =
               (data['avatarUrl'] as String?) ?? (data['photoUrl'] as String?);
@@ -156,7 +157,11 @@ class ProfileScreen extends ConsumerWidget {
                             initials: initials,
                             avatarUrl: avatarUrl,
                             radius: 36,
-                            showVerified: isVerified),
+                            // «Επαληθευμένος» = επαληθευμένο κινητό (OTP).
+                            // Το `isVerified` είναι πάντα true (μπαίνει σε κάθε
+                            // εγγραφή/Google sign-in) → θα έδειχνε ✓ ακόμα και
+                            // δίπλα στην ένδειξη «Μη επαληθευμένος χρήστης».
+                            showVerified: phoneVerified),
                         if (isMe)
                           Positioned(
                             bottom: -2,

@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../data/user_model.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/profile_provider.dart';
@@ -21,39 +23,38 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   bool _showOnlineStatus = true;
 
   @override
+  void initState() {
+    super.initState();
+    _syncEmailFromAuth();
+  }
+
+  /// Το `verifyBeforeUpdateEmail` αλλάζει το Auth email **μόνο** αφού ο χρήστης
+  /// πατήσει τον σύνδεσμο επιβεβαίωσης. Εδώ συγχρονίζουμε lazily το Firestore
+  /// (display-only πεδίο) μόλις δούμε ότι το Auth email έχει όντως αλλάξει.
+  Future<void> _syncEmailFromAuth() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      await user.reload();
+      final authEmail = FirebaseAuth.instance.currentUser?.email?.trim() ?? '';
+      if (authEmail.isEmpty) return;
+
+      final data = ref.read(currentUserDataProvider).valueOrNull;
+      if (data == null || data.email.trim() == authEmail) return;
+
+      await ref.read(userRepoProvider).update(user.uid, {'email': authEmail});
+    } catch (_) {
+      // Μη κρίσιμο — απλώς δεν συγχρονίζεται τώρα.
+    }
+  }
+
+  @override
   void dispose() {
     if (_initialized) {
       _firstCtrl.dispose();
       _lastCtrl.dispose();
     }
     super.dispose();
-  }
-
-  void _showComingSoon(BuildContext context, String fieldName) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Row(children: [
-          const Icon(Icons.security, color: AppColors.primary, size: 22),
-          const SizedBox(width: 8),
-          Text('editProfile.changeField'.tr(namedArgs: {'field': fieldName}),
-              style:
-                  const TextStyle(color: AppColors.textPrimary, fontSize: 16)),
-        ]),
-        content: Text(
-          'editProfile.changeFieldBody'.tr(namedArgs: {'field': fieldName}),
-          style: const TextStyle(color: AppColors.textSecondary, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('editProfile.ok'.tr(),
-                style: const TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _save(BuildContext context) async {
@@ -173,6 +174,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 ),
                 const SizedBox(height: 24),
 
+                // ── Πληρότητα προφίλ (κρύβεται στο 100%) ──
+                _ProfileCompleteness(user: user),
+
                 // ── Section: Προσωπικά στοιχεία ──
                 _SectionTitle('editProfile.personalInfo'.tr()),
                 const SizedBox(height: 12),
@@ -223,7 +227,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   icon: Icons.email_outlined,
                   label: 'Email',
                   value: user.email,
-                  onChange: () => _showComingSoon(context, 'email'),
+                  onChange: () => context.push('/settings/change-email'),
                 ),
                 const SizedBox(height: 12),
 
@@ -374,6 +378,101 @@ class _ReadOnlyField extends StatelessWidget {
                   color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner «Πληρότητα προφίλ». Κρύβεται όταν φτάσει 100%.
+/// Βάρη: επαληθευμένο κινητό 40% · φωτογραφία 30% · ονοματεπώνυμο 20% · email 10%.
+///
+/// «Επαληθευμένος» = `phoneVerified` (OTP). Το `isVerified` δεν μετράει, γιατί
+/// μπαίνει `true` σε κάθε εγγραφή/Google sign-in.
+class _ProfileCompleteness extends StatelessWidget {
+  final UserModel user;
+  const _ProfileCompleteness({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhone = user.phoneVerified && user.phone.trim().isNotEmpty;
+    final hasPhoto = (user.avatarUrl ?? '').trim().isNotEmpty;
+    final hasName =
+        user.firstName.trim().isNotEmpty && user.lastName.trim().isNotEmpty;
+    final hasEmail = user.email.trim().isNotEmpty;
+
+    final percent = (hasPhone ? 40 : 0) +
+        (hasPhoto ? 30 : 0) +
+        (hasName ? 20 : 0) +
+        (hasEmail ? 10 : 0);
+
+    if (percent >= 100) return const SizedBox.shrink();
+
+    final missing = <(String, VoidCallback)>[
+      if (!hasPhone)
+        ('pc.addPhone'.tr(), () => context.push('/settings/change-phone')),
+      if (!hasPhoto)
+        ('pc.addPhoto'.tr(), () => context.push('/profile/photos')),
+      if (!hasEmail)
+        ('pc.addEmail'.tr(), () => context.push('/settings/change-email')),
+      if (!hasName) ('pc.addName'.tr(), () {}),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.verified_user_outlined,
+                color: AppColors.primary, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'pc.title'.tr(namedArgs: {'n': '$percent'}),
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: percent / 100,
+              minHeight: 6,
+              backgroundColor: AppColors.surfaceVariant,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+          ),
+          const SizedBox(height: 6),
+          ...missing.map((m) => InkWell(
+                onTap: m.$2,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(children: [
+                    const Icon(Icons.add_circle_outline,
+                        color: AppColors.primary, size: 15),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(m.$1,
+                          style: const TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12)),
+                    ),
+                    const Icon(Icons.chevron_right,
+                        color: AppColors.textHint, size: 16),
+                  ]),
+                ),
+              )),
         ],
       ),
     );

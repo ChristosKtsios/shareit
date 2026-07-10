@@ -3,12 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/countries.dart';
 import '../providers/profile_provider.dart';
 
-/// Ασφαλής αλλαγή κινητού: στέλνει OTP στο ΝΕΟ νούμερο, το επαληθεύει και
-/// ενημερώνει Firebase Auth (updatePhoneNumber) + το Firestore user document.
+/// Ασφαλής αλλαγή κινητού:
+///   1. **re-authentication** (κωδικός ή Google) — απαιτείται από τη Firebase για
+///      sensitive operations, αλλιώς σκάει `requires-recent-login`,
+///   2. OTP στο ΝΕΟ νούμερο → `updatePhoneNumber`,
+///   3. ενημέρωση Firestore (`phone` + `phoneVerified: true`).
 class ChangePhoneScreen extends ConsumerStatefulWidget {
   const ChangePhoneScreen({super.key});
   @override
@@ -33,6 +37,111 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     super.dispose();
   }
 
+  /// Έχει ήδη γίνει re-authentication σε αυτή τη ροή;
+  bool _reauthenticated = false;
+
+  bool _hasProvider(String id) =>
+      FirebaseAuth.instance.currentUser?.providerData
+          .any((p) => p.providerId == id) ??
+      false;
+
+  /// Ζητά επιβεβαίωση ταυτότητας. `true` = επιτυχία (ή δεν χρειάζεται).
+  Future<bool> _reauthenticate() async {
+    if (_reauthenticated) return true;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    try {
+      if (_hasProvider('password')) {
+        final password = await _askPassword();
+        if (password == null) return false; // ακύρωση χρήστη
+        await user.reauthenticateWithCredential(
+          EmailAuthProvider.credential(
+              email: user.email ?? '', password: password),
+        );
+      } else if (_hasProvider('google.com')) {
+        final googleUser = await GoogleSignIn(
+          serverClientId:
+              '298536596181-ocikmg46hot2lqma65q54rbm8ibtnsjv.apps.googleusercontent.com',
+        ).signIn();
+        if (googleUser == null) return false; // ακύρωση χρήστη
+        final googleAuth = await googleUser.authentication;
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(
+            accessToken: googleAuth.accessToken,
+            idToken: googleAuth.idToken,
+          ),
+        );
+      } else {
+        // Λογαριασμός μόνο με κινητό — δεν υπάρχει τρόπος re-auth από εδώ.
+        // Συνεχίζουμε: αν το login είναι πρόσφατο, το updatePhoneNumber περνά.
+        _reauthenticated = true;
+        return true;
+      }
+      _reauthenticated = true;
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return false;
+      setState(() {
+        _loading = false;
+        _error = (e.code == 'wrong-password' || e.code == 'invalid-credential')
+            ? 'ce.wrongPassword'.tr()
+            : 'reauth.failed'.tr();
+      });
+      return false;
+    } catch (_) {
+      if (!mounted) return false;
+      setState(() {
+        _loading = false;
+        _error = 'reauth.failed'.tr();
+      });
+      return false;
+    }
+  }
+
+  /// Dialog κωδικού. Επιστρέφει `null` αν ο χρήστης ακυρώσει.
+  Future<String?> _askPassword() async {
+    final ctrl = TextEditingController();
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (dCtx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('reauth.title'.tr(),
+              style: const TextStyle(color: AppColors.textPrimary)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('reauth.body'.tr(),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 13)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: ctrl,
+              obscureText: true,
+              autofocus: true,
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration:
+                  InputDecoration(labelText: 'ce.currentPassword'.tr()),
+            ),
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dCtx),
+              child: Text('common.cancel'.tr(),
+                  style: const TextStyle(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dCtx, ctrl.text),
+              child: Text('reauth.confirm'.tr(),
+                  style: const TextStyle(color: AppColors.primary)),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
   Future<void> _sendOtp() async {
     final phone = _phoneCtrl.text.trim();
     if (phone.isEmpty || phone.length < 8) {
@@ -43,6 +152,13 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       _loading = true;
       _error = null;
     });
+
+    // Βήμα 0: επιβεβαίωση ταυτότητας πριν από sensitive operation.
+    if (!await _reauthenticate()) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    if (!mounted) return;
     final fullPhone = '$_countryCode$phone';
     await FirebaseAuth.instance.verifyPhoneNumber(
       phoneNumber: fullPhone,
@@ -92,8 +208,15 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       await user.updatePhoneNumber(credential);
 
       // 2) Ενημέρωση του Firestore user document.
+      // ΣΗΜΑΝΤΙΚΟ: το OTP μόλις απέδειξε την κατοχή του κινητού, οπότε θέτουμε
+      // `phoneVerified: true`. Χωρίς αυτό, οι χρήστες (π.χ. Google sign-in που
+      // ξεκινούν με phoneVerified:false) έμεναν «Μη επαληθευμένοι» για πάντα.
       final fullPhone = '$_countryCode${_phoneCtrl.text.trim()}';
-      await ref.read(userRepoProvider).update(user.uid, {'phone': fullPhone});
+      await ref.read(userRepoProvider).update(user.uid, {
+        'phone': fullPhone,
+        'phoneVerified': true,
+        'isVerified': true,
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

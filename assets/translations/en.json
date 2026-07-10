@@ -830,5 +830,34 @@
     "title": "Complete your profile",
     "subtitle": "We need your name so other users can recognise you.",
     "saved": "Profile updated!"
+  },
+  "ce": {
+    "title": "Change email",
+    "intro": "For your security, confirm your password and enter the new email.",
+    "currentPassword": "Current password",
+    "newEmail": "New email",
+    "sameEmail": "The new email is the same as the current one.",
+    "sentTitle": "Check your new email",
+    "sentBody": "We sent a confirmation link to {email}.\nClick it to complete the change.",
+    "googleManaged": "Your email is managed by Google. Change it from your Google account.",
+    "noPassword": "Your account has no password, so the email cannot be changed here.",
+    "wrongPassword": "Wrong password.",
+    "emailInUse": "An account with this email already exists.",
+    "relogin": "For security, please sign in again and retry.",
+    "send": "Send link"
+  },
+  "reauth": {
+    "title": "Confirm your identity",
+    "body": "For your security, confirm your password before continuing.",
+    "confirm": "Confirm",
+    "googleBody": "You will be asked to sign in with Google again to confirm.",
+    "failed": "Verification failed. Please try again."
+  },
+  "pc": {
+    "title": "Your profile is {n}% complete",
+    "addPhone": "Add & verify a phone number",
+    "addPhoto": "Add a profile photo",
+    "addName": "Add first & last name",
+    "addEmail": "Add an email"
   }
 }

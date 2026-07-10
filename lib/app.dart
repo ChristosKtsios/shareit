@@ -37,6 +37,7 @@ import 'features/search/presentation/search_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'features/settings/presentation/change_password_screen.dart';
 import 'features/profile/presentation/change_phone_screen.dart';
+import 'features/profile/presentation/change_email_screen.dart';
 import 'features/settings/presentation/blocked_users_screen.dart';
 import 'features/settings/presentation/help_support_screen.dart';
 import 'features/notifications/presentation/notifications_screen.dart';
@@ -191,6 +192,9 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/settings/change-phone',
           builder: (_, __) => const ChangePhoneScreen()),
+      GoRoute(
+          path: '/settings/change-email',
+          builder: (_, __) => const ChangeEmailScreen()),
       GoRoute(
           path: '/settings/blocked',
           builder: (_, __) => const BlockedUsersScreen()),

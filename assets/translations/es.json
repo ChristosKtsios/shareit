@@ -830,5 +830,34 @@
     "title": "Completa tu perfil",
     "subtitle": "Necesitamos tu nombre para que otros usuarios puedan reconocerte.",
     "saved": "¡Perfil actualizado!"
+  },
+  "ce": {
+    "title": "Cambiar email",
+    "intro": "Por tu seguridad, confirma tu contraseña e introduce el nuevo email.",
+    "currentPassword": "Contraseña actual",
+    "newEmail": "Nuevo email",
+    "sameEmail": "El nuevo email es igual al actual.",
+    "sentTitle": "Revisa tu nuevo email",
+    "sentBody": "Enviamos un enlace de confirmación a {email}.\nPúlsalo para completar el cambio.",
+    "googleManaged": "Tu email lo gestiona Google. Cámbialo desde tu cuenta de Google.",
+    "noPassword": "Tu cuenta no tiene contraseña, así que el email no se puede cambiar aquí.",
+    "wrongPassword": "Contraseña incorrecta.",
+    "emailInUse": "Ya existe una cuenta con este email.",
+    "relogin": "Por seguridad, inicia sesión de nuevo e inténtalo otra vez.",
+    "send": "Enviar enlace"
+  },
+  "reauth": {
+    "title": "Confirma tu identidad",
+    "body": "Por tu seguridad, confirma tu contraseña antes de continuar.",
+    "confirm": "Confirmar",
+    "googleBody": "Se te pedirá iniciar sesión con Google de nuevo para confirmar.",
+    "failed": "La verificación falló. Inténtalo de nuevo."
+  },
+  "pc": {
+    "title": "Tu perfil está {n}% completo",
+    "addPhone": "Añade y verifica un móvil",
+    "addPhoto": "Añade una foto de perfil",
+    "addName": "Añade nombre y apellido",
+    "addEmail": "Añade un email"
   }
 }
