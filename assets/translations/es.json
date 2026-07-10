@@ -260,7 +260,11 @@
     "previewDeal": "📋 Propuesta de deal",
     "previewPhoto": "📷 Foto",
     "previewVideo": "🎥 Vídeo",
-    "previewDealClosed": "🤝 Deal cerrado"
+    "previewDealClosed": "🤝 Deal cerrado",
+    "searchHint": "Buscar personas...",
+    "sectionChats": "Conversaciones",
+    "sectionSuggested": "Sugeridos",
+    "noMatches": "No se encontraron personas"
   },
   "deals": {
     "agreed": "¡Aceptaste la propuesta!",

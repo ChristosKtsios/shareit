@@ -260,7 +260,11 @@
     "previewDeal": "📋 Πρόταση Deal",
     "previewPhoto": "📷 Φωτογραφία",
     "previewVideo": "🎥 Βίντεο",
-    "previewDealClosed": "🤝 Το deal έκλεισε"
+    "previewDealClosed": "🤝 Το deal έκλεισε",
+    "searchHint": "Αναζήτηση ατόμων...",
+    "sectionChats": "Συνομιλίες",
+    "sectionSuggested": "Προτεινόμενοι",
+    "noMatches": "Δεν βρέθηκαν άτομα"
   },
   "deals": {
     "agreed": "Συμφώνησες με την πρόταση!",

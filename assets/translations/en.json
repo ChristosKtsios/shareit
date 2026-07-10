@@ -260,7 +260,11 @@
     "previewDeal": "📋 Deal proposal",
     "previewPhoto": "📷 Photo",
     "previewVideo": "🎥 Video",
-    "previewDealClosed": "🤝 Deal closed"
+    "previewDealClosed": "🤝 Deal closed",
+    "searchHint": "Search people...",
+    "sectionChats": "Conversations",
+    "sectionSuggested": "Suggested",
+    "noMatches": "No people found"
   },
   "deals": {
     "agreed": "You agreed to the proposal!",
