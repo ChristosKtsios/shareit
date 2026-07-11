@@ -680,7 +680,11 @@
     "newPassword": "New password",
     "passwordHint": "8+ characters, uppercase, number, symbol",
     "confirmPassword": "Confirm password",
-    "confirmHint": "The same password again"
+    "confirmHint": "The same password again",
+    "currentPassword": "Current password",
+    "currentHint": "Your current password",
+    "wrongCurrent": "Wrong current password.",
+    "googleNoPassword": "You sign in with Google, so your account has no password. Manage it from your Google account."
   },
   "wall": {
     "onlyPhotoComments": "Only photos are allowed in comments",

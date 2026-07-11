@@ -680,7 +680,11 @@
     "newPassword": "Nueva contraseña",
     "passwordHint": "8+ caracteres, mayúscula, número, símbolo",
     "confirmPassword": "Confirmar contraseña",
-    "confirmHint": "La misma contraseña otra vez"
+    "confirmHint": "La misma contraseña otra vez",
+    "currentPassword": "Contraseña actual",
+    "currentHint": "Tu contraseña actual",
+    "wrongCurrent": "Contraseña actual incorrecta.",
+    "googleNoPassword": "Inicias sesión con Google, así que tu cuenta no tiene contraseña. Gestiónala desde tu cuenta de Google."
   },
   "wall": {
     "onlyPhotoComments": "Solo se permiten fotos en los comentarios",
