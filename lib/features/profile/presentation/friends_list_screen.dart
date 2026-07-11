@@ -197,11 +197,11 @@ class _FriendsList extends StatelessWidget {
           final d = doc.data() as Map<String, dynamic>;
           final first = (d['firstName'] as String? ?? '').toLowerCase();
           final last = (d['lastName'] as String? ?? '').toLowerCase();
-          final email = (d['email'] as String? ?? '').toLowerCase();
+          // Η αναζήτηση με email καταργήθηκε: τα emails δεν είναι πλέον
+          // αναγνώσιμα για άλλους χρήστες (ζουν στο users/{uid}/private/data).
           return first.contains(query) ||
               last.contains(query) ||
-              '$first $last'.contains(query) ||
-              email.contains(query);
+              '$first $last'.contains(query);
         }).toList();
 
         if (docs.isEmpty && query.isNotEmpty) {
@@ -250,7 +250,6 @@ class _FriendTile extends StatelessWidget {
     final d = doc.data() as Map<String, dynamic>;
     final first = (d['firstName'] as String? ?? '').trim();
     final last = (d['lastName'] as String? ?? '').trim();
-    final email = (d['email'] as String? ?? '').trim();
     final avatarUrl = (d['avatarUrl'] as String?) ?? (d['photoUrl'] as String?);
     final isVerified = d['isVerified'] as bool? ?? false;
     final rating = (d['rating'] as num?)?.toDouble() ?? 0.0;
@@ -263,8 +262,6 @@ class _FriendTile extends StatelessWidget {
       fullName = first;
     } else if (last.isNotEmpty) {
       fullName = last;
-    } else if (email.contains('@')) {
-      fullName = email.split('@').first;
     } else {
       fullName = 'Χρήστης';
     }

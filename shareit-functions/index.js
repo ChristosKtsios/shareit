@@ -5,7 +5,8 @@
 const {onDocumentWritten, onDocumentCreated} =
   require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onCall, onRequest, HttpsError} =
+  require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
 const {getAuth} = require("firebase-admin/auth");
@@ -448,6 +449,12 @@ exports.deleteUserAccount = onCall(async (request) => {
 
     results.storageFiles = await deleteUserStorage(uid);
 
+    // Private subcollection (email/phone/fcmToken) — δεν σβήνεται αυτόματα
+    // με το parent doc.
+    const priv = await db.collection("users").doc(uid)
+        .collection("private").get();
+    for (const doc of priv.docs) await doc.ref.delete();
+
     await db.collection("users").doc(uid).delete();
     await getAuth().deleteUser(uid);
 
@@ -463,3 +470,80 @@ exports.deleteUserAccount = onCall(async (request) => {
     throw new HttpsError("internal", `Αποτυχία: ${error.message}`);
   }
 });
+
+/**
+ * ΜΙΑ ΦΟΡΑ — μεταφορά υπαρχόντων δεδομένων στη νέα, ασφαλή δομή.
+ *
+ * 1) users: τα ευαίσθητα πεδία (email, phone, fcmToken, language) φεύγουν από
+ *    το ΔΗΜΟΣΙΟ user doc (που το διαβάζει κάθε συνδεδεμένος χρήστης) και πάνε
+ *    στο `users/{uid}/private/data` — αναγνώσιμο μόνο από τον ίδιο.
+ * 2) deals: προστίθεται `participants: [user1Uid, user2Uid]`, ώστε τα rules να
+ *    κλειδώνουν το read στους συμμετέχοντες (χωρίς αυτό, τα deals των παλιών
+ *    docs δεν θα εμφανίζονταν).
+ *
+ * Είναι idempotent — μπορεί να ξανατρέξει με ασφάλεια.
+ *
+ * Κλήση (μία φορά, μετά το deploy των functions και ΠΡΙΝ το deploy των rules):
+ *   curl "https://europe-west1-shareit-6cfa0.cloudfunctions.net/migrateToPrivateData?key=ΤΟ_ΚΛΕΙΔΙ"
+ *
+ * ΜΕΤΑ την επιτυχή εκτέλεση, ΣΒΗΣΕ αυτό το function και ξανακάνε deploy.
+ */
+const MIGRATION_SECRET = "115064955611d295351928ab3ade41b7";
+const SENSITIVE_FIELDS = ["email", "phone", "fcmToken", "language"];
+
+exports.migrateToPrivateData = onRequest(
+    {region: "europe-west1", timeoutSeconds: 540},
+    async (req, res) => {
+      if (req.query.key !== MIGRATION_SECRET) {
+        res.status(403).send("forbidden");
+        return;
+      }
+
+      const report = {usersMigrated: 0, usersSkipped: 0, dealsMigrated: 0};
+
+      const users = await db.collection("users").get();
+      for (const doc of users.docs) {
+        const d = doc.data();
+        const priv = {};
+        const strip = {};
+        for (const f of SENSITIVE_FIELDS) {
+          if (d[f] !== undefined && d[f] !== null) {
+            priv[f] = d[f];
+            strip[f] = FieldValue.delete();
+          }
+        }
+        if (Object.keys(priv).length === 0) {
+          report.usersSkipped++;
+          continue;
+        }
+        try {
+          // Πρώτα γράψε το private doc, ΜΕΤΑ σβήσε από το δημόσιο — ώστε αν
+          // κάτι αποτύχει, να μη χαθούν δεδομένα.
+          await doc.ref.collection("private").doc("data")
+              .set(priv, {merge: true});
+          await doc.ref.update(strip);
+          report.usersMigrated++;
+        } catch (e) {
+          logger.error(`migrate user ${doc.id}:`, e);
+        }
+      }
+
+      const deals = await db.collection("deals").get();
+      for (const doc of deals.docs) {
+        const d = doc.data();
+        const cur = d.participants;
+        if (Array.isArray(cur) && cur.length === 2) continue;
+        const parts = [d.user1Uid, d.user2Uid].filter(Boolean);
+        if (parts.length !== 2) continue;
+        try {
+          await doc.ref.update({participants: parts});
+          report.dealsMigrated++;
+        } catch (e) {
+          logger.error(`migrate deal ${doc.id}:`, e);
+        }
+      }
+
+      logger.info("migrateToPrivateData done", report);
+      res.status(200).json(report);
+    },
+);

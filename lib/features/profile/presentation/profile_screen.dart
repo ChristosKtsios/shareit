@@ -40,7 +40,6 @@ class ProfileScreen extends ConsumerWidget {
           final data = snap.data!.data() as Map<String, dynamic>? ?? {};
           final firstName = (data['firstName'] as String? ?? '').trim();
           final lastName = (data['lastName'] as String? ?? '').trim();
-          final emailFallback = (data['email'] as String? ?? '').trim();
           final rating = (data['rating'] as num?)?.toDouble() ?? 0.0;
           final ratingCount = (data['ratingCount'] as num?)?.toInt() ?? 0;
           final dealsCount = (data['dealsCount'] as num?)?.toInt() ?? 0;
@@ -62,9 +61,9 @@ class ProfileScreen extends ConsumerWidget {
             fullName = firstName;
           } else if (lastName.isNotEmpty) {
             fullName = lastName;
-          } else if (emailFallback.contains('@')) {
-            fullName = emailFallback.split('@').first;
           } else {
+            // Το email ΔΕΝ χρησιμοποιείται πια ως fallback: δεν είναι πλέον
+            // αναγνώσιμο για ξένα προφίλ (ζει στο private doc).
             fullName = 'Χρήστης';
           }
 

@@ -1,125 +1,249 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAuth()          { return request.auth != null; }
-    function isOwner(uid)      { return request.auth.uid == uid; }
-    function isParticipant()   { return request.auth.uid in resource.data.participants; }
+    function isAuth()   { return request.auth != null; }
+    function isOwner(uid) { return request.auth.uid == uid; }
 
+    // Πεδία που ΑΛΛΑΖΕΙ αυτό το write (μόνο για updates).
+    function touched() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function onlyTouched(keys) { return touched().hasOnly(keys); }
+    function touchesAny(keys)  { return touched().hasAny(keys); }
+
+    // Μοναδική αλλαγή σε λίστα uids = το uid του ίδιου του χρήστη (add ή remove).
+    // Χρησιμοποιείται σε likes: δεν μπορείς να σβήσεις/βάλεις likes άλλων.
+    function selfOnlyListDiff(field) {
+      return request.resource.data[field].toSet()
+               .difference(resource.data.get(field, []).toSet())
+               .hasOnly([request.auth.uid])
+          && resource.data.get(field, []).toSet()
+               .difference(request.resource.data[field].toSet())
+               .hasOnly([request.auth.uid]);
+    }
+
+    // ── USERS ─────────────────────────────────────────────────────────────
+    // ΔΗΜΟΣΙΟ προφίλ (όνομα, avatar, rating, friends, blockedUids…). Κάθε
+    // συνδεδεμένος χρήστης το διαβάζει — το χρειάζονται search / inbox /
+    // αγγελίες. Τα ΕΥΑΙΣΘΗΤΑ (email, phone, fcmToken, language) ΔΕΝ ζουν εδώ:
+    // βρίσκονται στο users/{uid}/private/data, το οποίο διαβάζει μόνο ο ίδιος.
+    // Το Firestore δεν φιλτράρει πεδία στο read — γι' αυτό ο διαχωρισμός.
     match /users/{uid} {
-      allow read:   if isAuth();
-      allow create: if isOwner(uid);
-      allow update: if isOwner(uid)
-                    || (isAuth() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']));
+      // Γράφονται ΜΟΝΟ server-side (Cloud Functions με admin → bypass rules):
+      //  - rating/ratingCount/dealsCount: onDealUpdate
+      //  - reportCount/isReported:        onReportCreated
+      //  - friends:                       onFriendRequestAccepted / unfriendUser
+      // και τα ευαίσθητα, ώστε να μην ξαναγυρίσουν ποτέ στο δημόσιο doc.
+      function serverManaged() {
+        return ['rating', 'ratingCount', 'dealsCount', 'reportCount', 'isReported',
+                'friends', 'email', 'phone', 'fcmToken', 'language'];
+      }
+
+      allow read: if isAuth();
+
+      allow create: if isOwner(uid)
+                    && !request.resource.data.keys().hasAny(
+                         ['email', 'phone', 'fcmToken', 'language', 'reportCount', 'isReported'])
+                    && request.resource.data.get('rating', 0) <= 0
+                    && request.resource.data.get('ratingCount', 0) <= 0
+                    && request.resource.data.get('dealsCount', 0) <= 0
+                    && request.resource.data.get('friends', []).size() == 0;
+
+      allow update: if isOwner(uid) && !touchesAny(serverManaged());
+      // delete: ΜΟΝΟ server (deleteUserAccount).
+
+      // Ευαίσθητα δεδομένα — ούτε διαβάζονται ούτε γράφονται από άλλον χρήστη.
+      match /private/{docId} {
+        allow read, write: if isOwner(uid);
+      }
     }
 
+    // ── FRIEND REQUESTS ───────────────────────────────────────────────────
     match /friendRequests/{reqId} {
-      allow read:   if isAuth() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
-      allow create: if isAuth() && request.resource.data.fromUid == request.auth.uid;
-      allow update: if isAuth() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
-      allow delete: if isAuth() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      function isPeer() {
+        return resource.data.fromUid == request.auth.uid
+            || resource.data.toUid == request.auth.uid;
+      }
+
+      allow read:   if isAuth() && isPeer();
+      allow create: if isAuth()
+                    && request.resource.data.fromUid == request.auth.uid
+                    && request.resource.data.toUid != request.auth.uid
+                    && request.resource.data.status == 'pending';
+      // ΜΟΝΟ ο παραλήπτης απαντά, και μόνο σε pending αίτημα. Το 'accepted'
+      // πυροδοτεί το Cloud Function που γράφει τα friends και στα δύο προφίλ —
+      // γι' αυτό ο αποστολέας δεν επιτρέπεται να «αποδεχτεί» ο ίδιος.
+      allow update: if isAuth()
+                    && resource.data.toUid == request.auth.uid
+                    && resource.data.status == 'pending'
+                    && onlyTouched(['status', 'respondedAt'])
+                    && request.resource.data.status in ['accepted', 'rejected'];
+      allow delete: if isAuth() && isPeer();
     }
 
+    // ── LISTINGS ──────────────────────────────────────────────────────────
     match /listings/{id} {
       allow read:   if isAuth();
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuth() && (resource.data.userId == request.auth.uid
-                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isReported']));
+      // Ο κάτοχος επεξεργάζεται, αλλά ΔΕΝ ξεκρύβει/μηδενίζει αγγελία που
+      // κρύφτηκε από reports (τα γράφει το onReportCreated).
+      allow update: if isAuth() && resource.data.userId == request.auth.uid
+                    && !touchesAny(['reportCount', 'isHidden', 'hiddenReason']);
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
 
+    // ── CHATS ─────────────────────────────────────────────────────────────
     match /chats/{chatId} {
-      allow read, update: if isAuth() && isParticipant();
-      allow create:       if isAuth();
-      allow delete:       if isAuth() && isParticipant();
+      function isParticipant() { return request.auth.uid in resource.data.participants; }
+      function chatOf()   { return get(/databases/$(database)/documents/chats/$(chatId)).data; }
+      function chatLives(){ return exists(/databases/$(database)/documents/chats/$(chatId)); }
+      function inChat()   { return request.auth.uid in chatOf().participants; }
+      function blockedBetweenPeers() {
+        return request.auth.uid in get(/databases/$(database)/documents/users/$(chatOf().participants[0])).data.get('blockedUids', [])
+            || request.auth.uid in get(/databases/$(database)/documents/users/$(chatOf().participants[1])).data.get('blockedUids', []);
+      }
+
+      allow read:   if isAuth() && isParticipant();
+      allow create: if isAuth()
+                    && request.auth.uid in request.resource.data.participants
+                    && request.resource.data.participants.size() == 2;
+      // ΚΡΙΣΙΜΟ: το `participants` δεν αλλάζει ΠΟΤΕ μετά τη δημιουργία. Χωρίς
+      // αυτόν τον περιορισμό ένας συμμετέχων θα μπορούσε να προσθέσει τρίτον
+      // και να του δώσει ολόκληρο το ιστορικό της συνομιλίας.
+      allow update: if isAuth() && isParticipant()
+                    && onlyTouched(['lastMessage', 'lastMessageAt', 'lastSenderId',
+                                    'unread', 'typingUids', 'mutedBy']);
+      allow delete: if isAuth() && isParticipant();
+
       match /messages/{msgId} {
-        allow read:   if isAuth() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        // Οι συμμετέχοντες μπορούν να ενημερώνουν ΜΟΝΟ read receipts / reactions.
-        // Και αν αλλάζει το reactions, επιτρέπεται να μεταβληθεί ΜΟΝΟ το δικό
-        // τους κλειδί (reactions[request.auth.uid]) — όχι αντιδράσεις άλλων.
-        allow update: if isAuth()
-                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
-                      && (
-                        // (α) read receipts / reactions — κάθε συμμετέχων, αλλά
-                        //     στο reactions μόνο το ΔΙΚΟ του κλειδί.
-                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'reactions'])
-                          && (!('reactions' in request.resource.data.diff(resource.data).affectedKeys())
-                              || request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid])))
-                        // (β) επεξεργασία κειμένου ΜΟΝΟ από τον αποστολέα.
-                        || (resource.data.senderId == request.auth.uid
-                            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt']))
-                      );
-        allow delete: if isAuth() && exists(/databases/$(database)/documents/chats/$(chatId))
-                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        allow create: if isAuth()
-                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        allow read:   if isAuth() && inChat();
+        allow create: if isAuth() && inChat()
                       && request.resource.data.senderId == request.auth.uid
-                      && !(request.auth.uid in get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/chats/$(chatId)).data.participants[0])).data.get('blockedUids', []))
-                      && !(request.auth.uid in get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/chats/$(chatId)).data.participants[1])).data.get('blockedUids', []));
+                      && !blockedBetweenPeers();
+        // (α) read receipts / reactions — κάθε συμμετέχων, αλλά στο reactions
+        //     μόνο το ΔΙΚΟ του κλειδί. (β) edit κειμένου μόνο ο αποστολέας.
+        allow update: if isAuth() && inChat()
+                      && (
+                        (onlyTouched(['readBy', 'reactions'])
+                          && (!('reactions' in touched())
+                              || request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid])))
+                        || (resource.data.senderId == request.auth.uid
+                            && onlyTouched(['text', 'editedAt']))
+                      );
+        // Σβήνεις ΜΟΝΟ δικά σου μηνύματα. Εξαίρεση: το «διαγραφή συνομιλίας»
+        // σβήνει πρώτα το chat doc και μετά τα μηνύματα — τα ορφανά μηνύματα
+        // (chat που δεν υπάρχει πια) καθαρίζονται ελεύθερα.
+        allow delete: if isAuth()
+                      && (
+                        (chatLives() && inChat()
+                          && resource.data.senderId == request.auth.uid)
+                        || !chatLives()
+                      );
       }
     }
 
+    // ── DEALS ─────────────────────────────────────────────────────────────
+    // `participants: [user1Uid, user2Uid]` — υπάρχει ώστε τα queries να μπορούν
+    // να περιοριστούν στους συμμετέχοντες (τα rules ΔΕΝ φιλτράρουν: ένα query
+    // χωρίς τον περιορισμό απορρίπτεται ολόκληρο).
     match /deals/{id} {
-      allow read:   if isAuth();
-      allow create: if isAuth();
-      // Συμμετέχων μπορεί να ενημερώσει. ΕΞΑΙΡΕΣΗ: μετάβαση σε 'cancelled'
-      // επιτρέπεται ΜΟΝΟ όταν το τρέχον status είναι 'pending' — δεν ακυρώνεται
+      function isPeer() { return request.auth.uid in resource.data.participants; }
+
+      allow read:   if isAuth() && isPeer();
+      allow create: if isAuth()
+                    && request.resource.data.participants.size() == 2
+                    && request.auth.uid in request.resource.data.participants
+                    && request.resource.data.participants.hasOnly(
+                         [request.resource.data.user1Uid, request.resource.data.user2Uid])
+                    && request.resource.data.status == 'pending';
+      // Ακύρωση επιτρέπεται ΜΟΝΟ όσο το deal είναι pending — δεν ακυρώνεται
       // accepted/active/completed deal ακόμα κι από παρακαμμένο client.
-      allow update: if isAuth()
-                    && (resource.data.user1Uid == request.auth.uid || resource.data.user2Uid == request.auth.uid)
-                    && (request.resource.data.status != 'cancelled' || resource.data.status == 'pending');
-      allow delete: if isAuth() && (resource.data.user1Uid == request.auth.uid || resource.data.user2Uid == request.auth.uid);
+      allow update: if isAuth() && isPeer()
+                    && !touchesAny(['participants', 'user1Uid', 'user2Uid', 'chatId'])
+                    && (request.resource.data.status != 'cancelled'
+                        || resource.data.status == 'pending');
+      allow delete: if isAuth() && isPeer();
     }
 
+    // ── WALL POSTS ────────────────────────────────────────────────────────
     match /wallPosts/{id} {
       allow read:   if isAuth();
       allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
-      // Author may edit; anyone else may only toggle likes or bump the comment count.
-      allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
-                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentsCount']));
+      // Ο συντάκτης επεξεργάζεται. Οποιοσδήποτε άλλος: μόνο το ΔΙΚΟ του like ή
+      // ο μετρητής σχολίων (±1) — δεν σβήνει τα likes των άλλων.
+      allow update: if isAuth() && (
+                      resource.data.authorUid == request.auth.uid
+                      || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
+                      || (onlyTouched(['commentsCount'])
+                          && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
+                              || request.resource.data.commentsCount == resource.data.get('commentsCount', 0) - 1))
+                    );
       allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
+
       match /comments/{cid} {
         allow read:   if isAuth();
         allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
-        // Comment author may edit/soft-delete; anyone else may only toggle likes or reactions.
-        allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
-                          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'reactions']));
+        allow update: if isAuth() && (
+                        resource.data.authorUid == request.auth.uid
+                        || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
+                        || onlyTouched(['reactions'])
+                      );
         allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
       }
     }
 
+    // ── USER POSTS ────────────────────────────────────────────────────────
     match /userPosts/{id} {
       allow read:   if isAuth();
       allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
-      // Author may edit; anyone else may only toggle likes or bump the comment count.
-      allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
-                        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentsCount']));
+      allow update: if isAuth() && (
+                      resource.data.authorUid == request.auth.uid
+                      || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
+                      || (onlyTouched(['commentsCount'])
+                          && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
+                              || request.resource.data.commentsCount == resource.data.get('commentsCount', 0) - 1))
+                    );
       allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
+
       match /comments/{cid} {
         allow read:   if isAuth();
         allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
-        // Comment author may edit/delete; anyone else may only toggle likes or reactions.
-        allow update: if isAuth() && (resource.data.authorUid == request.auth.uid
-                          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'reactions']));
+        allow update: if isAuth() && (
+                        resource.data.authorUid == request.auth.uid
+                        || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
+                        || onlyTouched(['reactions'])
+                      );
         allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
       }
     }
 
+    // ── NOTIFICATIONS ─────────────────────────────────────────────────────
+    // ΚΡΙΣΙΜΟ: κάθε doc εδώ γίνεται push μέσω του onNewNotification. Αν ο client
+    // μπορούσε να δημιουργήσει doc, οποιοσδήποτε θα έστελνε push με αυθαίρετο
+    // κείμενο σε οποιονδήποτε (phishing). Δημιουργία/διαγραφή: ΜΟΝΟ server.
     match /notifications/{id} {
-      allow read, update: if isAuth() && resource.data.targetUid == request.auth.uid;
-      allow create:       if isAuth();
+      allow read:   if isAuth() && resource.data.targetUid == request.auth.uid;
+      allow update: if isAuth() && resource.data.targetUid == request.auth.uid
+                    && onlyTouched(['isRead', 'read']);
     }
 
+    // ── TAGS ──────────────────────────────────────────────────────────────
+    // Trending counters: μόνο ±1 ανά write (δημιουργία/διαγραφή αγγελίας).
+    // Χωρίς αυτό, οποιοσδήποτε έγραφε αυθαίρετο count ή έσβηνε tag.
     match /tags/{tag} {
-      // Trending-tag counters. Any signed-in user may read them and bump the
-      // count when publishing a listing.
-      allow read:  if isAuth();
-      allow write: if isAuth();
+      allow read:   if isAuth();
+      allow create: if isAuth()
+                    && request.resource.data.keys().hasOnly(['name', 'count', 'lastUsedAt'])
+                    && request.resource.data.count == 1;
+      allow update: if isAuth()
+                    && onlyTouched(['name', 'count', 'lastUsedAt'])
+                    && (request.resource.data.count == resource.data.count + 1
+                        || request.resource.data.count == resource.data.count - 1);
+      // delete: ποτέ από client.
     }
 
+    // ── REPORTS ───────────────────────────────────────────────────────────
     match /reports/{id} {
       allow create: if isAuth() && request.resource.data.reporterUid == request.auth.uid;
-      // Reporters may read only their own reports (needed for client-side
-      // dedup). Counter/flag updates on the target happen server-side.
+      // Ο καταγγέλλων διαβάζει μόνο τα δικά του (client-side dedup).
       allow read:   if isAuth() && resource.data.reporterUid == request.auth.uid;
     }
   }

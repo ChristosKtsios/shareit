@@ -49,18 +49,24 @@ class UserModel {
     return DateTime.now().difference(lastSeen!).inMinutes < 5;
   }
 
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
+  /// [private] = το `users/{uid}/private/data` doc. Το διαβάζει **μόνο ο ίδιος**
+  /// ο χρήστης (βλ. firestore.rules) — εκεί ζουν πλέον email/phone/fcmToken,
+  /// ώστε να μην κατεβαίνουν στους άλλους μαζί με το δημόσιο προφίλ. Για ξένα
+  /// προφίλ το [private] είναι `null` και τα πεδία μένουν κενά.
+  factory UserModel.fromFirestore(DocumentSnapshot doc,
+      [Map<String, dynamic>? private]) {
     final d = doc.data() as Map<String, dynamic>;
+    final p = private ?? const <String, dynamic>{};
     return UserModel(
       uid: doc.id,
       firstName: d['firstName'] ?? '',
       lastName: d['lastName'] ?? '',
-      email: d['email'] ?? '',
-      phone: d['phone'] ?? '',
+      email: p['email'] ?? '',
+      phone: p['phone'] ?? '',
       rating: (d['rating'] as num?)?.toDouble() ?? 0.0,
       ratingCount: (d['ratingCount'] as num?)?.toInt() ?? 0,
       avatarUrl: d['avatarUrl'] ?? d['photoUrl'],
-      fcmToken: d['fcmToken'],
+      fcmToken: p['fcmToken'],
       isVerified: d['isVerified'] ?? false,
       phoneVerified: d['phoneVerified'] ?? false,
       blockedUids: List<String>.from(d['blockedUids'] ?? []),
@@ -73,16 +79,16 @@ class UserModel {
     );
   }
 
+  /// ΠΡΟΣΟΧΗ: τα email/phone/fcmToken **δεν** ανήκουν εδώ — γράφονται στο
+  /// `users/{uid}/private/data` (UserRepository.updatePrivate). Τα rules
+  /// απορρίπτουν write αυτών των πεδίων στο δημόσιο doc.
   Map<String, dynamic> toFirestore() => {
         'uid': uid,
         'firstName': firstName,
         'lastName': lastName,
-        'email': email,
-        'phone': phone,
         'rating': rating,
         'ratingCount': ratingCount,
         'avatarUrl': avatarUrl,
-        'fcmToken': fcmToken,
         'isVerified': isVerified,
         'phoneVerified': phoneVerified,
         'blockedUids': blockedUids,

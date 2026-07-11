@@ -63,16 +63,28 @@ function t(lang: string, key: string, args: Record<string, string> = {}): string
 
 type Msg = { title: string; body: string };
 
+/** Το private doc του χρήστη: email/phone/fcmToken/language. Δεν είναι
+ *  αναγνώσιμο από άλλους χρήστες (firestore.rules) — εδώ το διαβάζουμε με
+ *  admin. Fallback στο δημόσιο doc για χρήστες που δεν έχουν ακόμα migrated. */
+function privateRef(uid: string) {
+  return db.collection("users").doc(uid).collection("private").doc("data");
+}
+
 async function sendToUser(
   uid: string,
   build: (lang: string) => Msg,
   data: Record<string, string> = {}
 ): Promise<void> {
-  const userDoc = await db.collection("users").doc(uid).get();
-  const lang = (userDoc.data()?.language as string) ?? "el";
-  const tokens: string[] = userDoc.data()?.fcmTokens ?? [];
+  const [userDoc, privDoc] = await Promise.all([
+    db.collection("users").doc(uid).get(),
+    privateRef(uid).get(),
+  ]);
+  const priv = privDoc.data() ?? {};
+  const pub = userDoc.data() ?? {};
+  const lang = (priv.language as string) ?? (pub.language as string) ?? "el";
+  const tokens: string[] = priv.fcmTokens ?? pub.fcmTokens ?? [];
   if (tokens.length === 0) {
-    const single = userDoc.data()?.fcmToken;
+    const single = priv.fcmToken ?? pub.fcmToken;
     if (typeof single === "string" && single.length > 0) tokens.push(single);
   }
   if (tokens.length === 0) {
@@ -276,6 +288,77 @@ export const onNewFriendRequest = onDocumentCreated(
 );
 
 /**
+ * ΦΙΛΙΑ — γράφεται ΜΟΝΟ εδώ (server), ποτέ από τον client.
+ *
+ * Ο client δεν μπορεί να γράψει το `friends` άλλου χρήστη (firestore.rules):
+ * αλλιώς οποιοσδήποτε θα αυτοπροστίθετο στη λίστα φίλων σου και θα αποκτούσε
+ * πρόσβαση σε ιδιωτικό προφίλ/σχόλια χωρίς ποτέ να τον δεχτείς.
+ *
+ * Τα rules επιτρέπουν `status: accepted` ΜΟΝΟ στον παραλήπτη (toUid) και μόνο
+ * από `pending` — οπότε το trigger εδώ είναι αξιόπιστο σήμα αποδοχής.
+ */
+export const onFriendRequestAccepted = onDocumentUpdated(
+  "friendRequests/{reqId}",
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!after) return;
+    if (before?.status === "accepted" || after.status !== "accepted") return;
+
+    const fromUid = after.fromUid as string;
+    const toUid = after.toUid as string;
+    if (!fromUid || !toUid || fromUid === toUid) return;
+
+    const batch = db.batch();
+    batch.set(
+      db.collection("users").doc(fromUid),
+      { friends: admin.firestore.FieldValue.arrayUnion(toUid) },
+      { merge: true }
+    );
+    batch.set(
+      db.collection("users").doc(toUid),
+      { friends: admin.firestore.FieldValue.arrayUnion(fromUid) },
+      { merge: true }
+    );
+    await batch.commit();
+    logger.info(`Friendship created: ${fromUid} <-> ${toUid}`);
+  }
+);
+
+/** Κατάργηση φιλίας — αφαιρεί και τις δύο πλευρές. */
+export const unfriendUser = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Πρέπει να είσαι συνδεδεμένος");
+
+  const targetUid = ((request.data?.targetUid as string) ?? "").trim();
+  if (!targetUid || targetUid === uid) {
+    throw new HttpsError("invalid-argument", "Μη έγκυρος χρήστης");
+  }
+
+  const batch = db.batch();
+  batch.update(db.collection("users").doc(uid), {
+    friends: admin.firestore.FieldValue.arrayRemove(targetUid),
+  });
+  batch.update(db.collection("users").doc(targetUid), {
+    friends: admin.firestore.FieldValue.arrayRemove(uid),
+  });
+  await batch.commit();
+
+  // Καθάρισε τα αιτήματα μεταξύ τους, ώστε να μπορούν να ξαναγίνουν φίλοι.
+  const [a, b] = await Promise.all([
+    db.collection("friendRequests")
+      .where("fromUid", "==", uid).where("toUid", "==", targetUid).get(),
+    db.collection("friendRequests")
+      .where("fromUid", "==", targetUid).where("toUid", "==", uid).get(),
+  ]);
+  for (const doc of [...a.docs, ...b.docs]) {
+    try { await doc.ref.delete(); } catch (e) { logger.error(`fr ${doc.id}:`, e); }
+  }
+
+  return { success: true };
+});
+
+/**
  * GDPR-compliant διαγραφή λογαριασμού.
  * Διαγράφει: listings, deals, chats, wall posts, user posts, friends,
  * notifications, user document, FirebaseAuth user.
@@ -368,8 +451,10 @@ export const deleteUserAccount = onCall(async (request) => {
       await bucket.deleteFiles({ prefix: `listings/${uid}/` });
     } catch (e) { logger.error("storage delete failed:", e); }
 
-    // 10. Διαγραφή user document
+    // 10. Διαγραφή user document + private subcollection (email/phone/token)
     try {
+      const priv = await db.collection("users").doc(uid).collection("private").get();
+      for (const doc of priv.docs) await doc.ref.delete();
       await db.collection("users").doc(uid).delete();
       logger.info(`User document ${uid} deleted`);
     } catch (e) { logger.error("user doc delete failed:", e); }

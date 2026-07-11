@@ -42,7 +42,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       final data = ref.read(currentUserDataProvider).valueOrNull;
       if (data == null || data.email.trim() == authEmail) return;
 
-      await ref.read(userRepoProvider).update(user.uid, {'email': authEmail});
+      await ref
+          .read(userRepoProvider)
+          .updatePrivate(user.uid, {'email': authEmail});
     } catch (_) {
       // Μη κρίσιμο — απλώς δεν συγχρονίζεται τώρα.
     }

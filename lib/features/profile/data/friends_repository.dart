@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 class FriendsRepository {
@@ -39,29 +40,24 @@ class FriendsRepository {
     });
   }
 
-  /// Αποδοχή αιτήματος — atomic WriteBatch ώστε και τα 3 writes να γίνουν
-  /// μαζί ή καθόλου (αποφεύγουμε μονόπλευρη φιλία αν αποτύχει κάποιο βήμα).
-  /// Όλα τα writes είναι συμβατά με τους κανόνες:
-  ///  - friendRequests update: ο acceptor είναι ο toUid
-  ///  - users/{fromUid}: diff μόνο 'friends' (επιτρέπεται)
-  ///  - users/{toUid}: δικό μου doc (isOwner)
+  /// Αποδοχή αιτήματος.
+  ///
+  /// Ο client γράφει ΜΟΝΟ το `status: accepted` στο αίτημα (μόνο ο παραλήπτης
+  /// μπορεί — το επιβάλλουν τα rules). Τη φιλία τη γράφει **server-side** το
+  /// Cloud Function `onFriendRequestAccepted`, και στα δύο προφίλ.
+  ///
+  /// Γιατί όχι από τον client: το `friends` άλλου χρήστη δεν είναι εγγράψιμο.
+  /// Αν ήταν, οποιοσδήποτε θα μπορούσε να αυτοπροστεθεί στη λίστα φίλων σου —
+  /// και να δει ιδιωτικό προφίλ / να σχολιάσει, χωρίς να τον δεχτείς ποτέ.
   Future<void> accept({
     required String requestId,
     required String fromUid,
     required String toUid,
   }) async {
-    final batch = _db.batch();
-    batch.update(_db.collection('friendRequests').doc(requestId), {
+    await _db.collection('friendRequests').doc(requestId).update({
       'status': 'accepted',
       'respondedAt': FieldValue.serverTimestamp(),
     });
-    batch.update(_db.collection('users').doc(fromUid), {
-      'friends': FieldValue.arrayUnion([toUid]),
-    });
-    batch.update(_db.collection('users').doc(toUid), {
-      'friends': FieldValue.arrayUnion([fromUid]),
-    });
-    await batch.commit();
   }
 
   /// Απόρριψη αιτήματος.
@@ -72,27 +68,19 @@ class FriendsRepository {
     });
   }
 
-  /// Αφαίρεση φίλου από τη λίστα και των δύο.
+  /// Αφαίρεση φίλου — και από τις δύο λίστες, **server-side** (Cloud Function
+  /// `unfriendUser`). Ο client δεν γράφει το `friends` κανενός doc.
   Future<void> remove({
     required String currentUid,
     required String targetUid,
   }) async {
-    // Δικό μου doc (επιτρέπεται από rules: isOwner)
     try {
-      await _db.collection('users').doc(currentUid).update({
-        'friends': FieldValue.arrayRemove([targetUid]),
-      });
+      await FirebaseFunctions.instanceFor(region: 'europe-west1')
+          .httpsCallable('unfriendUser')
+          .call({'targetUid': targetUid});
     } catch (e) {
-      debugPrint('❌ Remove from currentUid failed: $e');
-    }
-
-    // Doc του άλλου (επιτρέπεται από νέο rule: friends-only update)
-    try {
-      await _db.collection('users').doc(targetUid).update({
-        'friends': FieldValue.arrayRemove([currentUid]),
-      });
-    } catch (e) {
-      debugPrint('❌ Remove from targetUid failed: $e');
+      debugPrint('❌ unfriendUser failed: $e');
+      rethrow;
     }
   }
 

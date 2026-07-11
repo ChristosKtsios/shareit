@@ -10,8 +10,13 @@ class DealRepository {
     required String chatId,
     required String currentUid,
   }) async {
-    final snap =
-        await _db.collection('deals').where('chatId', isEqualTo: chatId).get();
+    // Το `participants` φίλτρο είναι ΑΠΑΡΑΙΤΗΤΟ: τα rules δεν φιλτράρουν — ένα
+    // query που δεν περιορίζεται στους συμμετέχοντες απορρίπτεται ολόκληρο.
+    final snap = await _db
+        .collection('deals')
+        .where('chatId', isEqualTo: chatId)
+        .where('participants', arrayContains: currentUid)
+        .get();
     for (final doc in snap.docs) {
       final d = doc.data();
       final status = d['status'] as String?;
@@ -41,6 +46,10 @@ class DealRepository {
       'listingTitle': listingTitle,
       'user1Uid': user1Uid,
       'user2Uid': user2Uid,
+      // Ίδιοι χρήστες με user1/user2, σε array — ώστε τα queries να μπορούν να
+      // περιοριστούν στους συμμετέχοντες (array-contains) και τα rules να
+      // κλειδώνουν το read/update μόνο σε αυτούς.
+      'participants': [user1Uid, user2Uid],
       // Ο proposer είναι πάντα ο user1 (στέλνει το proposal1). Το χρειάζεται
       // το Cloud Function για να στείλει το push στον σωστό παραλήπτη.
       'proposerUid': user1Uid,
@@ -168,15 +177,15 @@ class DealRepository {
 
   Stream<List<DealModel>> watchUserDeals(String uid) => _db
       .collection('deals')
-      .where(Filter.or(Filter('user1Uid', isEqualTo: uid),
-          Filter('user2Uid', isEqualTo: uid)))
+      .where('participants', arrayContains: uid)
       .orderBy('createdAt', descending: true)
       .snapshots()
       .map((s) => s.docs.map(DealModel.fromFirestore).toList());
 
-  Stream<DealModel?> watchByChatId(String chatId) => _db
+  Stream<DealModel?> watchByChatId(String chatId, String uid) => _db
           .collection('deals')
           .where('chatId', isEqualTo: chatId)
+          .where('participants', arrayContains: uid)
           .snapshots()
           .map((s) {
         if (s.docs.isEmpty) return null;

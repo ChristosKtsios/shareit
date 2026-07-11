@@ -23,10 +23,14 @@ final myActiveDealsProvider = StreamProvider<List<DealModel>>((ref) {
   );
 });
 
-// Deal από chatId
+// Deal από chatId — απαιτεί το uid: τα rules επιτρέπουν ανάγνωση deal μόνο
+// στους συμμετέχοντες, οπότε το query πρέπει να το δηλώνει (array-contains).
 final dealByChatProvider = StreamProvider.family<DealModel?, String>(
-    (ref, chatId) =>
-        ref.watch(dealRepoProvider).watchByChatId(chatId));
+    (ref, chatId) {
+  final uid = ref.watch(currentUserProvider)?.uid;
+  if (uid == null) return const Stream<DealModel?>.empty();
+  return ref.watch(dealRepoProvider).watchByChatId(chatId, uid);
+});
 
 // Pending deals — περιμένουν αποδοχή
 final myPendingDealsProvider = StreamProvider<List<DealModel>>((ref) {

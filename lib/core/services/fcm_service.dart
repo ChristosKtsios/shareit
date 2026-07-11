@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import '../../features/profile/data/user_repository.dart';
 import 'error_logger.dart';
 
 @pragma('vm:entry-point')
@@ -10,7 +11,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
 class FcmService {
   static final _fcm = FirebaseMessaging.instance;
-  static final _db = FirebaseFirestore.instance;
   static final _local = FlutterLocalNotificationsPlugin();
 
   static const _channelId = 'shareit_messages';
@@ -93,19 +93,21 @@ class FcmService {
     }
   }
 
-  /// Αποθήκευση FCM token — **UPDATE-ONLY**.
+  /// Αποθήκευση FCM token στο **private** doc (`users/{uid}/private/data`).
   ///
-  /// ΚΡΙΣΙΜΟ: ΔΕΝ χρησιμοποιούμε `set(merge:true)`, γιατί αυτό **δημιουργεί** το
-  /// user document. Επειδή το [init] τρέχει σε κάθε authStateChanges, ένα
-  /// set+merge έφτιαχνε «ghost» docs με μόνο fcmToken (χωρίς όνομα/email) για
-  /// κάθε auth event που δεν ολοκλήρωνε profile write — γι' αυτό οι χρήστες
-  /// εμφανίζονταν ως «Χρήστης». Με `update()` το write αποτυγχάνει σιωπηλά αν
-  /// δεν υπάρχει doc· το token αποθηκεύεται στο επόμενο άνοιγμα.
+  /// Το token είναι αναγνωριστικό συσκευής: αν έμενε στο δημόσιο user doc, θα
+  /// το κατέβαζε κάθε χρήστης που βλέπει το προφίλ. Το private doc διαβάζεται
+  /// μόνο από τον ίδιο (rules) και από τις Cloud Functions (admin).
+  ///
+  /// Το `set(merge)` εδώ είναι ασφαλές: γράφει σε **subcollection**, οπότε ΔΕΝ
+  /// δημιουργεί το `users/{uid}` — δεν επιστρέφουν τα «ghost» user docs που
+  /// εμφάνιζαν χρήστες ως «Χρήστης».
   static Future<void> _saveToken(String uid, String token) async {
     try {
-      await _db.collection('users').doc(uid).update({'fcmToken': token});
+      await UserRepository.privateRef(uid)
+          .set({'fcmToken': token}, SetOptions(merge: true));
     } catch (e, s) {
-      logSwallowed(e, s, 'fcm _saveToken (doc missing?)');
+      logSwallowed(e, s, 'fcm _saveToken');
     }
   }
 
@@ -122,14 +124,14 @@ class FcmService {
     }
   }
 
-  /// Αποθηκεύει τη γλώσσα του χρήστη (el/en/es) στο user doc, ώστε οι Cloud
+  /// Αποθηκεύει τη γλώσσα του χρήστη (el/en/es) στο private doc, ώστε οι Cloud
   /// Functions να στέλνουν τα push notifications στη γλώσσα του ΠΑΡΑΛΗΠΤΗ.
-  /// Update-only για τον ίδιο λόγο με το [_saveToken].
   static Future<void> saveLanguage(String uid, String lang) async {
     try {
-      await _db.collection('users').doc(uid).update({'language': lang});
+      await UserRepository.privateRef(uid)
+          .set({'language': lang}, SetOptions(merge: true));
     } catch (e, s) {
-      logSwallowed(e, s, 'fcm saveLanguage (doc missing?)');
+      logSwallowed(e, s, 'fcm saveLanguage');
     }
   }
 

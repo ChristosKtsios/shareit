@@ -223,8 +223,12 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       // `phoneVerified: true`. Χωρίς αυτό, οι χρήστες (π.χ. Google sign-in που
       // ξεκινούν με phoneVerified:false) έμεναν «Μη επαληθευμένοι» για πάντα.
       final fullPhone = '$_countryCode${_phoneCtrl.text.trim()}';
+      // Το ίδιο το κινητό είναι ευαίσθητο → private doc. Στο δημόσιο doc μένουν
+      // μόνο οι σημαίες επαλήθευσης (τις δείχνει το προφίλ).
+      await ref
+          .read(userRepoProvider)
+          .updatePrivate(user.uid, {'phone': fullPhone});
       await ref.read(userRepoProvider).update(user.uid, {
-        'phone': fullPhone,
         'phoneVerified': true,
         'isVerified': true,
       });

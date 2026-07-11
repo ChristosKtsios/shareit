@@ -292,13 +292,24 @@ class ChatRepository {
     });
   }
 
+  /// Διαγραφή ολόκληρης της συνομιλίας (και για τους δύο — όπως και πριν).
+  ///
+  /// ΣΕΙΡΑ (σημαντική): 1) διάβασε τα μηνύματα, 2) σβήσε το chat doc,
+  /// 3) σβήσε τα μηνύματα. Τα rules επιτρέπουν σε συμμετέχοντα να σβήσει
+  /// μεμονωμένο μήνυμα ΜΟΝΟ αν είναι δικό του — αλλιώς ο ένας θα μπορούσε να
+  /// εξαφανίζει τα μηνύματα του άλλου. Εξαίρεση: μηνύματα «ορφανά» (chat που
+  /// δεν υπάρχει πια), δηλαδή ακριβώς αυτό το cleanup.
   Future<void> deleteChat(String chatId) async {
     final messages =
         await _db.collection('chats').doc(chatId).collection('messages').get();
-    for (final msg in messages.docs) {
-      await msg.reference.delete();
-    }
     await _db.collection('chats').doc(chatId).delete();
+    for (final msg in messages.docs) {
+      try {
+        await msg.reference.delete();
+      } catch (e, s) {
+        logSwallowed(e, s, 'deleteChat message cleanup');
+      }
+    }
   }
 
   Future<void> deleteMessage(String chatId, String messageId) => _db

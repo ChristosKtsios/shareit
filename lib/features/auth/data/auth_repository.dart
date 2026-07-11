@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/services/fcm_service.dart';
+import '../../profile/data/user_repository.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -96,14 +97,9 @@ class AuthRepository {
   // REGISTER METHODS
   // ============================================================
 
-  Future<bool> phoneExists(String phone) async {
-    final query = await _db
-        .collection('users')
-        .where('phone', isEqualTo: phone.trim())
-        .limit(1)
-        .get();
-    return query.docs.isNotEmpty;
-  }
+  // Ο έλεγχος «υπάρχει ήδη λογαριασμός με αυτό το κινητό;» γίνεται ΜΟΝΟ από το
+  // Cloud Function `checkAccountExists` (Firebase Auth admin). Δεν κάνουμε
+  // query στους users με `phone` — τα τηλέφωνα δεν είναι πια αναγνώσιμα.
 
   /// ΝΕΑ ΡΟΗ — Διορθωμένη:
   /// 1) ΠΡΩΤΑ γράφει user document με όνομα/επώνυμο (πιο σημαντικό)
@@ -184,12 +180,12 @@ class AuthRepository {
     // Σε repair (υπήρχε ήδη doc) ενημερώνουμε ΜΟΝΟ τα βασικά πεδία και ΔΕΝ
     // μηδενίζουμε τυχόν υπάρχοντα δεδομένα (friends, ratings, saved listings...).
     // ============================================================
+    // ΠΡΟΣΟΧΗ: email/phone ΔΕΝ μπαίνουν εδώ — το δημόσιο user doc το διαβάζει
+    // κάθε συνδεδεμένος χρήστης (search, inbox, αγγελίες). Πάνε στο private doc.
     final docData = <String, dynamic>{
       'uid': uid,
       'firstName': firstName.trim(),
       'lastName': lastName.trim(),
-      'email': email.trim(),
-      'phone': phone.trim(),
       'isVerified': true,
       'phoneVerified': true,
     };
@@ -212,6 +208,12 @@ class AuthRepository {
       });
     }
     await _db.collection('users').doc(uid).set(docData, SetOptions(merge: true));
+
+    // Ευαίσθητα δεδομένα → private doc (μόνο ο ίδιος + οι Cloud Functions).
+    await UserRepository.privateRef(uid).set({
+      'email': email.trim(),
+      'phone': phone.trim(),
+    }, SetOptions(merge: true));
 
     // Κράτα αντίγραφο του ονόματος και στο Firebase Auth (displayName), ώστε να
     // είναι ανακτήσιμο αν ποτέ χαθεί/λείψει το πεδίο στο Firestore doc.

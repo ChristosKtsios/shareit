@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/services/profile_gate.dart';
+import '../../profile/data/user_repository.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/countries.dart';
@@ -330,12 +331,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           final firstName = parts.isNotEmpty ? parts.first : '';
           final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
 
+          // ΠΡΟΣΟΧΗ: email/phone ΔΕΝ μπαίνουν στο δημόσιο doc — πάνε στο
+          // users/{uid}/private/data (το δημόσιο doc το διαβάζουν όλοι).
           await docRef.set({
             'uid': user.uid,
             'firstName': firstName,
             'lastName': lastName,
-            'email': user.email ?? googleUser.email,
-            'phone': user.phoneNumber ?? '',
             'photoUrl': user.photoURL ?? googleUser.photoUrl,
             'avatarUrl': user.photoURL ?? googleUser.photoUrl,
             'rating': 0.0,
@@ -352,6 +353,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             'createdAt': FieldValue.serverTimestamp(),
           });
 
+          await UserRepository.privateRef(user.uid).set({
+            'email': user.email ?? googleUser.email,
+            'phone': user.phoneNumber ?? '',
+          }, SetOptions(merge: true));
+
           // Το doc μόλις δημιουργήθηκε → αποθήκευσε τώρα το FCM token (το
           // FcmService.init είχε τρέξει πριν υπάρξει doc, με update-only write).
           await FcmService.syncToken(user.uid);
@@ -360,6 +366,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // την υποχρεωτική επαλήθευση κινητού (phoneVerified: false).
           ProfileGate.invalidate();
         } else {
+          // Το email μπορεί να άλλαξε στο Google → κράτα το private doc συγχρονισμένο.
+          final googleEmail = user.email ?? googleUser.email;
+          if (googleEmail.isNotEmpty) {
+            await UserRepository.privateRef(user.uid)
+                .set({'email': googleEmail}, SetOptions(merge: true));
+          }
+
           // Υπάρχων χρήστης — ενημέρωση μόνο αν λείπει firstName
           final data = doc.data() as Map<String, dynamic>;
           final existingFirstName = (data['firstName'] as String? ?? '').trim();
@@ -375,7 +388,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               await docRef.set({
                 'firstName': firstName,
                 'lastName': lastName,
-                'email': user.email ?? data['email'],
               }, SetOptions(merge: true));
             }
           }
