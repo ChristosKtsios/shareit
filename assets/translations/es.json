@@ -613,7 +613,9 @@
     "requiresRecentLogin": "Por seguridad, cierra sesión y vuelve a iniciarla antes de cambiar tu número.",
     "title": "Cambiar número de móvil",
     "enterCode": "Introduce el código de 6 dígitos que enviamos a tu nuevo número.",
-    "enterNewPhone": "Introduce tu nuevo número de móvil. Enviaremos un código OTP para confirmar."
+    "enterNewPhone": "Introduce tu nuevo número de móvil. Enviaremos un código OTP para confirmar.",
+    "gateTitle": "Verifica tu móvil",
+    "gateIntro": "Por la seguridad de todos, cada cuenta debe verificar un número de móvil. Te enviaremos un código OTP."
   },
   "blocked": {
     "unblock": "Desbloquear",

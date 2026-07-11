@@ -613,7 +613,9 @@
     "requiresRecentLogin": "For security, please log out and log back in before changing your phone number.",
     "title": "Change phone number",
     "enterCode": "Enter the 6-digit code we sent to your new number.",
-    "enterNewPhone": "Enter your new phone number. We'll send an OTP code to confirm."
+    "enterNewPhone": "Enter your new phone number. We'll send an OTP code to confirm.",
+    "gateTitle": "Verify your phone",
+    "gateIntro": "For everyone’s safety, every account must verify a phone number. We’ll send you an OTP code."
   },
   "blocked": {
     "unblock": "Unblock",

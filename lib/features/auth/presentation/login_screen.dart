@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/fcm_service.dart';
+import '../../../core/services/profile_gate.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/countries.dart';
@@ -354,6 +355,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // Το doc μόλις δημιουργήθηκε → αποθήκευσε τώρα το FCM token (το
           // FcmService.init είχε τρέξει πριν υπάρξει doc, με update-only write).
           await FcmService.syncToken(user.uid);
+
+          // Το doc υπάρχει πλέον → ο router να το ξαναδιαβάσει, ώστε να πιάσει
+          // την υποχρεωτική επαλήθευση κινητού (phoneVerified: false).
+          ProfileGate.invalidate();
         } else {
           // Υπάρχων χρήστης — ενημέρωση μόνο αν λείπει firstName
           final data = doc.data() as Map<String, dynamic>;

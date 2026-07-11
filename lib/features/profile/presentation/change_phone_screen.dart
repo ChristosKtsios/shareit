@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/countries.dart';
+import '../../../core/services/profile_gate.dart';
 import '../providers/profile_provider.dart';
 
 /// Ασφαλής αλλαγή κινητού:
@@ -13,8 +14,15 @@ import '../providers/profile_provider.dart';
 ///      sensitive operations, αλλιώς σκάει `requires-recent-login`,
 ///   2. OTP στο ΝΕΟ νούμερο → `updatePhoneNumber`,
 ///   3. ενημέρωση Firestore (`phone` + `phoneVerified: true`).
+///
+/// Με [gateMode] `true` η οθόνη λειτουργεί ως **υποχρεωτική πύλη επαλήθευσης**
+/// (πρώτη φορά, π.χ. Google χρήστες που δεν πέρασαν ποτέ από OTP):
+///   - **παραλείπεται το re-authentication** — δεν αλλάζει υπάρχον κινητό, το
+///     προσθέτει για πρώτη φορά, οπότε δεν υπάρχει τίποτα να προστατευθεί,
+///   - δεν επιτρέπεται back· μετά την επιτυχία πάει στον χάρτη.
 class ChangePhoneScreen extends ConsumerStatefulWidget {
-  const ChangePhoneScreen({super.key});
+  final bool gateMode;
+  const ChangePhoneScreen({super.key, this.gateMode = false});
   @override
   ConsumerState<ChangePhoneScreen> createState() => _ChangePhoneScreenState();
 }
@@ -154,7 +162,10 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     });
 
     // Βήμα 0: επιβεβαίωση ταυτότητας πριν από sensitive operation.
-    if (!await _reauthenticate()) {
+    // Σε gateMode παραλείπεται: ο χρήστης ΠΡΟΣΘΕΤΕΙ κινητό για πρώτη φορά (δεν
+    // αλλάζει υπάρχον), οπότε δεν υπάρχει τίποτα να προστατευθεί — και το
+    // login μόλις έγινε, άρα δεν σκάει `requires-recent-login`.
+    if (!widget.gateMode && !await _reauthenticate()) {
       if (mounted) setState(() => _loading = false);
       return;
     }
@@ -218,6 +229,9 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
         'isVerified': true,
       });
 
+      // Το gate ξεκλείδωσε (phoneVerified: true) → καθάρισε την cache.
+      ProfileGate.invalidate();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -225,7 +239,12 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
             backgroundColor: AppColors.offer,
           ),
         );
-        context.pop();
+        // Σε gateMode δεν υπάρχει προηγούμενη οθόνη για pop.
+        if (widget.gateMode) {
+          context.go('/map');
+        } else {
+          context.pop();
+        }
       }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -284,8 +303,31 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('cp.title'.tr())),
+    final gate = widget.gateMode;
+    return PopScope(
+      // Σε gateMode η επαλήθευση είναι υποχρεωτική → δεν επιτρέπεται back.
+      canPop: !gate,
+      child: Scaffold(
+      appBar: AppBar(
+        title: Text(gate ? 'cp.gateTitle'.tr() : 'cp.title'.tr()),
+        automaticallyImplyLeading: !gate,
+        actions: gate
+            ? [
+                TextButton(
+                  onPressed: _loading
+                      ? null
+                      : () async {
+                          ProfileGate.invalidate();
+                          await FirebaseAuth.instance.signOut();
+                          if (context.mounted) context.go('/login');
+                        },
+                  child: Text('settings.logout'.tr(),
+                      style:
+                          const TextStyle(color: AppColors.textSecondary)),
+                ),
+              ]
+            : null,
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -296,7 +338,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
               Text(
                 _codeSent
                     ? 'cp.enterCode'.tr()
-                    : 'cp.enterNewPhone'.tr(),
+                    : (gate ? 'cp.gateIntro'.tr() : 'cp.enterNewPhone'.tr()),
                 style: const TextStyle(
                     color: AppColors.textSecondary, fontSize: 14, height: 1.5),
               ),
@@ -385,6 +427,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
