@@ -312,14 +312,8 @@ class ChatRepository {
     }
   }
 
-  Future<void> deleteMessage(String chatId, String messageId) => _db
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(messageId)
-          .update({
-        'isDeleted': true,
-        'deletedAt': FieldValue.serverTimestamp(),
-        'text': '',
-      });
+  // ΑΦΑΙΡΕΘΗΚΕ το `deleteMessage` (soft delete): δεν το καλούσε κανείς, και τα
+  // Firestore rules θα το απέρριπταν ούτως ή άλλως — ο αποστολέας μπορεί να
+  // αλλάξει μόνο ['text', 'editedAt']. Αν χρειαστεί «διαγραφή μηνύματος» στο
+  // UI, πρέπει πρώτα να επιτραπούν τα πεδία isDeleted/deletedAt στον κανόνα.
 }

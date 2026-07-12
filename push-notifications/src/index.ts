@@ -147,19 +147,52 @@ export const onNewMessage = onDocumentCreated(
   }
 );
 
-export const onNewNotification = onDocumentCreated(
-  "notifications/{notifId}",
-  async (event) => {
-    const n = event.data?.data();
-    if (!n) return;
-    const targetUid = n.targetUid as string;
-    const title = (n.title as string) ?? "ShareIt";
-    const body = (n.body as string) ?? "";
-    const type = (n.type as string) ?? "general";
-    await sendToUser(targetUid, () => ({ title, body }),
-      { type, notifId: event.params.notifId });
+/** Η γλώσσα του χρήστη. Ζει στο PRIVATE doc (fallback: δημόσιο, για χρήστες
+ *  που δεν έχουν ακόμα migrated· τελικό fallback: ελληνικά). */
+async function langOf(uid: string): Promise<string> {
+  const [priv, pub] = await Promise.all([
+    privateRef(uid).get(),
+    db.collection("users").doc(uid).get(),
+  ]);
+  return (priv.data()?.language as string) ??
+    (pub.data()?.language as string) ?? "el";
+}
+
+/**
+ * Γράφει μια ειδοποίηση στη λίστα του χρήστη (οθόνη «Ειδοποιήσεις» + badge).
+ *
+ * Μέχρι σήμερα ΚΑΝΕΙΣ δεν δημιουργούσε notifications — ούτε η εφαρμογή ούτε τα
+ * functions — οπότε η οθόνη ήταν μόνιμα άδεια και το badge μόνιμα 0.
+ *
+ * ΤΟ PUSH ΔΕΝ ΣΤΕΛΝΕΤΑΙ ΑΠΟ ΕΔΩ: το στέλνει ο καλών με `sendToUser`, στη γλώσσα
+ * του παραλήπτη. (Το παλιό `onNewNotification` έστελνε push για κάθε doc — γι'
+ * αυτό αφαιρέθηκε: θα διπλασίαζε τα push, και ήταν και ο δρόμος με τον οποίο
+ * οποιοσδήποτε μπορούσε να στείλει push σε οποιονδήποτε.)
+ *
+ * `type`: πρέπει να είναι τιμή του NotificationType στον client —
+ * newMessage | dealStarted | dealExpired | newRating | newComment
+ */
+async function createNotification(
+  targetUid: string,
+  type: string,
+  title: string,
+  body: string,
+  routePath: string | null
+): Promise<void> {
+  try {
+    await db.collection("notifications").add({
+      targetUid,
+      type,
+      title,
+      body,
+      routePath,
+      isRead: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    logger.error(`createNotification for ${targetUid}:`, e);
   }
-);
+}
 
 // Deal proposals are created in two steps: an empty `pending` doc, then an
 // `update` that sets `proposal1`. We notify the receiver on that update (when
@@ -183,11 +216,22 @@ export const onDealProposalSent = onDocumentUpdated(
 
     const proposerDoc = await db.collection("users").doc(proposerUid).get();
     const proposerName = proposerDoc.data()?.firstName as string | undefined;
-    await sendToUser(receiverId, (lang) => ({
-      title: t(lang, "dealProposalTitle"),
-      body: t(lang, "dealProposalBody",
-        { name: proposerName ?? t(lang, "someone") }),
+
+    const lang = await langOf(receiverId);
+
+    await sendToUser(receiverId, (l) => ({
+      title: t(l, "dealProposalTitle"),
+      body: t(l, "dealProposalBody",
+        { name: proposerName ?? t(l, "someone") }),
     }), { type: "deal", dealId: event.params.dealId });
+
+    await createNotification(
+      receiverId,
+      "dealStarted",
+      t(lang, "dealProposalTitle"),
+      t(lang, "dealProposalBody", { name: proposerName ?? t(lang, "someone") }),
+      `/deal-review/${event.params.dealId}`
+    );
   }
 );
 
@@ -204,10 +248,21 @@ export const onNewPostComment = onDocumentCreated(
     if (!postAuthorUid || postAuthorUid === authorUid) return;
     const commenterName = comment.authorName as string | undefined;
     const preview = text.length > 80 ? text.substring(0, 80) + "..." : text;
-    await sendToUser(postAuthorUid, (lang) => ({
-      title: `💬 ${commenterName ?? t(lang, "someone")}`,
+
+    const lang = await langOf(postAuthorUid);
+
+    await sendToUser(postAuthorUid, (l) => ({
+      title: `💬 ${commenterName ?? t(l, "someone")}`,
       body: preview,
     }), { type: "post_comment", postId });
+
+    await createNotification(
+      postAuthorUid,
+      "newComment",
+      `💬 ${commenterName ?? t(lang, "someone")}`,
+      preview,
+      `/user-post/${postId}`
+    );
   }
 );
 

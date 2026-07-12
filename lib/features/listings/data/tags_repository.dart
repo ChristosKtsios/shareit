@@ -22,17 +22,20 @@ class TagsRepository {
     await batch.commit();
   }
 
-  /// Μειώνει τον counter όταν διαγράφεται αγγελία
+  /// Μειώνει τον counter όταν διαγράφεται αγγελία.
+  ///
+  /// ΟΧΙ batch, και `update` αντί για `set(merge)`: αν το tag doc δεν υπάρχει,
+  /// το set θα το ΔΗΜΙΟΥΡΓΟΥΣΕ με count: -1 — που τα rules απορρίπτουν (νέο tag
+  /// πρέπει να ξεκινά από 1). Σε batch, αυτό ρίχνει ΟΛΟΚΛΗΡΟ το batch, οπότε
+  /// δεν μειώνονταν ούτε τα υπόλοιπα tags. Τώρα το κάθε tag είναι ανεξάρτητο.
   Future<void> decrementTags(List<String> tags) async {
-    final batch = FirebaseFirestore.instance.batch();
     for (final tag in tags) {
-      batch.set(
-        _tagsRef.doc(tag),
-        {'count': FieldValue.increment(-1)},
-        SetOptions(merge: true),
-      );
+      try {
+        await _tagsRef.doc(tag).update({'count': FieldValue.increment(-1)});
+      } catch (_) {
+        // Το tag δεν υπάρχει (ή σβήστηκε) — δεν υπάρχει τίποτα να μειωθεί.
+      }
     }
-    await batch.commit();
   }
 
   /// Αυτόματη συμπλήρωση: tags που ξεκινούν με το query

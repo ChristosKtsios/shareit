@@ -282,7 +282,15 @@ class ProfileScreen extends ConsumerWidget {
                                 .where('authorUid', isEqualTo: targetUid)
                                 .snapshots(),
                             builder: (context, snap) {
-                              final count = snap.data?.docs.length ?? 0;
+                              // Μη μετράς αναρτήσεις που κρύφτηκαν από reports
+                              // — η λίστα δεν τις δείχνει, ο μετρητής δεν
+                              // πρέπει να τις μετράει.
+                              final count = (snap.data?.docs ?? [])
+                                  .where((d) =>
+                                      (d.data() as Map<String, dynamic>)
+                                          ['isHidden'] !=
+                                      true)
+                                  .length;
                               return _StatBox(
                                 label: 'Posts',
                                 value: '$count',
