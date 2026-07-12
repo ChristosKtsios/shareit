@@ -14,6 +14,7 @@ import '../../deals/data/deal_repository.dart';
 import '../data/chat_repository.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/chat_input_bar.dart';
+import '../../../core/widgets/safety_tips.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String chatId;
@@ -40,11 +41,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// Μήνυμα στο οποίο απαντάμε τώρα (null = κανονική αποστολή).
   Map<String, dynamic>? _replyingTo;
 
+  /// Banner ασφαλείας κατά της απάτης — εμφανίζεται μέχρι να το κλείσει ο
+  /// χρήστης (μία φορά, όχι σε κάθε συνομιλία).
+  bool _showSafety = false;
+
   @override
   void initState() {
     super.initState();
     _myUid = ref.read(currentUserProvider)?.uid;
     _loadChatData();
+    SafetyTips.chatBannerDismissed().then((dismissed) {
+      if (mounted && !dismissed) setState(() => _showSafety = true);
+    });
   }
 
   @override
@@ -654,6 +662,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             },
           ),
         ),
+        if (_showSafety)
+          SafetyTips.chatBanner(onDismiss: () {
+            SafetyTips.dismissChatBanner();
+            setState(() => _showSafety = false);
+          }),
         if (_replyingTo != null) _buildReplyBanner(),
         SafeArea(
           top: false,

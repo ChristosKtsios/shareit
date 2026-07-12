@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/safety_tips.dart';
 import '../../../core/services/error_logger.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../chat/data/chat_repository.dart';
@@ -423,6 +424,13 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Προειδοποίηση κατά της απάτης. Εδώ ο χρήστης κλείνει
+                // συμφωνία με άγνωστο — είναι η στιγμή που κινδυνεύει
+                // περισσότερο, οπότε η κάρτα ΔΕΝ κρύβεται ποτέ.
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: SafetyTips.card(),
+                ),
                 // Listing title banner
                 Container(
                   padding: const EdgeInsets.all(12),

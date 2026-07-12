@@ -869,5 +869,15 @@
     "addPhoto": "Add a profile photo",
     "addName": "Add first & last name",
     "addEmail": "Add an email"
+  },
+  "safety": {
+    "title": "Safety — protect yourself from fraud",
+    "chatShort": "Never send money or a deposit up front. Meet in a public place and inspect the item before you pay.",
+    "tipPublicPlace": "Meet in a public, busy place — never at a stranger’s home.",
+    "tipNoPrepay": "Never send money, a deposit or a \"guarantee\" before you see the item.",
+    "tipInspect": "Inspect the item carefully before you pay or hand it over.",
+    "tipNoBankDetails": "Never share passwords, PINs, one-time codes or card details. Nobody has a legitimate reason to ask.",
+    "tipTooGood": "If an offer seems too good to be true, or you are pressured to decide fast, it is suspicious.",
+    "tipReport": "Report and block anyone who behaves suspiciously. Reports are reviewed."
   }
 }

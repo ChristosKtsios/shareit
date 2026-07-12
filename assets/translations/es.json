@@ -869,5 +869,15 @@
     "addPhoto": "Añade una foto de perfil",
     "addName": "Añade nombre y apellido",
     "addEmail": "Añade un email"
+  },
+  "safety": {
+    "title": "Seguridad — protégete del fraude",
+    "chatShort": "Nunca envíes dinero ni un anticipo por adelantado. Quedad en un lugar público y revisa el artículo antes de pagar.",
+    "tipPublicPlace": "Quedad en un lugar público y concurrido — nunca en casa de un desconocido.",
+    "tipNoPrepay": "Nunca envíes dinero, un anticipo o una «garantía» antes de ver el artículo.",
+    "tipInspect": "Revisa bien el artículo antes de pagar o entregarlo.",
+    "tipNoBankDetails": "Nunca compartas contraseñas, PIN, códigos de un solo uso ni datos de tarjeta. Nadie tiene motivo legítimo para pedirlos.",
+    "tipTooGood": "Si una oferta parece demasiado buena o te presionan para decidir rápido, es sospechosa.",
+    "tipReport": "Denuncia y bloquea a quien se comporte de forma sospechosa. Las denuncias se revisan."
   }
 }
