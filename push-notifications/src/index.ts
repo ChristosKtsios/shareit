@@ -212,6 +212,58 @@ export const onNewPostComment = onDocumentCreated(
 );
 
 /**
+ * RATE LIMIT για τα ΜΗ αυθεντικοποιημένα callables.
+ *
+ * Τα `checkAccountExists` και `getEmailByPhone` καλούνται πριν το sign-in, άρα
+ * είναι ανοιχτά σε οποιονδήποτε. Χωρίς όριο, ένα script μπορεί να δοκιμάζει
+ * ελληνικά κινητά στη σειρά και να χαρτογραφεί ποιοι έχουν λογαριασμό — και,
+ * στο getEmailByPhone, να μαζεύει και τα emails τους (τηλέφωνο → email).
+ *
+ * Μετράμε ανά IP σε κυλιόμενο παράθυρο. Δεν εξαλείφει το πρόβλημα (η ριζική
+ * λύση είναι να μη φεύγει ποτέ το email από τον server — βλ. TODO παρακάτω),
+ * αλλά κάνει τη μαζική συλλογή μη πρακτική.
+ */
+const RATE_LIMIT_MAX = 10; // κλήσεις
+const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // ανά 10 λεπτά
+
+async function enforceRateLimit(ip: string, action: string): Promise<void> {
+  if (!ip) return; // δεν μπλοκάρουμε αν δεν ξέρουμε IP (μη σπάσουμε νόμιμη χρήση)
+  const id = `${action}_${ip.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  const ref = db.collection("rateLimits").doc(id);
+  const now = Date.now();
+
+  const blocked = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const d = snap.data();
+    const windowStart = (d?.windowStart as number) ?? 0;
+    const count = (d?.count as number) ?? 0;
+
+    if (now - windowStart > RATE_LIMIT_WINDOW_MS) {
+      tx.set(ref, { windowStart: now, count: 1 });
+      return false;
+    }
+    if (count >= RATE_LIMIT_MAX) return true;
+    tx.set(ref, { windowStart, count: count + 1 }, { merge: true });
+    return false;
+  });
+
+  if (blocked) {
+    logger.warn(`Rate limit hit: ${action} from ${ip}`);
+    throw new HttpsError(
+      "resource-exhausted",
+      "Πολλές προσπάθειες. Δοκίμασε ξανά σε λίγα λεπτά."
+    );
+  }
+}
+
+function callerIp(request: { rawRequest?: { ip?: string;
+  headers?: Record<string, unknown> } }): string {
+  const fwd = request.rawRequest?.headers?.["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0].trim();
+  return request.rawRequest?.ip ?? "";
+}
+
+/**
  * Ελέγχει (authoritative, μέσω Firebase Auth admin) αν υπάρχει ήδη λογαριασμός
  * με το δοσμένο email ή/και κινητό. Καλείται ΠΡΙΝ το OTP στην εγγραφή ώστε να
  * μη γίνεται unauthenticated query στους users και να μη χρειάζεται sign-in.
@@ -219,6 +271,8 @@ export const onNewPostComment = onDocumentCreated(
 export const checkAccountExists = onCall(
   { enforceAppCheck: false }, // ΠΡΟΣΩΡΙΝΟ: off μέχρι να ρυθμιστεί Play Integrity (ήταν true)
   async (request) => {
+  await enforceRateLimit(callerIp(request), "checkAccountExists");
+
   const email = ((request.data?.email as string) ?? "").trim();
   const phone = ((request.data?.phone as string) ?? "").trim();
 
@@ -254,10 +308,26 @@ export const checkAccountExists = onCall(
  * Επιστρέφει το email που αντιστοιχεί σε ένα κινητό (admin, μέσω Firebase
  * Auth). Το χρειάζεται το login-με-κινητό και το forgot-password-με-κινητό,
  * που τρέχουν από ΜΗ συνδεδεμένο χρήστη (δεν επιτρέπεται query στους users).
+ *
+ * ⚠️ ΓΝΩΣΤΗ ΑΔΥΝΑΜΙΑ — ΝΑ ΑΝΤΙΚΑΤΑΣΤΑΘΕΙ:
+ * Επιστρέφει EMAIL σε μη αυθεντικοποιημένο καλούντα. Ένα script που δοκιμάζει
+ * κινητά στη σειρά χαρτογραφεί τηλέφωνο → email για όλη τη βάση. Το rate limit
+ * παρακάτω το κάνει μη πρακτικό, αλλά ΔΕΝ το εξαλείφει.
+ *
+ * ΣΩΣΤΗ ΛΥΣΗ (επόμενη έκδοση): το email να μη φεύγει ΠΟΤΕ από τον server —
+ *  - νέο callable `loginWithPhone({phone, password})`: ο server βρίσκει το
+ *    email, επαληθεύει τον κωδικό (Identity Toolkit REST) και γυρίζει custom
+ *    token· ο client κάνει signInWithCustomToken.
+ *  - νέο callable `resetPasswordByPhone({phone})`: ο server στέλνει ο ίδιος το
+ *    email επαναφοράς.
+ * Δεν γίνεται σήμερα γιατί οι ΠΑΛΙΕΣ εκδόσεις καλούν αυτό το function για να
+ * συνδεθούν — αν το αφαιρέσουμε, σπάει το login τους.
  */
 export const getEmailByPhone = onCall(
   { enforceAppCheck: false }, // ΠΡΟΣΩΡΙΝΟ: off μέχρι να ρυθμιστεί Play Integrity (ήταν true)
   async (request) => {
+  await enforceRateLimit(callerIp(request), "getEmailByPhone");
+
   const phone = ((request.data?.phone as string) ?? "").trim();
   if (!phone) return { email: null, accountExists: false };
   try {
