@@ -93,20 +93,18 @@ final _routerProvider = Provider<GoRouter>((ref) {
         if (!done) return '/onboarding';
       }
 
-      // ── Gate: υποχρεωτικά βήματα πριν τη χρήση της εφαρμογής ──
-      //  1) όνομα (ghost docs / Google χωρίς displayName)
-      //  2) επαληθευμένο κινητό με OTP — ΟΛΟΙ, ώστε το Google sign-in να μη
-      //     δημιουργεί ανεπαλήθευτα («ψεύτικα») προφίλ χωρίς κινητό.
+      // ── Gate: το ΜΟΝΟ υποχρεωτικό βήμα είναι το όνομα ──
+      // Η επαλήθευση κινητού ΔΕΝ είναι πλέον υποχρεωτική: ήταν, αλλά σήμαινε
+      // ότι ένα SMS που δεν έφτανε άφηνε τον χρήστη κλειδωμένο έξω χωρίς καμία
+      // εναλλακτική. Όποιος δεν έχει επαληθευμένο κινητό μπαίνει κανονικά και
+      // εμφανίζεται ως «Μη επαληθευμένος χρήστης» στο προφίλ του.
       // Cached ανά uid (1 read/session). Σε σφάλμα → none, δεν μπλοκάρει.
       if (isLoggedIn) {
         final step = await ProfileGate.nextStep();
-        const gateRoutes = ['/complete-profile', '/verify-phone'];
 
         if (step == ProfileGateStep.completeProfile) {
           if (loc != '/complete-profile') return '/complete-profile';
-        } else if (step == ProfileGateStep.verifyPhone) {
-          if (loc != '/verify-phone') return '/verify-phone';
-        } else if (gateRoutes.contains(loc)) {
+        } else if (loc == '/complete-profile') {
           return '/map';
         }
       }
@@ -120,10 +118,6 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/complete-profile',
           builder: (_, __) => const CompleteProfileScreen()),
-      // Υποχρεωτική επαλήθευση κινητού (gateMode → χωρίς re-auth/back).
-      GoRoute(
-          path: '/verify-phone',
-          builder: (_, __) => const ChangePhoneScreen(gateMode: true)),
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(
           path: '/forgot-password',

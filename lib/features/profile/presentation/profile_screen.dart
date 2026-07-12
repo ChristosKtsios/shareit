@@ -194,16 +194,30 @@ class ProfileScreen extends ConsumerWidget {
                       _StarRating(rating: rating, count: ratingCount),
                       if (!phoneVerified) ...[
                         const SizedBox(height: 5),
-                        Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.warning_amber_rounded,
-                              color: AppColors.warning, size: 14),
-                          const SizedBox(width: 4),
-                          Text('pf.unverifiedUser'.tr(),
-                              style: const TextStyle(
-                                  color: AppColors.warning,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600)),
-                        ]),
+                        // Στο ΔΙΚΟ σου προφίλ το badge είναι πατήσιμο και σε
+                        // πάει στην επαλήθευση κινητού. Η επαλήθευση είναι
+                        // προαιρετική (δεν μπλοκάρει την είσοδο), οπότε αυτό
+                        // είναι ο τρόπος να την ανακαλύψει ο χρήστης.
+                        GestureDetector(
+                          onTap: isMe
+                              ? () => context.push('/settings/change-phone')
+                              : null,
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.warning_amber_rounded,
+                                color: AppColors.warning, size: 14),
+                            const SizedBox(width: 4),
+                            Text('pf.unverifiedUser'.tr(),
+                                style: const TextStyle(
+                                    color: AppColors.warning,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600)),
+                            if (isMe) ...[
+                              const SizedBox(width: 3),
+                              const Icon(Icons.chevron_right,
+                                  color: AppColors.warning, size: 14),
+                            ],
+                          ]),
+                        ),
                       ],
                     ],
                   )),

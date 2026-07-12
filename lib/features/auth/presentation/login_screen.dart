@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/services/profile_gate.dart';
+import '../../../core/utils/display_name.dart';
 import '../../profile/data/user_repository.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
@@ -325,11 +326,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             return;
           }
 
-          // Δημιουργία profile
-          final displayName = user.displayName ?? googleUser.displayName ?? '';
-          final parts = displayName.trim().split(' ');
-          final firstName = parts.isNotEmpty ? parts.first : '';
-          final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+          // Δημιουργία profile. Το όνομα βγαίνει από τον λογαριασμό Google και,
+          // αν εκείνος δεν έχει displayName, από το email του ΙΔΙΟΥ του χρήστη
+          // — ώστε να μην εμφανίζεται ποτέ ως σκέτο «Χρήστης».
+          final (firstName, lastName) = DisplayName.from(
+            displayName: user.displayName ?? googleUser.displayName,
+            email: user.email ?? googleUser.email,
+          );
 
           // ΠΡΟΣΟΧΗ: email/phone ΔΕΝ μπαίνουν στο δημόσιο doc — πάνε στο
           // users/{uid}/private/data (το δημόσιο doc το διαβάζουν όλοι).
@@ -377,11 +380,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           final data = doc.data() as Map<String, dynamic>;
           final existingFirstName = (data['firstName'] as String? ?? '').trim();
           if (existingFirstName.isEmpty) {
-            final displayName =
-                user.displayName ?? googleUser.displayName ?? '';
-            final parts = displayName.trim().split(' ');
-            final firstName = parts.isNotEmpty ? parts.first : '';
-            final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+            final (firstName, lastName) = DisplayName.from(
+              displayName: user.displayName ?? googleUser.displayName,
+              email: user.email ?? googleUser.email,
+            );
             if (firstName.isNotEmpty) {
               // ΔΕΝ πειράζουμε photoUrl/avatarUrl — μπορεί ο χρήστης να έχει
               // ανεβάσει δικό του avatar· δεν το αντικαθιστούμε με το Google.
