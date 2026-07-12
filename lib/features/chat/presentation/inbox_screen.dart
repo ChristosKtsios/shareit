@@ -80,7 +80,9 @@ class _InboxScreenState extends ConsumerState<InboxScreen> {
             stream: FirebaseFirestore.instance
                 .collection('notifications')
                 .where('targetUid', isEqualTo: uid)
-                .where('read', isEqualTo: false)
+                // Το πεδίο λέγεται `isRead` (βλ. NotificationModel). Με `read`
+                // το query δεν έβρισκε ΠΟΤΕ κανένα doc → το badge έμενε στο 0.
+                .where('isRead', isEqualTo: false)
                 .snapshots(),
             builder: (context, snap) {
               final count = snap.data?.docs.length ?? 0;

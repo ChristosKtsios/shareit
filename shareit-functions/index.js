@@ -5,7 +5,7 @@
 const {onDocumentWritten, onDocumentCreated} =
   require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onCall, onRequest, HttpsError} =
+const {onCall, HttpsError} =
   require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
@@ -521,100 +521,10 @@ exports.deleteUserAccount = onCall(async (request) => {
   }
 });
 
-/**
- * ΜΙΑ ΦΟΡΑ — μεταφορά υπαρχόντων δεδομένων στη νέα, ασφαλή δομή.
- *
- * 1) users: τα ευαίσθητα πεδία (email, phone, fcmToken, language) φεύγουν από
- *    το ΔΗΜΟΣΙΟ user doc (που το διαβάζει κάθε συνδεδεμένος χρήστης) και πάνε
- *    στο `users/{uid}/private/data` — αναγνώσιμο μόνο από τον ίδιο.
- * 2) deals: προστίθεται `participants: [user1Uid, user2Uid]`, ώστε τα rules να
- *    κλειδώνουν το read στους συμμετέχοντες (χωρίς αυτό, τα deals των παλιών
- *    docs δεν θα εμφανίζονταν).
- *
- * Είναι idempotent — μπορεί να ξανατρέξει με ασφάλεια.
- *
- * Κλήση (μία φορά, μετά το deploy των functions και ΠΡΙΝ το deploy των rules):
- *   curl "https://europe-west1-shareit-6cfa0.cloudfunctions.net/migrateToPrivateData?key=ΤΟ_ΚΛΕΙΔΙ"
- *
- * ΜΕΤΑ την επιτυχή εκτέλεση, ΣΒΗΣΕ αυτό το function και ξανακάνε deploy.
- */
-const MIGRATION_SECRET = "115064955611d295351928ab3ade41b7";
+// Τα ευαίσθητα πεδία που ΔΕΝ επιτρέπεται να μένουν στο δημόσιο user doc.
+// Τα μεταφέρει στο users/{uid}/private/data το stripSensitiveFromUserDoc.
 const SENSITIVE_FIELDS = ["email", "phone", "fcmToken", "language"];
 
-exports.migrateToPrivateData = onRequest(
-    {region: "europe-west1", timeoutSeconds: 540},
-    async (req, res) => {
-      if (req.query.key !== MIGRATION_SECRET) {
-        res.status(403).send("forbidden");
-        return;
-      }
-
-      const report = {usersMigrated: 0, usersSkipped: 0, dealsMigrated: 0};
-
-      const users = await db.collection("users").get();
-      for (const doc of users.docs) {
-        const d = doc.data();
-        const priv = {};
-        const strip = {};
-        for (const f of SENSITIVE_FIELDS) {
-          if (d[f] !== undefined && d[f] !== null) {
-            priv[f] = d[f];
-            strip[f] = FieldValue.delete();
-          }
-        }
-        if (Object.keys(priv).length === 0) {
-          report.usersSkipped++;
-          continue;
-        }
-        try {
-          // Πρώτα γράψε το private doc, ΜΕΤΑ σβήσε από το δημόσιο — ώστε αν
-          // κάτι αποτύχει, να μη χαθούν δεδομένα.
-          await doc.ref.collection("private").doc("data")
-              .set(priv, {merge: true});
-          await doc.ref.update(strip);
-          report.usersMigrated++;
-        } catch (e) {
-          logger.error(`migrate user ${doc.id}:`, e);
-        }
-      }
-
-      const deals = await db.collection("deals").get();
-      for (const doc of deals.docs) {
-        const d = doc.data();
-        const cur = d.participants;
-        if (Array.isArray(cur) && cur.length === 2) continue;
-        const parts = [d.user1Uid, d.user2Uid].filter(Boolean);
-        if (parts.length !== 2) continue;
-        try {
-          await doc.ref.update({participants: parts});
-          report.dealsMigrated++;
-        } catch (e) {
-          logger.error(`migrate deal ${doc.id}:`, e);
-        }
-      }
-
-      logger.info("migrateToPrivateData done", report);
-      res.status(200).json(report);
-    },
-);
-
-/**
- * ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή — μέχρι να ενημερωθούν όλοι οι χρήστες).
- *
- * Οι ΠΑΛΙΕΣ εκδόσεις της εφαρμογής γράφουν email/phone/fcmToken/language μέσα
- * στο ΔΗΜΟΣΙΟ user doc. Τα rules το επέτρεπαν, οπότε τα δεδομένα ήταν
- * αναγνώσιμα από κάθε χρήστη (η διαρροή που κλείσαμε).
- *
- * Αν απλώς τα απαγορεύσουμε, οι παλιοί clients σπάνε: το Google sign-in και η
- * εγγραφή αποτυγχάνουν, γιατί το write απορρίπτεται ολόκληρο.
- *
- * Λύση: τα rules τα δέχονται ξανά, ΑΛΛΑ αυτό το trigger τα μεταφέρει αμέσως
- * στο users/{uid}/private/data και τα σβήνει από το δημόσιο doc. Το παράθυρο
- * έκθεσης είναι ~1 δευτερόλεπτο αντί για μόνιμο.
- *
- * ΝΑ ΑΦΑΙΡΕΘΕΙ όταν όλοι οι χρήστες έχουν έκδοση ≥ 1.0.3 — τότε ξανακλειδώνουμε
- * τα rules (τα νέα builds δεν γράφουν ποτέ αυτά τα πεδία στο δημόσιο doc).
- */
 exports.stripSensitiveFromUserDoc = onDocumentWritten(
     "users/{uid}",
     async (event) => {
