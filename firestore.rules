@@ -36,23 +36,33 @@ service cloud.firestore {
       // Γράφονται ΜΟΝΟ server-side (Cloud Functions με admin → bypass rules):
       //  - rating/ratingCount/dealsCount: onDealUpdate
       //  - reportCount/isReported:        onReportCreated
-      //  - friends:                       onFriendRequestAccepted / unfriendUser
-      // και τα ευαίσθητα, ώστε να μην ξαναγυρίσουν ποτέ στο δημόσιο doc.
+      //  - friends: onFriendRequestAccepted / unfriendUser
       function serverManaged() {
         return ['rating', 'ratingCount', 'dealsCount', 'reportCount', 'isReported',
-                'friends', 'email', 'phone', 'fcmToken', 'language'];
+                'friends'];
       }
 
       allow read: if isAuth();
 
+      // ── ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή) ──────────────────────────────────
+      // Οι ΠΑΛΙΕΣ εκδόσεις γράφουν email/phone/fcmToken/language στο δημόσιο
+      // doc. Αν το απαγορεύσουμε, το write απορρίπτεται ΟΛΟΚΛΗΡΟ και σπάνε το
+      // Google sign-in και η εγγραφή. Τα δεχόμαστε λοιπόν, και το Cloud
+      // Function `stripSensitiveFromUserDoc` τα μεταφέρει αμέσως στο private
+      // doc και τα σβήνει από εδώ (~1 δευτ. έκθεση αντί για μόνιμη).
+      // ΝΑ ΞΑΝΑΚΛΕΙΔΩΣΕΙ όταν όλοι οι χρήστες είναι σε έκδοση ≥ 1.0.3.
       allow create: if isOwner(uid)
-                    && !request.resource.data.keys().hasAny(
-                         ['email', 'phone', 'fcmToken', 'language', 'reportCount', 'isReported'])
+                    && !request.resource.data.keys().hasAny(['reportCount', 'isReported'])
                     && request.resource.data.get('rating', 0) <= 0
                     && request.resource.data.get('ratingCount', 0) <= 0
                     && request.resource.data.get('dealsCount', 0) <= 0
                     && request.resource.data.get('friends', []).size() == 0;
 
+      // ΜΟΝΟ ο ίδιος, και ποτέ τα server-managed πεδία. Κανείς δεν γράφει στο
+      // doc άλλου χρήστη — ούτε στο `friends`. (Οι ΠΑΛΙΕΣ εκδόσεις το έκαναν
+      // στην αποδοχή φιλίας· εκεί το write θα αποτυγχάνει μέχρι να ενημερωθούν.
+      // Το εναλλακτικό —να επιτραπεί— σημαίνει ότι οποιοσδήποτε μπορεί να
+      // αυτοπροστεθεί στη λίστα φίλων σου και να δει ιδιωτικό προφίλ.)
       allow update: if isOwner(uid) && !touchesAny(serverManaged());
       // delete: ΜΟΝΟ server (deleteUserAccount).
 
@@ -153,20 +163,39 @@ service cloud.firestore {
     match /deals/{id} {
       function isPeer() { return request.auth.uid in resource.data.participants; }
 
-      allow read:   if isAuth() && isPeer();
+      // Το `|| user1Uid/user2Uid` είναι ΓΕΦΥΡΑ για τις παλιές εκδόσεις, που
+      // κάνουν query με user1Uid/user2Uid αντί για `participants`. Ίδια
+      // ασφάλεια (και τα τρία δηλώνουν συμμετέχοντα) — να αφαιρεθεί όταν όλοι
+      // είναι σε έκδοση ≥ 1.0.3.
+      function isLegacyPeer() {
+        return resource.data.user1Uid == request.auth.uid
+            || resource.data.user2Uid == request.auth.uid;
+      }
+
+      // Ο δημιουργός πρέπει να είναι ένας από τους δύο συμμετέχοντες — είτε το
+      // δηλώσει με `participants` (νέα έκδοση) είτε με user1Uid/user2Uid
+      // (παλιά έκδοση· το `participants` το συμπληρώνει το migration/trigger).
+      function creatorIsPeer() {
+        return request.auth.uid == request.resource.data.user1Uid
+            || request.auth.uid == request.resource.data.user2Uid;
+      }
+
+      allow read:   if isAuth() && (isPeer() || isLegacyPeer());
       allow create: if isAuth()
-                    && request.resource.data.participants.size() == 2
-                    && request.auth.uid in request.resource.data.participants
-                    && request.resource.data.participants.hasOnly(
-                         [request.resource.data.user1Uid, request.resource.data.user2Uid])
-                    && request.resource.data.status == 'pending';
+                    && creatorIsPeer()
+                    && request.resource.data.status == 'pending'
+                    && (!('participants' in request.resource.data)
+                        || (request.resource.data.participants.size() == 2
+                            && request.resource.data.participants.hasOnly(
+                                 [request.resource.data.user1Uid,
+                                  request.resource.data.user2Uid])));
       // Ακύρωση επιτρέπεται ΜΟΝΟ όσο το deal είναι pending — δεν ακυρώνεται
       // accepted/active/completed deal ακόμα κι από παρακαμμένο client.
-      allow update: if isAuth() && isPeer()
+      allow update: if isAuth() && (isPeer() || isLegacyPeer())
                     && !touchesAny(['participants', 'user1Uid', 'user2Uid', 'chatId'])
                     && (request.resource.data.status != 'cancelled'
                         || resource.data.status == 'pending');
-      allow delete: if isAuth() && isPeer();
+      allow delete: if isAuth() && (isPeer() || isLegacyPeer());
     }
 
     // ── WALL POSTS ────────────────────────────────────────────────────────

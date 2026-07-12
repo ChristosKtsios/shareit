@@ -175,6 +175,20 @@ exports.onDealUpdate = onDocumentWritten("deals/{dealId}", async (event) => {
   const before = event.data && event.data.before && event.data.before.data();
   const dealId = event.params.dealId;
 
+  // ΓΕΦΥΡΑ: οι παλιές εκδόσεις δημιουργούν deals χωρίς `participants`. Χωρίς
+  // αυτό το πεδίο, το deal δεν εμφανίζεται στις νέες εκδόσεις (που κάνουν
+  // query με array-contains) και δεν το διαβάζουν τα rules. Το συμπληρώνουμε.
+  if (!Array.isArray(after.participants) && after.user1Uid && after.user2Uid) {
+    try {
+      await db.collection("deals").doc(dealId).update({
+        participants: [after.user1Uid, after.user2Uid],
+      });
+      logger.info(`Backfilled participants for deal ${dealId}`);
+    } catch (e) {
+      logger.error(`participants backfill ${dealId}: ${e.message}`);
+    }
+  }
+
   // ── RATINGS ──────────────────────────────────────────────
   // ownerRating = δόθηκε από user1 → εφαρμόζεται στον user2.
   // seekerRating = δόθηκε από user2 → εφαρμόζεται στον user1.
@@ -581,5 +595,53 @@ exports.migrateToPrivateData = onRequest(
 
       logger.info("migrateToPrivateData done", report);
       res.status(200).json(report);
+    },
+);
+
+/**
+ * ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή — μέχρι να ενημερωθούν όλοι οι χρήστες).
+ *
+ * Οι ΠΑΛΙΕΣ εκδόσεις της εφαρμογής γράφουν email/phone/fcmToken/language μέσα
+ * στο ΔΗΜΟΣΙΟ user doc. Τα rules το επέτρεπαν, οπότε τα δεδομένα ήταν
+ * αναγνώσιμα από κάθε χρήστη (η διαρροή που κλείσαμε).
+ *
+ * Αν απλώς τα απαγορεύσουμε, οι παλιοί clients σπάνε: το Google sign-in και η
+ * εγγραφή αποτυγχάνουν, γιατί το write απορρίπτεται ολόκληρο.
+ *
+ * Λύση: τα rules τα δέχονται ξανά, ΑΛΛΑ αυτό το trigger τα μεταφέρει αμέσως
+ * στο users/{uid}/private/data και τα σβήνει από το δημόσιο doc. Το παράθυρο
+ * έκθεσης είναι ~1 δευτερόλεπτο αντί για μόνιμο.
+ *
+ * ΝΑ ΑΦΑΙΡΕΘΕΙ όταν όλοι οι χρήστες έχουν έκδοση ≥ 1.0.3 — τότε ξανακλειδώνουμε
+ * τα rules (τα νέα builds δεν γράφουν ποτέ αυτά τα πεδία στο δημόσιο doc).
+ */
+exports.stripSensitiveFromUserDoc = onDocumentWritten(
+    "users/{uid}",
+    async (event) => {
+      const after = event.data && event.data.after && event.data.after.data();
+      if (!after) return null;
+
+      const priv = {};
+      const strip = {};
+      for (const f of SENSITIVE_FIELDS) {
+        if (after[f] !== undefined && after[f] !== null) {
+          priv[f] = after[f];
+          strip[f] = FieldValue.delete();
+        }
+      }
+      if (Object.keys(priv).length === 0) return null;
+
+      const uid = event.params.uid;
+      try {
+        // Πρώτα γράψε το private, ΜΕΤΑ σβήσε από το δημόσιο (χωρίς απώλεια).
+        await db.collection("users").doc(uid)
+            .collection("private").doc("data").set(priv, {merge: true});
+        await db.collection("users").doc(uid).update(strip);
+        const moved = Object.keys(priv).join(",");
+        logger.info(`Stripped ${moved} from users/${uid}`);
+      } catch (e) {
+        logger.error(`stripSensitiveFromUserDoc ${uid}:`, e);
+      }
+      return null;
     },
 );

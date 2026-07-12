@@ -35,7 +35,10 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   for (const uid of [ALICE, BOB, MALLORY]) {
     await setDoc(doc(db, "users", uid), {
       uid, firstName: uid, lastName: "T", rating: 0, ratingCount: 0,
-      dealsCount: 0, friends: [], blockedUids: [], savedListingIds: [],
+      dealsCount: 0, blockedUids: [], savedListingIds: [],
+      // Η Alice έχει ήδη φίλο τον Bob — ώστε το τεστ «σβήσιμο φίλων άλλου» να
+      // έχει πραγματικά κάτι να σβήσει.
+      friends: uid === ALICE ? [BOB] : [],
     });
     await setDoc(doc(db, "users", uid, "private", "data"),
       { email: `${uid}@x.com`, phone: "+3069", fcmToken: "tok" });
@@ -72,8 +75,14 @@ console.log("\n🔴 ΕΠΙΘΕΣΕΙΣ (πρέπει να ΑΠΟΡΡΙΠΤΟΝΤ
 await check("#1 Mallory ΔΕΝ διαβάζει το email/τηλέφωνο της Alice", () =>
   assertFails(getDoc(doc(mallory, "users", ALICE, "private", "data"))));
 
-await check("#1 Mallory ΔΕΝ γράφει email/phone στο δημόσιο doc της (re-leak)", () =>
-  assertFails(updateDoc(doc(mallory, "users", MALLORY), { email: "m@x.com" })));
+// ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή): οι ΠΑΛΙΕΣ εκδόσεις γράφουν email/phone στο
+// δημόσιο doc. Αν το απαγορεύσουμε, το write απορρίπτεται ολόκληρο και σπάει το
+// Google sign-in / η εγγραφή. Το επιτρέπουμε, και το Cloud Function
+// `stripSensitiveFromUserDoc` τα μεταφέρει στο private doc μέσα σε ~1 δευτ.
+// Η ΑΝΑΓΝΩΣΗ παραμένει κλειστή (βλ. τεστ από πάνω).
+// ΝΑ ΞΑΝΑΚΛΕΙΔΩΣΕΙ όταν όλοι οι χρήστες είναι σε έκδοση ≥ 1.0.3.
+await check("ΓΕΦΥΡΑ: παλιός client γράφει email στο δημόσιο doc (επιτρεπτό, το function το σβήνει)", () =>
+  assertSucceeds(updateDoc(doc(mallory, "users", MALLORY), { email: "m@x.com" })));
 
 await check("#2 Mallory ΔΕΝ φτιάχνει notification (phishing push)", () =>
   assertFails(addDoc(collection(mallory, "notifications"),
