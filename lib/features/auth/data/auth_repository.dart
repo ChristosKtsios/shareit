@@ -180,6 +180,15 @@ class AuthRepository {
     // Σε repair (υπήρχε ήδη doc) ενημερώνουμε ΜΟΝΟ τα βασικά πεδία και ΔΕΝ
     // μηδενίζουμε τυχόν υπάρχοντα δεδομένα (friends, ratings, saved listings...).
     // ============================================================
+    // Ανανέωσε το ID token ώστε να περιέχει σίγουρα το claim `phone_number`
+    // (το OTP μόλις ολοκληρώθηκε). Τα rules το απαιτούν για `phoneVerified`.
+    try {
+      await user.getIdToken(true);
+    } catch (_) {
+      // Μη κρίσιμο εδώ: το sign-in έγινε με phone credential, οπότε το token
+      // ήδη περιέχει το claim.
+    }
+
     // ΠΡΟΣΟΧΗ: email/phone ΔΕΝ μπαίνουν εδώ — το δημόσιο user doc το διαβάζει
     // κάθε συνδεδεμένος χρήστης (search, inbox, αγγελίες). Πάνε στο private doc.
     final docData = <String, dynamic>{

@@ -44,6 +44,26 @@ service cloud.firestore {
 
       allow read: if isAuth();
 
+      // ── ΕΚΚΡΕΜΕΙ: γνήσιο phoneVerified ──────────────────────────────────
+      // Σήμερα το `phoneVerified: true` το γράφει ο client — άρα ένας
+      // τροποποιημένος client δηλώνεται «επαληθευμένος» ΧΩΡΙΣ ποτέ να λάβει
+      // SMS, παρακάμπτοντας την υποχρεωτική πύλη κινητού.
+      //
+      // Η λύση (δοκιμασμένη: firestore-tests/phone.test.mjs, 4/4) είναι να
+      // απαιτούμε το claim `phone_number` στο ίδιο το Auth token:
+      //
+      //   function phoneVerifiedIsGenuine() {
+      //     return request.resource.data.get('phoneVerified', false) == false
+      //         || request.auth.token.get('phone_number', '') != '';
+      //   }
+      //   ... && phoneVerifiedIsGenuine()   σε create ΚΑΙ update
+      //
+      // ΔΕΝ ενεργοποιείται ακόμα: οι ΠΑΛΙΕΣ εκδόσεις γράφουν το phoneVerified
+      // χωρίς να ανανεώσουν πρώτα το ID token (μετά το updatePhoneNumber), οπότε
+      // θα κλείδωναν έξω κάθε χρήστη που επαληθεύει κινητό — ιδίως τους Google.
+      // Η έκδοση ≥1.0.4 κάνει `getIdToken(true)` πριν το write.
+      // ΕΝΕΡΓΟΠΟΙΗΣΗ μαζί με την αφαίρεση της γέφυρας, όταν όλοι είναι σε ≥1.0.4.
+
       // ── ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή) ──────────────────────────────────
       // Οι ΠΑΛΙΕΣ εκδόσεις γράφουν email/phone/fcmToken/language στο δημόσιο
       // doc. Αν το απαγορεύσουμε, το write απορρίπτεται ΟΛΟΚΛΗΡΟ και σπάνε το

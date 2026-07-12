@@ -218,6 +218,13 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       // 1) Ενημέρωση του κινητού στο Firebase Auth (re-verification).
       await user.updatePhoneNumber(credential);
 
+      // ΚΡΙΣΙΜΟ: ανανέωσε το ID token ΠΡΙΝ γράψεις το `phoneVerified`.
+      // Μετά το updatePhoneNumber, το τρέχον token μπορεί να μην περιέχει
+      // ακόμα το claim `phone_number`. Τα Firestore rules θα απαιτούν αυτό το
+      // claim για να δεχτούν `phoneVerified: true` — αλλιώς ένας τροποποιημένος
+      // client θα δήλωνε «επαληθευμένος» χωρίς ποτέ να λάβει SMS.
+      await user.getIdToken(true);
+
       // 2) Ενημέρωση του Firestore user document.
       // ΣΗΜΑΝΤΙΚΟ: το OTP μόλις απέδειξε την κατοχή του κινητού, οπότε θέτουμε
       // `phoneVerified: true`. Χωρίς αυτό, οι χρήστες (π.χ. Google sign-in που
