@@ -13,12 +13,21 @@ class ChatInputBar extends ConsumerStatefulWidget {
   final ValueChanged<String>? onChanged;
   final String chatId;
 
+  /// Το μήνυμα στο οποίο απαντάμε — ισχύει και για φωτογραφίες/βίντεο, ώστε να
+  /// μπορείς να απαντήσεις **με** media σε ένα μήνυμα.
+  final Map<String, dynamic>? replyTo;
+
+  /// Καλείται αφού σταλεί media, ώστε η οθόνη να καθαρίσει το reply banner.
+  final VoidCallback? onMediaSent;
+
   const ChatInputBar({
     super.key,
     required this.controller,
     required this.onSend,
     this.onChanged,
     required this.chatId,
+    this.replyTo,
+    this.onMediaSent,
   });
 
   @override
@@ -46,7 +55,9 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar> {
         senderId: uid,
         mediaUrl: url,
         mediaType: media.type == MediaType.image ? 'image' : 'video',
+        replyTo: widget.replyTo,
       );
+      widget.onMediaSent?.call();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

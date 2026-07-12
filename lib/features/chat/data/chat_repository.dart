@@ -127,6 +127,7 @@ class ChatRepository {
     required String senderId,
     required String mediaUrl,
     required String mediaType,
+    Map<String, dynamic>? replyTo,
   }) async {
     final preview = mediaType == 'image' ? '📷 Φωτογραφία' : '🎥 Βίντεο';
     await _db.collection('chats').doc(chatId).collection('messages').add({
@@ -135,6 +136,7 @@ class ChatRepository {
       'sentAt': FieldValue.serverTimestamp(),
       'messageType': mediaType,
       'mediaUrl': mediaUrl,
+      if (replyTo != null) 'replyTo': replyTo,
     });
     try {
       await _db.collection('chats').doc(chatId).update({
@@ -312,8 +314,26 @@ class ChatRepository {
     }
   }
 
-  // ΑΦΑΙΡΕΘΗΚΕ το `deleteMessage` (soft delete): δεν το καλούσε κανείς, και τα
-  // Firestore rules θα το απέρριπταν ούτως ή άλλως — ο αποστολέας μπορεί να
-  // αλλάξει μόνο ['text', 'editedAt']. Αν χρειαστεί «διαγραφή μηνύματος» στο
-  // UI, πρέπει πρώτα να επιτραπούν τα πεδία isDeleted/deletedAt στον κανόνα.
+  /// Διαγραφή μηνύματος από τον αποστολέα (**soft delete**).
+  ///
+  /// Το μήνυμα ΔΕΝ εξαφανίζεται από τη ροή: μένει ως «Το μήνυμα διαγράφηκε»,
+  /// ώστε ο συνομιλητής να βλέπει ότι κάτι γράφτηκε και αφαιρέθηκε — δεν
+  /// ξαναγράφεται η ιστορία της συνομιλίας. Το περιεχόμενο (κείμενο και
+  /// φωτογραφία/βίντεο) καθαρίζεται πραγματικά.
+  ///
+  /// Τα rules επιτρέπουν αυτό το write ΜΟΝΟ στον αποστολέα και ΜΟΝΟ προς τα
+  /// εμπρός (δεν γίνεται «ξε-διαγραφή»).
+  Future<void> deleteMessage(String chatId, String messageId) async {
+    await _db
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .doc(messageId)
+        .update({
+      'isDeleted': true,
+      'deletedAt': FieldValue.serverTimestamp(),
+      'text': '',
+      'mediaUrl': null,
+    });
+  }
 }

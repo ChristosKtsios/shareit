@@ -311,6 +311,51 @@ await check("Διαγραφή συνομιλίας: chat doc → μετά τα �
   await assertSucceeds(deleteDoc(doc(alice, "chats", "chatAB", "messages", "mB")));
 });
 
+console.log("\n🗑️  ΔΙΑΓΡΑΦΗ ΜΗΝΥΜΑΤΩΝ & ΣΧΟΛΙΩΝ");
+
+await check("Ο αποστολέας ΣΒΗΝΕΙ το δικό του μήνυμα (soft)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, "chats", "chatDel"), { participants: [ALICE, BOB] });
+    await setDoc(doc(db, "chats", "chatDel", "messages", "mine"),
+      { senderId: ALICE, text: "δικό μου" });
+    await setDoc(doc(db, "chats", "chatDel", "messages", "theirs"),
+      { senderId: BOB, text: "δικό του" });
+  });
+  await assertSucceeds(updateDoc(doc(alice, "chats", "chatDel", "messages", "mine"),
+    { isDeleted: true, deletedAt: serverTimestamp(), text: "", mediaUrl: null }));
+});
+
+await check("Διαγραφή ΞΕΝΟΥ μηνύματος απορρίπτεται", () =>
+  assertFails(updateDoc(doc(alice, "chats", "chatDel", "messages", "theirs"),
+    { isDeleted: true, deletedAt: serverTimestamp(), text: "" })));
+
+await check("«Ξε-διαγραφή» απορρίπτεται (επαναφορά περιεχομένου)", () =>
+  assertFails(updateDoc(doc(alice, "chats", "chatDel", "messages", "mine"),
+    { isDeleted: false, text: "επαναφορά" })));
+
+await check("Ο συντάκτης σβήνει το σχόλιό του (soft)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, "userPosts", "up1"), { authorUid: BOB, commentsCount: 1, likes: [] });
+    await setDoc(doc(db, "userPosts", "up1", "comments", "c1"),
+      { authorUid: ALICE, text: "γεια", likes: [] });
+  });
+  await assertSucceeds(updateDoc(doc(alice, "userPosts", "up1", "comments", "c1"),
+    { isDeleted: true, deletedAt: serverTimestamp(), text: "" }));
+});
+
+await check("ΞΕΝΟΣ δεν σβήνει το σχόλιό μου", async () => {
+  // ΦΡΕΣΚΟ σχόλιο: αν χρησιμοποιούσαμε το ήδη διαγραμμένο c1, η εγγραφή θα
+  // ήταν no-op (κενό diff) και θα περνούσε — το τεστ θα «πράσινιζε» χωρίς λόγο.
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "userPosts", "up1", "comments", "c2"),
+      { authorUid: ALICE, text: "ζωντανό σχόλιο", likes: [] });
+  });
+  await assertFails(updateDoc(doc(mallory, "userPosts", "up1", "comments", "c2"),
+    { isDeleted: true, text: "" }));
+});
+
 console.log(results.join("\n"));
 console.log(`\n${"─".repeat(60)}\nΣΥΝΟΛΟ: ${pass} πέρασαν, ${fail} απέτυχαν\n`);
 await env.cleanup();

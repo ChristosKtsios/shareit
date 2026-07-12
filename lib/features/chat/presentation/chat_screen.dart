@@ -140,6 +140,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
+  /// Διαγραφή δικού μου μηνύματος (soft). Το μήνυμα δεν εξαφανίζεται — μένει
+  /// ως «Το μήνυμα διαγράφηκε», ώστε ο συνομιλητής να μη βλέπει τη συνομιλία
+  /// να ξαναγράφεται πίσω από την πλάτη του.
+  Future<void> _confirmDeleteMessage(String messageId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('msg.deleteTitle'.tr(),
+            style: const TextStyle(
+                color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+        content: Text('msg.deleteBody'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('common.delete'.tr(),
+                style: const TextStyle(
+                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ChatRepository().deleteMessage(widget.chatId, messageId);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('common.errorGeneric'.tr())),
+        );
+      }
+    }
+  }
+
   /// Dialog επεξεργασίας δικού μου μηνύματος κειμένου.
   Future<void> _editMessage(String messageId, String currentText) async {
     final ctrl = TextEditingController(text: currentText);
@@ -559,6 +599,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   final isRead = readBy.any((u) => u != currentUid);
                   final msgText = (d['text'] ?? '') as String;
                   final mId = docs[i].id;
+                  final isDeleted = d['isDeleted'] as bool? ?? false;
                   return ChatMessageBubble(
                     text: msgText,
                     isMe: isMe,
@@ -583,17 +624,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               uid: currentUid,
                               emoji: emoji,
                             ),
-                    // Απάντηση: μόνο σε μηνύματα κειμένου.
-                    onReply: messageType == 'text'
+                    isDeleted: isDeleted,
+                    // Απάντηση: σε κείμενο, φωτογραφίες και βίντεο. (Όχι σε
+                    // κάρτες deal ή σε διαγραμμένα μηνύματα.)
+                    onReply: (!isDeleted &&
+                            (messageType == 'text' ||
+                                messageType == 'image' ||
+                                messageType == 'video'))
                         ? () => setState(() => _replyingTo = {
                               'messageId': mId,
                               'text': msgText,
                               'senderId': d['senderId'],
+                              'messageType': messageType,
+                              'mediaUrl': d['mediaUrl'],
                             })
                         : null,
                     // Επεξεργασία: μόνο δικά μου μηνύματα κειμένου.
-                    onEdit: (isMe && messageType == 'text')
+                    onEdit: (isMe && messageType == 'text' && !isDeleted)
                         ? () => _editMessage(mId, msgText)
+                        : null,
+                    // Διαγραφή: μόνο δικά μου μηνύματα (κείμενο ή media).
+                    onDelete: (isMe && !isDeleted && messageType != 'deal_closed'
+                            && messageType != 'deal_proposal')
+                        ? () => _confirmDeleteMessage(mId)
                         : null,
                   );
                 },
@@ -609,6 +662,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onChanged: _onTypingChanged,
             onSend: _sendMessage,
             chatId: widget.chatId,
+            replyTo: _replyingTo,
+            onMediaSent: () => setState(() => _replyingTo = null),
           ),
         ),
       ]),

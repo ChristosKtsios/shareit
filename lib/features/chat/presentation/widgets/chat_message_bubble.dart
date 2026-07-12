@@ -81,6 +81,17 @@ class ChatMessageBubble extends StatelessWidget {
             );
           },
         ),
+        if (mine && onDelete != null)
+          ListTile(
+            leading:
+                const Icon(Icons.delete_outline, color: AppColors.danger),
+            title: Text('common.delete'.tr(),
+                style: const TextStyle(color: AppColors.danger)),
+            onTap: () {
+              Navigator.pop(ctx);
+              onDelete!();
+            },
+          ),
         if (!mine && senderId != null && chatId != null && messageId != null)
           ListTile(
             leading: const Icon(Icons.flag_outlined, color: AppColors.deal),
@@ -125,6 +136,13 @@ class ChatMessageBubble extends StatelessWidget {
   /// Callback «Επεξεργασία» — δίνεται μόνο για τα δικά μου μηνύματα κειμένου.
   final VoidCallback? onEdit;
 
+  /// Callback «Διαγραφή» — μόνο για τα δικά μου μηνύματα.
+  final VoidCallback? onDelete;
+
+  /// Το μήνυμα διαγράφηκε από τον αποστολέα (soft delete). Δεν εξαφανίζεται:
+  /// εμφανίζεται ως «Το μήνυμα διαγράφηκε».
+  final bool isDeleted;
+
   const ChatMessageBubble({
     super.key,
     required this.text,
@@ -145,6 +163,8 @@ class ChatMessageBubble extends StatelessWidget {
     this.editedAt,
     this.onReply,
     this.onEdit,
+    this.onDelete,
+    this.isDeleted = false,
   });
 
   /// Quoted preview του μηνύματος στο οποίο απαντά αυτό.
@@ -215,6 +235,36 @@ class ChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ── Διαγραμμένο μήνυμα ──
+    // Δεν εξαφανίζεται από τη ροή: μένει ορατό ως «Το μήνυμα διαγράφηκε», ώστε
+    // ο συνομιλητής να ξέρει ότι κάτι υπήρχε εκεί και αφαιρέθηκε.
+    if (isDeleted) {
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceVariant.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: AppColors.border.withValues(alpha: 0.4), width: 0.5),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.block, size: 13, color: AppColors.textHint),
+            const SizedBox(width: 6),
+            Text(
+              isMe ? 'msg.youDeleted'.tr() : 'msg.deletedByUser'.tr(),
+              style: const TextStyle(
+                  color: AppColors.textHint,
+                  fontSize: 12.5,
+                  fontStyle: FontStyle.italic),
+            ),
+          ]),
+        ),
+      );
+    }
+
     if (messageType == 'deal_closed') {
       return Center(
         child: Container(

@@ -292,6 +292,26 @@ class _CommentTile extends ConsumerWidget {
     final currentUid = ref.watch(currentUserProvider)?.uid;
     final isMine = currentUid == comment.authorUid;
     final liked = currentUid != null && comment.likes.contains(currentUid);
+
+    // ── Διαγραμμένο σχόλιο ──
+    // Μένει ορατό ως ένδειξη: οι απαντήσεις σε αυτό δεν κρέμονται στο κενό.
+    if (comment.isDeleted) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(children: [
+          const Icon(Icons.block, size: 14, color: AppColors.textHint),
+          const SizedBox(width: 8),
+          Text(
+            'userPost.commentDeleted'.tr(namedArgs: {'name': comment.authorName}),
+            style: const TextStyle(
+                color: AppColors.textHint,
+                fontSize: 12.5,
+                fontStyle: FontStyle.italic),
+          ),
+        ]),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(

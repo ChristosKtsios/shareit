@@ -163,6 +163,14 @@ service cloud.firestore {
                               || request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid])))
                         || (resource.data.senderId == request.auth.uid
                             && onlyTouched(['text', 'editedAt']))
+                        // (γ) ΔΙΑΓΡΑΦΗ ΜΗΝΥΜΑΤΟΣ (soft): μόνο ο αποστολέας, και
+                        //     μόνο προς τα εμπρός — δεν «ξε-διαγράφεται» ώστε να
+                        //     μη μπορεί κάποιος να επαναφέρει περιεχόμενο που
+                        //     ο άλλος είδε ως διαγραμμένο. Το μήνυμα μένει στη
+                        //     ροή ως «Το μήνυμα διαγράφηκε».
+                        || (resource.data.senderId == request.auth.uid
+                            && onlyTouched(['isDeleted', 'deletedAt', 'text', 'mediaUrl'])
+                            && request.resource.data.isDeleted == true)
                       );
         // Σβήνεις ΜΟΝΟ δικά σου μηνύματα. Εξαίρεση: το «διαγραφή συνομιλίας»
         // σβήνει πρώτα το chat doc και μετά τα μηνύματα — τα ορφανά μηνύματα

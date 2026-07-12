@@ -12,6 +12,11 @@ class UserPostComment {
   final String? parentAuthorName;
   final Map<String, List<String>> reactions;
 
+  /// Soft delete: το σχόλιο δεν εξαφανίζεται — μένει ως «Το σχόλιο
+  /// διαγράφηκε», ώστε να μη «σβήνεται» αναδρομικά η ροή της συζήτησης
+  /// (οι απαντήσεις σε αυτό παραμένουν κατανοητές).
+  final bool isDeleted;
+
   const UserPostComment({
     required this.id,
     required this.authorUid,
@@ -23,6 +28,7 @@ class UserPostComment {
     this.parentCommentId,
     this.parentAuthorName,
     this.reactions = const {},
+    this.isDeleted = false,
   });
 
   factory UserPostComment.fromFirestore(DocumentSnapshot doc) {
@@ -40,6 +46,7 @@ class UserPostComment {
       likes: List<String>.from(d['likes'] ?? []),
       parentCommentId: d['parentCommentId'],
       parentAuthorName: d['parentAuthorName'],
+      isDeleted: d['isDeleted'] ?? false,
     );
   }
 }

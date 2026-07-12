@@ -235,7 +235,11 @@
     "pendingExpiresMins": "Pendiente · Caduca en {n} minutos",
     "timeExpired": "Tiempo agotado",
     "rateDeal": "⭐ Valora el trato",
-    "sendError": "Error al enviar"
+    "sendError": "Error al enviar",
+    "deleteTitle": "Eliminar mensaje",
+    "deleteBody": "El mensaje se eliminará para ambos. En su lugar se indicará que fue eliminado.",
+    "youDeleted": "Eliminaste este mensaje",
+    "deletedByUser": "Este mensaje fue eliminado"
   },
   "inbox": {
     "loadError": "Error al cargar conversaciones.\n{err}",
@@ -569,7 +573,8 @@
     "publish": "Publicar",
     "whatsOnMind": "¿Qué estás pensando?",
     "addPhotoVideo": "Añadir foto/vídeo",
-    "addMore": "Añadir más ({n}/10)"
+    "addMore": "Añadir más ({n}/10)",
+    "commentDeleted": "{name} eliminó este comentario"
   },
   "photos": {
     "profileUpdated": "¡Foto de perfil actualizada!",

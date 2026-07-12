@@ -235,7 +235,11 @@
     "pendingExpiresMins": "Pending · Expires in {n} minutes",
     "timeExpired": "Time expired",
     "rateDeal": "⭐ Rate the deal",
-    "sendError": "Send error"
+    "sendError": "Send error",
+    "deleteTitle": "Delete message",
+    "deleteBody": "The message will be removed for both of you. A note will show that it was deleted.",
+    "youDeleted": "You deleted this message",
+    "deletedByUser": "This message was deleted"
   },
   "inbox": {
     "loadError": "Error loading conversations.\n{err}",
@@ -569,7 +573,8 @@
     "publish": "Publish",
     "whatsOnMind": "What's on your mind?",
     "addPhotoVideo": "Add photo/video",
-    "addMore": "Add more ({n}/10)"
+    "addMore": "Add more ({n}/10)",
+    "commentDeleted": "{name} deleted this comment"
   },
   "photos": {
     "profileUpdated": "Profile picture updated!",

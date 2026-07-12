@@ -155,15 +155,22 @@ class UserPostRepository {
     await ref.update({'reactions': reactions});
   }
 
+  /// Διαγραφή σχολίου (**soft**) — ίδια συμπεριφορά με τα wall posts.
+  ///
+  /// Το σχόλιο δεν εξαφανίζεται: μένει ως «Το σχόλιο διαγράφηκε». Έτσι οι
+  /// απαντήσεις σε αυτό δεν κρέμονται στο κενό, και ο συνομιλητής βλέπει ότι
+  /// κάτι γράφτηκε και αφαιρέθηκε. Ο μετρητής σχολίων ΔΕΝ μειώνεται (το σχόλιο
+  /// εξακολουθεί να υπάρχει στη λίστα).
   Future<void> deleteComment(String postId, String commentId) async {
     await _db
         .collection('userPosts')
         .doc(postId)
         .collection('comments')
         .doc(commentId)
-        .delete();
-    await _db.collection('userPosts').doc(postId).update({
-      'commentsCount': FieldValue.increment(-1),
+        .update({
+      'isDeleted': true,
+      'deletedAt': FieldValue.serverTimestamp(),
+      'text': '',
     });
   }
 }
