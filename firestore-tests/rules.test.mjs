@@ -56,6 +56,11 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, "tags", "sport"), { name: "sport", count: 5 });
   await setDoc(doc(db, "wallPosts", "wp1"),
     { authorUid: ALICE, targetUid: ALICE, likes: [BOB], commentsCount: 1 });
+  // Post που κρύφτηκε από reports (3+ αναφορές, server-side).
+  await setDoc(doc(db, "userPosts", "up_hidden"), {
+    authorUid: ALICE, text: "spam", likes: [],
+    reportCount: 3, isReported: true, isHidden: true, hiddenReason: "auto_threshold",
+  });
   await setDoc(doc(db, "friendRequests", "fr1"),
     { fromUid: ALICE, toUid: BOB, status: "pending" });
   await setDoc(doc(db, "listings", "l1"),
@@ -131,6 +136,31 @@ await check("Mallory ΔΕΝ επεξεργάζεται ξένη αγγελία",
 
 await check("Ο κάτοχος ΜΠΟΡΕΙ να επεξεργαστεί την αγγελία του (τίτλο)", () =>
   assertSucceeds(updateDoc(doc(alice, "listings", "l1"), { title: "νέος τίτλος" })));
+
+await check("Ο συντάκτης ΔΕΝ ξεκρύβει post που κρύφτηκε από reports", () =>
+  assertFails(updateDoc(doc(alice, "userPosts", "up_hidden"),
+    { isHidden: false, reportCount: 0 })));
+
+await check("Ο συντάκτης ΔΕΝ μηδενίζει το reportCount του post του", () =>
+  assertFails(updateDoc(doc(alice, "userPosts", "up_hidden"), { reportCount: 0 })));
+
+await check("Ο συντάκτης ΜΠΟΡΕΙ να επεξεργαστεί το κείμενο του post του", () =>
+  assertSucceeds(updateDoc(doc(alice, "userPosts", "up_hidden"), { text: "νέο κείμενο" })));
+
+await check("Υποβολή αναφοράς σε post ξένου χρήστη", () =>
+  assertSucceeds(addDoc(collection(mallory, "reports"), {
+    reporterUid: MALLORY, targetUid: ALICE,
+    postCollection: "userPosts", postId: "up_hidden", reason: "spam",
+  })));
+
+await check("Dedup query αναφορών (reporterUid + targetUid + postId)", () =>
+  assertSucceeds(getDocs(query(collection(mallory, "reports"),
+    where("reporterUid", "==", MALLORY), where("targetUid", "==", ALICE),
+    where("postId", "==", "up_hidden")))));
+
+await check("Δεν διαβάζω τις αναφορές ΑΛΛΩΝ", () =>
+  assertFails(getDocs(query(collection(mallory, "reports"),
+    where("reporterUid", "==", ALICE)))));
 
 console.log(results.join("\n"));
 results.length = 0;

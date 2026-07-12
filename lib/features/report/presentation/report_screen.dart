@@ -12,8 +12,15 @@ class ReportScreen extends ConsumerStatefulWidget {
   final String? listingId;
   final String? chatId;
   final String? messageId;
+
+  /// Αναφορά περιεχομένου (post ή σχόλιο σε post).
+  final String? postCollection; // 'wallPosts' | 'userPosts'
+  final String? postId;
+  final String? commentId;
+
   const ReportScreen({super.key, required this.targetUid, this.listingId,
-      this.chatId, this.messageId});
+      this.chatId, this.messageId,
+      this.postCollection, this.postId, this.commentId});
 
   @override
   ConsumerState<ReportScreen> createState() => _ReportScreenState();
@@ -44,6 +51,9 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
         listingId:   widget.listingId,
         chatId:      widget.chatId,
         messageId:   widget.messageId,
+        postCollection: widget.postCollection,
+        postId:      widget.postId,
+        commentId:   widget.commentId,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

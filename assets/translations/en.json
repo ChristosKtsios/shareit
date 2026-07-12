@@ -656,7 +656,7 @@
     "somethingWrong": "Something went wrong. Try again.",
     "warning": "Warning",
     "warningBodyShort": "Deleting your account is permanent and cannot be undone.",
-    "warningBodyLong": "Deleting your account is permanent and cannot be undone. It's not allowed if you have active deals or deals without completed ratings.",
+    "warningBodyLong": "Deleting your account is permanent and cannot be undone. If you have active deals, they will be cancelled.",
     "whatDeleted": "What will be deleted",
     "item1": "All your listings",
     "item2": "All your conversations",
@@ -666,14 +666,13 @@
     "item6": "Your account details",
     "understand": "I understand that deletion is permanent and cannot be undone.",
     "typeToConfirm": "To confirm, type «{word}»:",
-    "activeDealsBlock": "You have {n} active deal(s). They must all be completed first.",
-    "incompleteRatingsBlock": "You have {n} deal(s) awaiting a rating. All ratings must be completed first.",
     "confirmDeleteTitle": "Confirm deletion",
     "confirmDeleteBody": "Are you sure you want to delete your account?\n\nThis action is permanent and cannot be undone.",
     "yesDelete": "Yes, delete",
-    "cannotDelete": "You can't delete",
     "ok": "OK",
-    "confirmWord": "DELETE"
+    "confirmWord": "DELETE",
+    "activeDealsWarn": "You have {n} active deal(s). If you continue, they will be cancelled and permanently deleted.",
+    "continueAnyway": "Continue"
   },
   "changePass": {
     "passwordsMismatch": "Passwords don't match.",

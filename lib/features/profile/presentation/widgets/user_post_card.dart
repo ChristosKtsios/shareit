@@ -171,12 +171,35 @@ class _UserPostCardState extends ConsumerState<UserPostCard> {
                   },
                 ),
               ),
-              if (isMine)
-                IconButton(
-                  icon: const Icon(Icons.more_horiz,
-                      color: AppColors.textSecondary),
-                  onPressed: _confirmDelete,
-                ),
+              // Δικό μου post → διαγραφή. Ξένο post → αναφορά (το Google Play
+              // απαιτεί δυνατότητα αναφοράς σε κάθε περιεχόμενο χρήστη).
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz,
+                    color: AppColors.textSecondary),
+                color: AppColors.surface,
+                onSelected: (v) {
+                  if (v == 'delete') {
+                    _confirmDelete();
+                  } else if (v == 'report') {
+                    context.push(
+                        '/report/post/${post.authorUid}/userPosts/${post.id}');
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (isMine)
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('common.delete'.tr(),
+                          style: const TextStyle(color: AppColors.danger)),
+                    )
+                  else
+                    PopupMenuItem(
+                      value: 'report',
+                      child: Text('chatx.report'.tr(),
+                          style: const TextStyle(color: AppColors.danger)),
+                    ),
+                ],
+              ),
             ]),
           ),
           if (post.text.isNotEmpty)

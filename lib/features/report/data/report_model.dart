@@ -16,12 +16,21 @@ extension ReportReasonX on ReportReason {
 class ReportModel {
   final String reporterUid, targetUid;
   final String? listingId, details, chatId, messageId;
+
+  /// Αναφορά περιεχομένου: `postCollection` = 'wallPosts' | 'userPosts',
+  /// `postId` το post και (προαιρετικά) `commentId` το σχόλιο μέσα σε αυτό.
+  /// Το Cloud Function `onReportCreated` κρύβει το περιεχόμενο στα 3 reports.
+  final String? postCollection, postId, commentId;
+
   final ReportReason reason;
   const ReportModel({required this.reporterUid, required this.targetUid,
-      this.listingId, this.chatId, this.messageId, required this.reason, this.details});
+      this.listingId, this.chatId, this.messageId,
+      this.postCollection, this.postId, this.commentId,
+      required this.reason, this.details});
   Map<String, dynamic> toFirestore() => {
     'reporterUid': reporterUid, 'targetUid': targetUid, 'listingId': listingId,
     'chatId': chatId, 'messageId': messageId,
+    'postCollection': postCollection, 'postId': postId, 'commentId': commentId,
     'reason': reason.name, 'details': details, 'createdAt': FieldValue.serverTimestamp(),
   };
 }

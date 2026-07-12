@@ -28,44 +28,64 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     super.dispose();
   }
 
-  /// Έλεγχος αν υπάρχουν ενεργά deals ή completed deals χωρίς πλήρη αξιολόγηση
-  Future<String?> _checkPendingDeals(String uid) async {
+  /// Προειδοποίηση (ΟΧΙ φραγμός) αν υπάρχουν ενεργά/εκκρεμή deals.
+  ///
+  /// Η διαγραφή λογαριασμού ΔΕΝ μπλοκάρεται ποτέ: το Google Play απαιτεί ο
+  /// χρήστης να μπορεί πάντα να διαγράψει τον λογαριασμό του. Παλιότερα
+  /// μπλοκάραμε και όταν έλειπε αξιολόγηση — που σήμαινε ότι, αν ο ΑΛΛΟΣ δεν σε
+  /// βαθμολογούσε ποτέ, δεν μπορούσες να διαγραφείς ποτέ.
+  Future<String?> _activeDealsWarning(String uid) async {
     try {
-      final db = FirebaseFirestore.instance;
-      final asUser1 =
-          await db.collection('deals').where('user1Uid', isEqualTo: uid).get();
-      final asUser2 =
-          await db.collection('deals').where('user2Uid', isEqualTo: uid).get();
+      // `participants` (όχι user1Uid/user2Uid): τα rules επιτρέπουν ανάγνωση
+      // deal μόνο στους συμμετέχοντες και το query πρέπει να το δηλώνει.
+      final snap = await FirebaseFirestore.instance
+          .collection('deals')
+          .where('participants', arrayContains: uid)
+          .get();
 
-      int activeCount = 0;
-      int incompleteRatingCount = 0;
-
-      for (final doc in [...asUser1.docs, ...asUser2.docs]) {
-        final d = doc.data();
-        final status = d['status'] as String?;
-
-        if (status == 'pending' || status == 'active') {
-          activeCount++;
-        } else if (status == 'completed') {
-          final ownerRating = d['ownerRating'];
-          final seekerRating = d['seekerRating'];
-          if (ownerRating == null || seekerRating == null) {
-            incompleteRatingCount++;
-          }
-        }
-      }
+      final activeCount = snap.docs.where((d) {
+        final status = d.data()['status'] as String?;
+        return status == 'pending' || status == 'active';
+      }).length;
 
       if (activeCount > 0) {
-        return 'delacc.activeDealsBlock'.tr(namedArgs: {'n': '$activeCount'});
-      }
-      if (incompleteRatingCount > 0) {
-        return 'delacc.incompleteRatingsBlock'
-            .tr(namedArgs: {'n': '$incompleteRatingCount'});
+        return 'delacc.activeDealsWarn'.tr(namedArgs: {'n': '$activeCount'});
       }
       return null;
     } catch (_) {
       return null;
     }
+  }
+
+  /// Δείχνει την προειδοποίηση για ενεργά deals και επιστρέφει αν ο χρήστης
+  /// θέλει να συνεχίσει παρόλα αυτά.
+  Future<bool> _confirmDespiteActiveDeals(String warning) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('delacc.warning'.tr(),
+            style: const TextStyle(
+                color: AppColors.danger, fontWeight: FontWeight.w700)),
+        content: Text(warning,
+            style:
+                const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('delacc.continueAnyway'.tr(),
+                style: const TextStyle(
+                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    return result == true;
   }
 
   Future<bool> _showConfirmDialog() async {
@@ -104,32 +124,15 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
 
     setState(() => _loading = true);
 
-    // 1. Έλεγχος για ενεργά deals
-    final dealBlock = await _checkPendingDeals(uid);
-    if (dealBlock != null) {
-      if (mounted) {
-        setState(() => _loading = false);
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            backgroundColor: AppColors.surface,
-            title: Text('delacc.cannotDelete'.tr(),
-                style: const TextStyle(
-                    color: AppColors.danger, fontWeight: FontWeight.w700)),
-            content: Text(dealBlock,
-                style: const TextStyle(
-                    color: AppColors.textPrimary, fontSize: 14)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('delacc.ok'.tr(),
-                    style: const TextStyle(color: AppColors.primary)),
-              ),
-            ],
-          ),
-        );
-      }
-      return;
+    // 1. Ενεργά deals → ΠΡΟΕΙΔΟΠΟΙΗΣΗ, όχι φραγμός. Ο χρήστης αποφασίζει.
+    final warning = await _activeDealsWarning(uid);
+    if (warning != null) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      final proceed = await _confirmDespiteActiveDeals(warning);
+      if (!proceed) return;
+      if (!mounted) return;
+      setState(() => _loading = true);
     }
 
     // 2. Επιβεβαίωση

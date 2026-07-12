@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -280,7 +281,13 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
                     onPressed:
                         (_busy || _photos.isEmpty) ? null : _showOptionsMenu,
                   ),
-                ],
+                ] else
+                  // Αναφορά φωτογραφίας ξένου προφίλ — απαίτηση UGC policy.
+                  IconButton(
+                    icon: const Icon(Icons.flag_outlined, color: Colors.white),
+                    tooltip: 'chatx.report'.tr(),
+                    onPressed: () => context.push('/report/user/${widget.uid}'),
+                  ),
               ],
             ),
           ),

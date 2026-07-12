@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_colors.dart';
@@ -437,6 +438,15 @@ class _CommentTile extends ConsumerWidget {
                         onTap: () => UserPostRepository()
                             .deleteComment(postId, comment.id),
                         child: const Icon(Icons.delete_outline,
+                            size: 14, color: AppColors.textHint),
+                      ),
+                    ] else ...[
+                      const Spacer(),
+                      // Αναφορά σχολίου — απαίτηση UGC policy του Play.
+                      GestureDetector(
+                        onTap: () => context.push(
+                            '/report/comment/${comment.authorUid}/userPosts/$postId/${comment.id}'),
+                        child: const Icon(Icons.flag_outlined,
                             size: 14, color: AppColors.textHint),
                       ),
                     ],

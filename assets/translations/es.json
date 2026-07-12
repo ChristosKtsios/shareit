@@ -656,7 +656,7 @@
     "somethingWrong": "Algo salió mal. Inténtalo de nuevo.",
     "warning": "Atención",
     "warningBodyShort": "Eliminar la cuenta es permanente y no se puede deshacer.",
-    "warningBodyLong": "Eliminar la cuenta es permanente y no se puede deshacer. No se permite si tienes acuerdos activos o acuerdos sin valoraciones completadas.",
+    "warningBodyLong": "La eliminación de la cuenta es permanente y no se puede deshacer. Si tienes deals activos, se cancelarán.",
     "whatDeleted": "Qué se eliminará",
     "item1": "Todos tus anuncios",
     "item2": "Todas tus conversaciones",
@@ -666,14 +666,13 @@
     "item6": "Los datos de tu cuenta",
     "understand": "Entiendo que la eliminación es permanente y no se puede deshacer.",
     "typeToConfirm": "Para confirmar, escribe «{word}»:",
-    "activeDealsBlock": "Tienes {n} acuerdo(s) activo(s). Primero deben completarse todos.",
-    "incompleteRatingsBlock": "Tienes {n} acuerdo(s) pendiente(s) de valoración. Primero deben completarse todas las valoraciones.",
     "confirmDeleteTitle": "Confirmar eliminación",
     "confirmDeleteBody": "¿Seguro que quieres eliminar tu cuenta?\n\nEsta acción es permanente y no se puede deshacer.",
     "yesDelete": "Sí, eliminar",
-    "cannotDelete": "No puedes eliminar",
     "ok": "Entendido",
-    "confirmWord": "ELIMINAR"
+    "confirmWord": "ELIMINAR",
+    "activeDealsWarn": "Tienes {n} deal(s) activo(s). Si continúas, se cancelarán y se eliminarán permanentemente.",
+    "continueAnyway": "Continuar"
   },
   "changePass": {
     "passwordsMismatch": "Las contraseñas no coinciden.",

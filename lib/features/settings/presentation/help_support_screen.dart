@@ -6,7 +6,9 @@ import '../../../core/constants/app_colors.dart';
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
 
-  static const String _supportEmail = 'support@shareit.app';
+  // Ίδιο email με τα νομικά κείμενα (privacy policy / terms). Το shareit.app
+  // δεν είναι δικό μας domain — τα μηνύματα δεν έφταναν πουθενά.
+  static const String _supportEmail = 'christos.katsios1@gmail.com';
 
   static List<Map<String, String>> get _faqs => [
         {'q': 'help.faqQ1'.tr(), 'a': 'help.faqA1'.tr()},

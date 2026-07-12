@@ -4,13 +4,21 @@ import 'wall_post_model.dart';
 class WallPostRepository {
   final _db = FirebaseFirestore.instance;
 
+  /// Περιεχόμενο που κρύφτηκε από reports (`isHidden`, το θέτει server-side το
+  /// `onReportCreated` στα 3 reports) δεν εμφανίζεται πουθενά.
+  static bool _visible(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>?;
+    return d?['isHidden'] != true;
+  }
+
   /// Stream με όλα τα wall posts του target user (στο profile του).
   Stream<List<WallPostModel>> watchUserWallPosts(String targetUid) => _db
       .collection('wallPosts')
       .where('targetUid', isEqualTo: targetUid)
       .orderBy('createdAt', descending: true)
       .snapshots()
-      .map((s) => s.docs.map(WallPostModel.fromFirestore).toList());
+      .map((s) =>
+          s.docs.where(_visible).map(WallPostModel.fromFirestore).toList());
 
   /// Stream με ένα συγκεκριμένο wall post.
   Stream<WallPostModel?> watchById(String postId) => _db
@@ -19,14 +27,16 @@ class WallPostRepository {
       .snapshots()
       .map((s) => s.exists ? WallPostModel.fromFirestore(s) : null);
 
-  /// Stream με σχόλια ενός wall post (συμπεριλαμβάνει διαγραμμένα).
+  /// Stream με σχόλια ενός wall post (συμπεριλαμβάνει διαγραμμένα, αλλά ΟΧΙ
+  /// όσα κρύφτηκαν από reports).
   Stream<List<CommentModel>> watchComments(String postId) => _db
       .collection('wallPosts')
       .doc(postId)
       .collection('comments')
       .orderBy('createdAt')
       .snapshots()
-      .map((s) => s.docs.map(CommentModel.fromFirestore).toList());
+      .map((s) =>
+          s.docs.where(_visible).map(CommentModel.fromFirestore).toList());
 
   /// Προσθέτει σχόλιο.
   Future<void> addComment({

@@ -156,7 +156,28 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
     final currentUid = ref.watch(currentUserProvider)?.uid ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Deal')),
+      appBar: AppBar(
+        title: const Text('Deal'),
+        actions: [
+          // Αναφορά του post (μόνο σε ξένο) — απαίτηση UGC policy του Play.
+          StreamBuilder<WallPostModel?>(
+            stream: _repo.watchById(widget.postId),
+            builder: (context, s) {
+              final p = s.data;
+              if (p == null || p.authorUid == currentUid) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                icon: const Icon(Icons.flag_outlined,
+                    color: AppColors.textSecondary),
+                tooltip: 'chatx.report'.tr(),
+                onPressed: () => context.push(
+                    '/report/post/${p.authorUid}/wallPosts/${widget.postId}'),
+              );
+            },
+          ),
+        ],
+      ),
       body: StreamBuilder<WallPostModel?>(
         stream: _repo.watchById(widget.postId),
         builder: (context, snap) {
@@ -374,6 +395,7 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                           children: comments
                               .map((c) => _CommentTile(
                                     comment: c,
+                                    postId: widget.postId,
                                     canDelete: c.authorUid == currentUid,
                                     onDelete: () => _repo.deleteComment(
                                       postId: widget.postId,
@@ -699,11 +721,13 @@ class _CommentTile extends StatelessWidget {
   final CommentModel comment;
   final bool canDelete;
   final VoidCallback onDelete;
+  final String postId;
 
   const _CommentTile({
     required this.comment,
     required this.canDelete,
     required this.onDelete,
+    required this.postId,
   });
 
   @override
@@ -828,6 +852,14 @@ class _CommentTile extends StatelessWidget {
             icon: const Icon(Icons.delete_outline,
                 color: AppColors.textHint, size: 16),
             onPressed: () => _confirmDelete(context),
+          )
+        else
+          // Αναφορά σχολίου — απαίτηση UGC policy του Play.
+          IconButton(
+            icon: const Icon(Icons.flag_outlined,
+                color: AppColors.textHint, size: 16),
+            onPressed: () => context.push(
+                '/report/comment/${comment.authorUid}/wallPosts/$postId/${comment.id}'),
           ),
       ]),
     );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -595,9 +596,14 @@ class _DealCard extends StatelessWidget {
     );
 
     try {
+      // Το `participants` φίλτρο είναι απαραίτητο: τα rules επιτρέπουν ανάγνωση
+      // deal μόνο στους συμμετέχοντες, και ένα query που δεν το δηλώνει
+      // απορρίπτεται ολόκληρο (τα rules δεν φιλτράρουν).
+      final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
       final snap = await FirebaseFirestore.instance
           .collection('deals')
           .where('chatId', isEqualTo: chatId)
+          .where('participants', arrayContains: myUid)
           .get();
       if (!context.mounted) return;
       Navigator.of(context, rootNavigator: true).pop();

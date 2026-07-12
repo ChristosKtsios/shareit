@@ -258,9 +258,45 @@ exports.onReportCreated = onDocumentCreated(
 
       const listingId = data.listingId;
       const targetUid = data.targetUid;
+      const postCollection = data.postCollection;
+      const postId = data.postId;
+      const commentId = data.commentId;
+
+      // Το περιεχόμενο (post/σχόλιο) που αναφέρθηκε. Στα 3 reports κρύβεται
+      // αυτόματα (isHidden) — ο client δεν το εμφανίζει πλέον.
+      const contentRef = (postCollection === "wallPosts" ||
+          postCollection === "userPosts") && postId ?
+        (commentId ?
+          db.collection(postCollection).doc(postId)
+              .collection("comments").doc(commentId) :
+          db.collection(postCollection).doc(postId)) :
+        null;
 
       try {
-        if (listingId) {
+        if (contentRef) {
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(contentRef);
+            if (!snap.exists) return;
+            const count = ((snap.data().reportCount || 0)) + 1;
+            const update = {reportCount: count, isReported: true};
+            if (count >= REPORT_AUTO_HIDE_THRESHOLD) {
+              update.isHidden = true;
+              update.hiddenReason = "auto_threshold";
+            }
+            tx.update(contentRef, update);
+          });
+          // Ο counter του χρήστη που ανέβασε το περιεχόμενο ενημερώνεται
+          // επίσης.
+          if (targetUid) {
+            const uref = db.collection("users").doc(targetUid);
+            await db.runTransaction(async (tx) => {
+              const snap = await tx.get(uref);
+              if (!snap.exists) return;
+              const count = ((snap.data().reportCount || 0)) + 1;
+              tx.update(uref, {reportCount: count, isReported: true});
+            });
+          }
+        } else if (listingId) {
           const ref = db.collection("listings").doc(listingId);
           await db.runTransaction(async (tx) => {
             const snap = await tx.get(ref);

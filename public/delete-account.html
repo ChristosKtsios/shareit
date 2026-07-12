@@ -39,15 +39,25 @@ button:disabled { background: #ccc; cursor: not-allowed; }
   <h1>Διαγραφή Λογαριασμού</h1>
   <p class="subtitle">ShareIt — Αίτημα οριστικής διαγραφής δεδομένων</p>
 
+  <div class="info" style="margin-bottom:24px">
+    ✅ <strong>Ο γρηγορότερος τρόπος — μέσα από την εφαρμογή:</strong>
+    <br>Ρυθμίσεις → Διαγραφή Λογαριασμού. Η διαγραφή γίνεται <strong>άμεσα</strong>, την ίδια στιγμή.
+    <br><br>Η παρακάτω φόρμα είναι για όσους <strong>δεν έχουν πλέον πρόσβαση</strong> στην εφαρμογή ή στον λογαριασμό τους.
+  </div>
+
   <div class="warning">
-    <strong>⚠️ ΠΡΟΣΟΧΗ:</strong> Η διαγραφή είναι <strong>οριστική</strong>. Θα διαγραφούν μόνιμα:
+    <strong>⚠️ ΠΡΟΣΟΧΗ:</strong> Η διαγραφή είναι <strong>οριστική</strong> και δεν είναι δυνατή η ανάκτηση.
+    <br><br><strong>Τι διαγράφεται μόνιμα:</strong>
     <br>• Όλες οι αγγελίες σου
     <br>• Όλα τα μηνύματα και chats
-    <br>• Όλα τα deals και αξιολογήσεις
-    <br>• Φωτογραφίες προφίλ
+    <br>• Όλα τα deals και οι αξιολογήσεις
+    <br>• Φωτογραφίες προφίλ και αναρτήσεις
     <br>• Φίλοι, posts, σχόλια
-    <br>• Στοιχεία λογαριασμού
-    <br><br>Δεν είναι δυνατή η ανάκτηση μετά τη διαγραφή.
+    <br>• Email, τηλέφωνο και στοιχεία λογαριασμού
+    <br><br><strong>Τι διατηρείται και για πόσο:</strong>
+    <br>• <strong>Αναφορές (reports)</strong> που έχουν υποβληθεί για εσένα ή από εσένα: διατηρούνται <strong>ανωνυμοποιημένες για 2 χρόνια</strong>, για λόγους ασφάλειας της κοινότητας και πρόληψης καταχρήσεων (έννομο συμφέρον, άρθρο 6(1)(στ) GDPR).
+    <br>• <strong>Τεχνικά αρχεία καταγραφής ασφαλείας</strong> (logs): έως <strong>90 ημέρες</strong>.
+    <br>Και τα δύο δεν περιέχουν στοιχεία που σε ταυτοποιούν μετά τη διαγραφή του λογαριασμού.
   </div>
 
   <form id="deleteForm">
@@ -87,14 +97,15 @@ button:disabled { background: #ccc; cursor: not-allowed; }
   </form>
 
   <div id="successBox" class="success hidden">
-    <h3>✅ Αίτημα παραλήφθηκε</h3>
-    <p>Το αίτημά σου στάλθηκε επιτυχώς. Ο λογαριασμός σου θα διαγραφεί <strong>εντός 7 εργάσιμων ημερών</strong>.<br><br>
-    Θα λάβεις email επιβεβαίωσης μόλις ολοκληρωθεί η διαγραφή.<br><br>
-    Αν έχεις απορίες: <a href="mailto:Christos.katsios1@gmail.com">Christos.katsios1@gmail.com</a></p>
-  </div>
-
-  <div class="info">
-    💡 <strong>Εναλλακτικά:</strong> Μπορείς να διαγράψεις τον λογαριασμό σου άμεσα μέσα από την εφαρμογή: Ρυθμίσεις → Διαγραφή Λογαριασμού.
+    <h3>📧 Τελευταίο βήμα — στείλε το email</h3>
+    <p>Άνοιξε η εφαρμογή email σου με προ-συμπληρωμένο το αίτημα.
+    <strong>Πρέπει να πατήσεις «Αποστολή»</strong> για να το λάβουμε — το αίτημα δεν έχει σταλεί ακόμα.<br><br>
+    Αν δεν άνοιξε η εφαρμογή email, στείλε το κείμενο χειροκίνητα:</p>
+    <textarea id="fallbackText" readonly style="margin-top:12px;min-height:150px;font-size:12px;background:#fff"></textarea>
+    <button type="button" id="copyBtn" style="background:#10B981;margin-top:10px">Αντιγραφή κειμένου</button>
+    <p style="margin-top:12px">Στείλ' το στο <a href="mailto:Christos.katsios1@gmail.com"><strong>Christos.katsios1@gmail.com</strong></a><br><br>
+    Το αίτημα διεκπεραιώνεται <strong>το αργότερο εντός 30 ημερών</strong> από την παραλαβή (συνήθως πολύ νωρίτερα)
+    και θα λάβεις email επιβεβαίωσης μόλις ολοκληρωθεί η διαγραφή.</p>
   </div>
 
   <div class="footer">
@@ -104,32 +115,47 @@ button:disabled { background: #ccc; cursor: not-allowed; }
 </div>
 
 <script>
-document.getElementById('deleteForm').addEventListener('submit', async function(e) {
+// ΣΗΜΑΝΤΙΚΟ: η φόρμα ΔΕΝ στέλνει τίποτα από μόνη της — ανοίγει τον email client
+// του χρήστη. Γι' αυτό ΔΕΝ δηλώνουμε «αίτημα παραλήφθηκε» (θα ήταν ψευδές αν
+// δεν υπάρχει email client ή αν ο χρήστης δεν πατήσει «Αποστολή»). Δίνουμε και
+// το κείμενο για χειροκίνητη αποστολή.
+document.getElementById('deleteForm').addEventListener('submit', function(e) {
   e.preventDefault();
-  
-  const email = document.getElementById('email').value.trim();
-  const phone = document.getElementById('phone').value.trim();
+
+  const email    = document.getElementById('email').value.trim();
+  const phone    = document.getElementById('phone').value.trim();
   const fullName = document.getElementById('fullName').value.trim();
-  const reason = document.getElementById('reason').value;
+  const reason   = document.getElementById('reason').value;
   const comments = document.getElementById('comments').value.trim();
-  
+
+  const bodyText =
+    'Αίτημα διαγραφής λογαριασμού\n\n' +
+    'Email: ' + email + '\n' +
+    'Τηλέφωνο: ' + phone + '\n' +
+    'Όνομα: ' + fullName + '\n' +
+    'Λόγος: ' + (reason || 'Δεν δόθηκε') + '\n' +
+    'Σχόλια: ' + (comments || 'Κανένα') + '\n\n' +
+    'Επιβεβαιώνω ότι είμαι ο κάτοχος του λογαριασμού και ζητώ οριστική διαγραφή.';
+
+  document.getElementById('fallbackText').value = bodyText;
+
   const subject = encodeURIComponent('Αίτημα Διαγραφής Λογαριασμού - ShareIt');
-  const body = encodeURIComponent(
-    `Αίτημα διαγραφής λογαριασμού\n\n` +
-    `Email: ${email}\n` +
-    `Τηλέφωνο: ${phone}\n` +
-    `Όνομα: ${fullName}\n` +
-    `Λόγος: ${reason || 'Δεν δόθηκε'}\n` +
-    `Σχόλια: ${comments || 'Κανένα'}\n\n` +
-    `Επιβεβαιώνω ότι είμαι ο κάτοχος του λογαριασμού και ζητώ οριστική διαγραφή.`
-  );
-  
-  // Άνοιγμα email client με προ-συμπληρωμένο μήνυμα
-  window.location.href = `mailto:Christos.katsios1@gmail.com?subject=${subject}&body=${body}`;
-  
-  // Εμφάνιση success message
+  window.location.href = 'mailto:Christos.katsios1@gmail.com?subject=' +
+    subject + '&body=' + encodeURIComponent(bodyText);
+
   document.getElementById('deleteForm').classList.add('hidden');
   document.getElementById('successBox').classList.remove('hidden');
+});
+
+document.getElementById('copyBtn').addEventListener('click', function() {
+  const ta = document.getElementById('fallbackText');
+  ta.select();
+  navigator.clipboard.writeText(ta.value).then(function() {
+    document.getElementById('copyBtn').textContent = '✅ Αντιγράφηκε';
+  }).catch(function() {
+    document.execCommand('copy');
+    document.getElementById('copyBtn').textContent = '✅ Αντιγράφηκε';
+  });
 });
 </script>
 

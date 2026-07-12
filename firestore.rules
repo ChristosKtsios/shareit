@@ -9,6 +9,12 @@ service cloud.firestore {
     function onlyTouched(keys) { return touched().hasOnly(keys); }
     function touchesAny(keys)  { return touched().hasAny(keys); }
 
+    // Σημαίες moderation — τις γράφει ΜΟΝΟ το onReportCreated (admin). Ούτε ο
+    // συντάκτης δεν ξεκρύβει περιεχόμενο που κρύφτηκε από reports.
+    function moderationFlags() {
+      return ['reportCount', 'isReported', 'isHidden', 'hiddenReason'];
+    }
+
     // Μοναδική αλλαγή σε λίστα uids = το uid του ίδιου του χρήστη (add ή remove).
     // Χρησιμοποιείται σε likes: δεν μπορείς να σβήσεις/βάλεις likes άλλων.
     function selfOnlyListDiff(field) {
@@ -86,7 +92,7 @@ service cloud.firestore {
       // Ο κάτοχος επεξεργάζεται, αλλά ΔΕΝ ξεκρύβει/μηδενίζει αγγελία που
       // κρύφτηκε από reports (τα γράφει το onReportCreated).
       allow update: if isAuth() && resource.data.userId == request.auth.uid
-                    && !touchesAny(['reportCount', 'isHidden', 'hiddenReason']);
+                    && !touchesAny(moderationFlags());
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
 
@@ -170,7 +176,8 @@ service cloud.firestore {
       // Ο συντάκτης επεξεργάζεται. Οποιοσδήποτε άλλος: μόνο το ΔΙΚΟ του like ή
       // ο μετρητής σχολίων (±1) — δεν σβήνει τα likes των άλλων.
       allow update: if isAuth() && (
-                      resource.data.authorUid == request.auth.uid
+                      (resource.data.authorUid == request.auth.uid
+                        && !touchesAny(moderationFlags()))
                       || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                       || (onlyTouched(['commentsCount'])
                           && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
@@ -182,7 +189,8 @@ service cloud.firestore {
         allow read:   if isAuth();
         allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
         allow update: if isAuth() && (
-                        resource.data.authorUid == request.auth.uid
+                        (resource.data.authorUid == request.auth.uid
+                        && !touchesAny(moderationFlags()))
                         || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                         || onlyTouched(['reactions'])
                       );
@@ -195,7 +203,8 @@ service cloud.firestore {
       allow read:   if isAuth();
       allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
       allow update: if isAuth() && (
-                      resource.data.authorUid == request.auth.uid
+                      (resource.data.authorUid == request.auth.uid
+                        && !touchesAny(moderationFlags()))
                       || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                       || (onlyTouched(['commentsCount'])
                           && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
@@ -207,7 +216,8 @@ service cloud.firestore {
         allow read:   if isAuth();
         allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
         allow update: if isAuth() && (
-                        resource.data.authorUid == request.auth.uid
+                        (resource.data.authorUid == request.auth.uid
+                        && !touchesAny(moderationFlags()))
                         || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                         || onlyTouched(['reactions'])
                       );

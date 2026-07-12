@@ -28,12 +28,22 @@ class UserPostRepository {
     return doc.id;
   }
 
+  /// Περιεχόμενο που κρύφτηκε από reports (`isHidden`, το θέτει server-side το
+  /// `onReportCreated` στα 3 reports) δεν εμφανίζεται πουθενά.
+  static bool _visible(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>?;
+    return d?['isHidden'] != true;
+  }
+
   Stream<List<UserPostModel>> watchUserPosts(String uid) => _db
       .collection('userPosts')
       .where('authorUid', isEqualTo: uid)
       .snapshots()
       .map((snap) {
-        final list = snap.docs.map(UserPostModel.fromFirestore).toList();
+        final list = snap.docs
+            .where(_visible)
+            .map(UserPostModel.fromFirestore)
+            .toList();
         list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return list;
       });
@@ -91,7 +101,10 @@ class UserPostRepository {
       .collection('comments')
       .snapshots()
       .map((snap) {
-        final list = snap.docs.map(UserPostComment.fromFirestore).toList();
+        final list = snap.docs
+            .where(_visible)
+            .map(UserPostComment.fromFirestore)
+            .toList();
         list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         return list;
       });

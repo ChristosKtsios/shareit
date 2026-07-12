@@ -262,6 +262,22 @@ final _routerProvider = Provider<GoRouter>((ref) {
                 chatId: s.pathParameters['chatId'],
                 messageId: s.pathParameters['messageId'],
               )),
+      // Αναφορά περιεχομένου: post (wallPosts/userPosts) και σχόλιο σε post.
+      GoRoute(
+          path: '/report/post/:uid/:col/:postId',
+          builder: (_, s) => ReportScreen(
+                targetUid: s.pathParameters['uid']!,
+                postCollection: s.pathParameters['col'],
+                postId: s.pathParameters['postId'],
+              )),
+      GoRoute(
+          path: '/report/comment/:uid/:col/:postId/:commentId',
+          builder: (_, s) => ReportScreen(
+                targetUid: s.pathParameters['uid']!,
+                postCollection: s.pathParameters['col'],
+                postId: s.pathParameters['postId'],
+                commentId: s.pathParameters['commentId'],
+              )),
       // Saved
       GoRoute(path: '/saved', builder: (_, __) => const SavedScreen()),
       // Listing images

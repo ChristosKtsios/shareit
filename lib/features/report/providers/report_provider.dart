@@ -12,16 +12,25 @@ Future<void> reportUser({
   String? listingId,
   String? chatId,
   String? messageId,
+  String? postCollection,
+  String? postId,
+  String? commentId,
 }) async {
   // Έλεγξε αν ο ίδιος user έχει κάνει ήδη report στο ίδιο αντικείμενο.
-  // Για μηνύματα κάνουμε dedup ανά messageId, αλλιώς ανά listingId.
+  // Dedup ανά: σχόλιο → post → μήνυμα → αγγελία (αλλιώς ανά χρήστη).
   var dedupQuery = _db
       .collection('reports')
       .where('reporterUid', isEqualTo: reporterUid)
       .where('targetUid', isEqualTo: targetUid);
-  dedupQuery = messageId != null
-      ? dedupQuery.where('messageId', isEqualTo: messageId)
-      : dedupQuery.where('listingId', isEqualTo: listingId);
+  if (commentId != null) {
+    dedupQuery = dedupQuery.where('commentId', isEqualTo: commentId);
+  } else if (postId != null) {
+    dedupQuery = dedupQuery.where('postId', isEqualTo: postId);
+  } else if (messageId != null) {
+    dedupQuery = dedupQuery.where('messageId', isEqualTo: messageId);
+  } else {
+    dedupQuery = dedupQuery.where('listingId', isEqualTo: listingId);
+  }
   final existingQuery = await dedupQuery.limit(1).get();
 
   if (existingQuery.docs.isNotEmpty) {
@@ -38,6 +47,9 @@ Future<void> reportUser({
         listingId: listingId,
         chatId: chatId,
         messageId: messageId,
+        postCollection: postCollection,
+        postId: postId,
+        commentId: commentId,
         reason: reason,
         details: details,
       ).toFirestore());
