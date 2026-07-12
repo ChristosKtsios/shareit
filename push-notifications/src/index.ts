@@ -223,16 +223,34 @@ export const onNewPostComment = onDocumentCreated(
  * λύση είναι να μη φεύγει ποτέ το email από τον server — βλ. TODO παρακάτω),
  * αλλά κάνει τη μαζική συλλογή μη πρακτική.
  */
-const RATE_LIMIT_MAX = 10; // κλήσεις
+const RATE_LIMIT_PER_IP = 10; // κλήσεις ανά IP
+const RATE_LIMIT_GLOBAL = 60; // κλήσεις συνολικά (όλες οι IP μαζί)
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // ανά 10 λεπτά
 
-async function enforceRateLimit(ip: string, action: string): Promise<void> {
-  if (!ip) return; // δεν μπλοκάρουμε αν δεν ξέρουμε IP (μη σπάσουμε νόμιμη χρήση)
-  const id = `${action}_${ip.replace(/[^a-zA-Z0-9]/g, "_")}`;
+/**
+ * Η IP του καλούντος.
+ *
+ * ΠΡΟΣΟΧΗ: το `x-forwarded-for` είναι λίστα και ο ΙΔΙΟΣ ο επιτιθέμενος μπορεί
+ * να στείλει δικές του τιμές — η υποδομή της Google τις ΠΡΟΣΘΕΤΕΙ μπροστά από
+ * την πραγματική. Άρα το ΠΡΩΤΟ στοιχείο είναι ελεγχόμενο από τον client και
+ * ΔΕΝ πρέπει να χρησιμοποιείται (αλλιώς κάθε αίτημα «μοιάζει» με νέα IP και το
+ * rate limit παρακάμπτεται). Η αξιόπιστη τιμή είναι το ΤΕΛΕΥΤΑΙΟ hop.
+ */
+function callerIp(request: { rawRequest?: { ip?: string;
+  headers?: Record<string, unknown> } }): string {
+  const fwd = request.rawRequest?.headers?.["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length > 0) {
+    const hops = fwd.split(",").map((h) => h.trim()).filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1];
+  }
+  return request.rawRequest?.ip ?? "";
+}
+
+/** Κοινός μετρητής σε κυλιόμενο παράθυρο. Επιστρέφει true αν ξεπεράστηκε. */
+async function bumpCounter(id: string, max: number): Promise<boolean> {
   const ref = db.collection("rateLimits").doc(id);
   const now = Date.now();
-
-  const blocked = await db.runTransaction(async (tx) => {
+  return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const d = snap.data();
     const windowStart = (d?.windowStart as number) ?? 0;
@@ -242,25 +260,34 @@ async function enforceRateLimit(ip: string, action: string): Promise<void> {
       tx.set(ref, { windowStart: now, count: 1 });
       return false;
     }
-    if (count >= RATE_LIMIT_MAX) return true;
+    if (count >= max) return true;
     tx.set(ref, { windowStart, count: count + 1 }, { merge: true });
     return false;
   });
+}
 
-  if (blocked) {
-    logger.warn(`Rate limit hit: ${action} from ${ip}`);
+/**
+ * Rate limit σε ΔΥΟ επίπεδα:
+ *  1. ΚΑΘΟΛΙΚΟ (ένα doc): πιάνει τον επιτιθέμενο ακόμα κι αν εναλλάσσει IP ή
+ *     πλαστογραφεί κεφαλίδες — κανένα τέχνασμα δεν το παρακάμπτει.
+ *  2. ΑΝΑ IP: εμποδίζει έναν κακό χρήστη να καταναλώσει το καθολικό όριο.
+ *
+ * Το καθολικό ελέγχεται ΠΡΩΤΟ, ώστε ένας επιτιθέμενος να μη μπορεί να
+ * δημιουργεί απεριόριστα docs στο `rateLimits` (ένα ανά ψεύτικη IP).
+ */
+async function enforceRateLimit(ip: string, action: string): Promise<void> {
+  const tooBusy = async (): Promise<never> => {
+    logger.warn(`Rate limit hit: ${action} from ${ip || "unknown"}`);
     throw new HttpsError(
       "resource-exhausted",
       "Πολλές προσπάθειες. Δοκίμασε ξανά σε λίγα λεπτά."
     );
-  }
-}
+  };
 
-function callerIp(request: { rawRequest?: { ip?: string;
-  headers?: Record<string, unknown> } }): string {
-  const fwd = request.rawRequest?.headers?.["x-forwarded-for"];
-  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0].trim();
-  return request.rawRequest?.ip ?? "";
+  if (await bumpCounter(`${action}_GLOBAL`, RATE_LIMIT_GLOBAL)) await tooBusy();
+  if (!ip) return;
+  const key = `${action}_${ip.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  if (await bumpCounter(key, RATE_LIMIT_PER_IP)) await tooBusy();
 }
 
 /**
@@ -379,18 +406,22 @@ export const onFriendRequestAccepted = onDocumentUpdated(
     const toUid = after.toUid as string;
     if (!fromUid || !toUid || fromUid === toUid) return;
 
-    const batch = db.batch();
-    batch.set(
-      db.collection("users").doc(fromUid),
-      { friends: admin.firestore.FieldValue.arrayUnion(toUid) },
-      { merge: true }
-    );
-    batch.set(
-      db.collection("users").doc(toUid),
-      { friends: admin.firestore.FieldValue.arrayUnion(fromUid) },
-      { merge: true }
-    );
-    await batch.commit();
+    // `update` (όχι `set(merge)`): αν ο χρήστης έχει διαγραφεί στο μεταξύ, το
+    // set θα ΞΑΝΑΔΗΜΙΟΥΡΓΟΥΣΕ το doc του — ένα «φάντασμα» με μόνο το friends,
+    // που δεν σβήνεται ποτέ και εμφανίζεται στην αναζήτηση χρηστών.
+    const both = [
+      { ref: db.collection("users").doc(fromUid), add: toUid },
+      { ref: db.collection("users").doc(toUid), add: fromUid },
+    ];
+    for (const { ref, add } of both) {
+      try {
+        await ref.update({
+          friends: admin.firestore.FieldValue.arrayUnion(add),
+        });
+      } catch (e) {
+        logger.error(`friendship ${ref.id} (διαγραμμένος χρήστης;):`, e);
+      }
+    }
     logger.info(`Friendship created: ${fromUid} <-> ${toUid}`);
   }
 );
@@ -405,14 +436,18 @@ export const unfriendUser = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Μη έγκυρος χρήστης");
   }
 
-  const batch = db.batch();
-  batch.update(db.collection("users").doc(uid), {
-    friends: admin.firestore.FieldValue.arrayRemove(targetUid),
-  });
-  batch.update(db.collection("users").doc(targetUid), {
-    friends: admin.firestore.FieldValue.arrayRemove(uid),
-  });
-  await batch.commit();
+  // ΟΧΙ batch: το `update` σε doc που δεν υπάρχει (διαγραμμένος χρήστης) ρίχνει
+  // NOT_FOUND, και επειδή το batch είναι ατομικό θα αποτύγχανε ΚΑΙ η δική σου
+  // πλευρά — ο «φίλος» θα έμενε κολλημένος για πάντα στη λίστα σου.
+  for (const [docId, remove] of [[uid, targetUid], [targetUid, uid]]) {
+    try {
+      await db.collection("users").doc(docId).update({
+        friends: admin.firestore.FieldValue.arrayRemove(remove),
+      });
+    } catch (e) {
+      logger.error(`unfriend ${docId} (διαγραμμένος χρήστης;):`, e);
+    }
+  }
 
   // Καθάρισε τα αιτήματα μεταξύ τους, ώστε να μπορούν να ξαναγίνουν φίλοι.
   const [a, b] = await Promise.all([

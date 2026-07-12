@@ -214,19 +214,17 @@ exports.onDealUpdate = onDocumentWritten("deals/{dealId}", async (event) => {
   const wasCompleted = before && before.status === "completed";
   const isCompleted = after.status === "completed";
   if (isCompleted && !wasCompleted) {
-    try {
-      const batch = db.batch();
-      if (after.user1Uid) {
-        batch.set(db.collection("users").doc(after.user1Uid),
-            {dealsCount: FieldValue.increment(1)}, {merge: true});
+    // `update` (όχι `set(merge)`): το set θα ΞΑΝΑΔΗΜΙΟΥΡΓΟΥΣΕ το doc ενός
+    // χρήστη που έχει διαγράψει τον λογαριασμό του — ένα «φάντασμα» με μόνο
+    // dealsCount, που δεν σβήνεται ποτέ και εμφανίζεται στην αναζήτηση.
+    for (const uid of [after.user1Uid, after.user2Uid]) {
+      if (!uid) continue;
+      try {
+        await db.collection("users").doc(uid)
+            .update({dealsCount: FieldValue.increment(1)});
+      } catch (e) {
+        logger.error(`dealsCount ${uid} (διαγραμμένος;): ${e.message}`);
       }
-      if (after.user2Uid) {
-        batch.set(db.collection("users").doc(after.user2Uid),
-            {dealsCount: FieldValue.increment(1)}, {merge: true});
-      }
-      await batch.commit();
-    } catch (e) {
-      logger.error(`dealsCount increment ${dealId}: ${e.message}`);
     }
   }
 
@@ -260,9 +258,49 @@ exports.onDealUpdate = onDocumentWritten("deals/{dealId}", async (event) => {
 const REPORT_AUTO_HIDE_THRESHOLD = 3;
 
 /**
- * Όταν δημιουργείται report, αυξάνει τον counter στο target (listing ή user)
- * και κάνει auto-hide στο listing όταν περάσει το threshold. Τρέχει με admin
- * privileges γιατί ο reporter δεν επιτρέπεται να γράψει σε ξένο doc.
+ * Μετράει πόσοι ΔΙΑΦΟΡΕΤΙΚΟΙ χρήστες έχουν αναφέρει το ίδιο αντικείμενο.
+ *
+ * ΚΡΙΣΙΜΟ: μετράμε μοναδικούς `reporterUid`, ΟΧΙ πλήθος reports. Αλλιώς ένας
+ * κακόβουλος χρήστης υποβάλλει 3 αναφορές μόνος του και κατεβάζει οποιοδήποτε
+ * περιεχόμενο — το auto-hide θα γινόταν όπλο εναντίον αθώων.
+ *
+ * @param {string} field Το πεδίο ταυτοποίησης (listingId/postId/commentId…)
+ * @param {string} value Η τιμή του
+ * @return {Promise<number>} Πλήθος μοναδικών καταγγελλόντων
+ */
+async function uniqueReporters(field, value) {
+  const snap = await db.collection("reports")
+      .where(field, "==", value).get();
+  const uids = new Set();
+  snap.docs.forEach((d) => {
+    const uid = d.data().reporterUid;
+    if (uid) uids.add(uid);
+  });
+  return uids.size;
+}
+
+/**
+ * Εφαρμόζει το πλήθος αναφορών σε ένα doc και κάνει auto-hide στο threshold.
+ *
+ * @param {FirebaseFirestore.DocumentReference} ref Το doc
+ * @param {number} count Μοναδικοί καταγγέλλοντες
+ * @param {boolean} canHide Αν επιτρέπεται απόκρυψη
+ */
+async function applyReportCount(ref, count, canHide) {
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const update = {reportCount: count, isReported: true};
+  if (canHide && count >= REPORT_AUTO_HIDE_THRESHOLD) {
+    update.isHidden = true;
+    update.hiddenReason = "auto_threshold";
+  }
+  await ref.update(update);
+}
+
+/**
+ * Όταν δημιουργείται report: ενημερώνει τον counter στο αντικείμενο που
+ * αναφέρθηκε (περιεχόμενο, αγγελία ή χρήστης) και κάνει auto-hide στο
+ * threshold. Τρέχει με admin γιατί ο reporter δεν γράφει σε ξένο doc.
  */
 exports.onReportCreated = onDocumentCreated(
     "reports/{reportId}",
@@ -276,61 +314,33 @@ exports.onReportCreated = onDocumentCreated(
       const postId = data.postId;
       const commentId = data.commentId;
 
-      // Το περιεχόμενο (post/σχόλιο) που αναφέρθηκε. Στα 3 reports κρύβεται
-      // αυτόματα (isHidden) — ο client δεν το εμφανίζει πλέον.
-      const contentRef = (postCollection === "wallPosts" ||
-          postCollection === "userPosts") && postId ?
-        (commentId ?
-          db.collection(postCollection).doc(postId)
-              .collection("comments").doc(commentId) :
-          db.collection(postCollection).doc(postId)) :
-        null;
+      const validCollection = postCollection === "wallPosts" ||
+          postCollection === "userPosts";
 
       try {
-        if (contentRef) {
-          await db.runTransaction(async (tx) => {
-            const snap = await tx.get(contentRef);
-            if (!snap.exists) return;
-            const count = ((snap.data().reportCount || 0)) + 1;
-            const update = {reportCount: count, isReported: true};
-            if (count >= REPORT_AUTO_HIDE_THRESHOLD) {
-              update.isHidden = true;
-              update.hiddenReason = "auto_threshold";
-            }
-            tx.update(contentRef, update);
-          });
-          // Ο counter του χρήστη που ανέβασε το περιεχόμενο ενημερώνεται
-          // επίσης.
-          if (targetUid) {
-            const uref = db.collection("users").doc(targetUid);
-            await db.runTransaction(async (tx) => {
-              const snap = await tx.get(uref);
-              if (!snap.exists) return;
-              const count = ((snap.data().reportCount || 0)) + 1;
-              tx.update(uref, {reportCount: count, isReported: true});
-            });
-          }
+        if (validCollection && postId && commentId) {
+          // Σχόλιο μέσα σε post.
+          const ref = db.collection(postCollection).doc(postId)
+              .collection("comments").doc(commentId);
+          await applyReportCount(
+              ref, await uniqueReporters("commentId", commentId), true);
+        } else if (validCollection && postId) {
+          // Ολόκληρη ανάρτηση.
+          const ref = db.collection(postCollection).doc(postId);
+          await applyReportCount(
+              ref, await uniqueReporters("postId", postId), true);
         } else if (listingId) {
           const ref = db.collection("listings").doc(listingId);
-          await db.runTransaction(async (tx) => {
-            const snap = await tx.get(ref);
-            if (!snap.exists) return;
-            const count = ((snap.data().reportCount || 0)) + 1;
-            const update = {reportCount: count, isReported: true};
-            if (count >= REPORT_AUTO_HIDE_THRESHOLD) {
-              update.isHidden = true;
-              update.hiddenReason = "auto_threshold";
-            }
-            tx.update(ref, update);
-          });
-        } else if (targetUid) {
-          const ref = db.collection("users").doc(targetUid);
-          await db.runTransaction(async (tx) => {
-            const snap = await tx.get(ref);
-            if (!snap.exists) return;
-            const count = ((snap.data().reportCount || 0)) + 1;
-            tx.update(ref, {reportCount: count, isReported: true});
-          });
+          await applyReportCount(
+              ref, await uniqueReporters("listingId", listingId), true);
+        }
+
+        // Ο counter του ΧΡΗΣΤΗ ενημερώνεται πάντα (και για περιεχόμενο), αλλά
+        // ΔΕΝ κρύβουμε ποτέ αυτόματα χρήστη — αυτό θέλει ανθρώπινη κρίση.
+        if (targetUid) {
+          const uref = db.collection("users").doc(targetUid);
+          await applyReportCount(
+              uref, await uniqueReporters("targetUid", targetUid), false);
         }
       } catch (e) {
         logger.error(`onReportCreated ${event.params.reportId}: ${e.message}`);
