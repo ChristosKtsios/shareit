@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/fcm_service.dart';
+import '../../../core/utils/legal_urls.dart';
 import '../../../core/services/profile_gate.dart';
 import '../../../core/utils/display_name.dart';
 import '../../profile/data/user_repository.dart';
@@ -215,7 +216,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       decoration: TextDecoration.underline),
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () => _openUrl(
-                                        'https://shareit-6cfa0.web.app/terms.html'),
+                                        LegalUrls.terms(context.locale.languageCode)),
                                 ),
                                 TextSpan(text: 'authx.andThe'.tr()),
                                 TextSpan(
@@ -226,7 +227,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                       decoration: TextDecoration.underline),
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () => _openUrl(
-                                        'https://shareit-6cfa0.web.app/privacy_policy.html'),
+                                        LegalUrls.privacy(context.locale.languageCode)),
                                 ),
                               ],
                             ),

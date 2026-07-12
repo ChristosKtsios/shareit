@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/legal_urls.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../profile/providers/profile_provider.dart';
@@ -147,13 +148,13 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.privacy_tip_outlined,
             label: 'settings.privacyPolicy'.tr(),
             onTap: () => launchUrl(
-                Uri.parse('https://shareit-6cfa0.web.app/privacy_policy.html'),
+                Uri.parse(LegalUrls.privacy(context.locale.languageCode)),
                 mode: LaunchMode.externalApplication)),
         _SettingsTile(
             icon: Icons.description_outlined,
             label: 'settings.terms'.tr(),
             onTap: () => launchUrl(
-                Uri.parse('https://shareit-6cfa0.web.app/terms.html'),
+                Uri.parse(LegalUrls.terms(context.locale.languageCode)),
                 mode: LaunchMode.externalApplication)),
 
         const Divider(),

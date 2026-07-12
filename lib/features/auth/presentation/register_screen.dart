@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/legal_urls.dart';
 import '../../../core/constants/countries.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/password_strength.dart';
@@ -418,7 +419,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                       decoration: TextDecoration.underline),
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () => _openUrl(
-                                        'https://shareit-6cfa0.web.app/terms.html'),
+                                        LegalUrls.terms(context.locale.languageCode)),
                                 ),
                                 TextSpan(text: 'authx.andThe'.tr()),
                                 TextSpan(
@@ -429,7 +430,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                       decoration: TextDecoration.underline),
                                   recognizer: TapGestureRecognizer()
                                     ..onTap = () => _openUrl(
-                                        'https://shareit-6cfa0.web.app/privacy_policy.html'),
+                                        LegalUrls.privacy(context.locale.languageCode)),
                                 ),
                               ],
                             ),
