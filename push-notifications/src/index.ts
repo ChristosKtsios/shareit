@@ -436,6 +436,28 @@ export const deleteUserAccount = onCall(async (request) => {
       try { await doc.ref.delete(); } catch (e) { logger.error(`notif ${doc.id}:`, e); }
     }
 
+    // 8b. Reports — ΔΕΝ διαγράφονται (κρατούνται 2 έτη για την ασφάλεια της
+    // κοινότητας), αλλά ΑΝΩΝΥΜΟΠΟΙΟΥΝΤΑΙ: αφαιρείται κάθε στοιχείο που συνδέει
+    // την αναφορά με τον διαγραμμένο χρήστη. Αυτό ακριβώς δηλώνει και η
+    // πολιτική απορρήτου («2 έτη ανωνυμοποιημένα»).
+    const ANON = "deleted_user";
+    const [reportsBy, reportsAbout] = await Promise.all([
+      db.collection("reports").where("reporterUid", "==", uid).get(),
+      db.collection("reports").where("targetUid", "==", uid).get(),
+    ]);
+    for (const doc of reportsBy.docs) {
+      try {
+        await doc.ref.update({reporterUid: ANON, details: null});
+      } catch (e) { logger.error(`report anon ${doc.id}:`, e); }
+    }
+    for (const doc of reportsAbout.docs) {
+      try {
+        await doc.ref.update({targetUid: ANON});
+      } catch (e) { logger.error(`report anon ${doc.id}:`, e); }
+    }
+    logger.info(
+      `Anonymised ${reportsBy.size + reportsAbout.size} reports for ${uid}`);
+
     // 9. Αφαίρεση από friends λίστες
     const usersWithFriend = await db.collection("users").where("friends", "array-contains", uid).get();
     for (const doc of usersWithFriend.docs) {
