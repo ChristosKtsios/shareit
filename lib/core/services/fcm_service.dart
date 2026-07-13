@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'location_permission_gate.dart';
 import '../../features/profile/data/user_repository.dart';
 import 'error_logger.dart';
 
@@ -78,18 +80,38 @@ class FcmService {
     );
   }
 
+  /// Πλοήγηση όταν ο χρήστης πατήσει την ειδοποίηση.
+  ///
+  /// Είχε ΔΥΟ σφάλματα και το πάτημα δεν έκανε ποτέ απολύτως τίποτα:
+  ///  1. Χρησιμοποιούσε δικό του `navigatorKey`, που ΔΕΝ ήταν συνδεδεμένος με
+  ///     κανέναν Navigator (η εφαρμογή χρησιμοποιεί το `appNavigatorKey`).
+  ///  2. Έψαχνε τύπους `message`/`deal_proposal`, ενώ ο server στέλνει
+  ///     `chat`/`deal`/`post_comment`/`friend_request`. Κανένας δεν ταίριαζε.
+  ///
+  /// Επίσης χρησιμοποιούσε `pushNamed`, που σε εφαρμογή GoRouter (χωρίς πίνακα
+  /// ονομάτων) θα έριχνε εξαίρεση.
   static void _handleOpened(RemoteMessage message) {
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) return;
+
+    final type = message.data['type'];
     final chatId = message.data['chatId'];
     final dealId = message.data['dealId'];
-    final type = message.data['type'];
-    if (navigatorKey.currentContext == null) return;
+    final postId = message.data['postId'];
 
-    if (type == 'message' && chatId != null) {
-      navigatorKey.currentState?.pushNamed('/chat/$chatId');
-    } else if (type == 'deal_proposal' && chatId != null) {
-      navigatorKey.currentState?.pushNamed('/chat/$chatId');
-    } else if (type == 'deal_active' && dealId != null) {
-      navigatorKey.currentState?.pushNamed('/profile');
+    switch (type) {
+      case 'chat':
+        if (chatId != null) ctx.push('/chat/$chatId');
+        break;
+      case 'deal':
+        if (dealId != null) ctx.push('/deal-review/$dealId');
+        break;
+      case 'post_comment':
+        if (postId != null) ctx.push('/user-post/$postId');
+        break;
+      case 'friend_request':
+        ctx.push('/friend-requests');
+        break;
     }
   }
 
@@ -135,5 +157,4 @@ class FcmService {
     }
   }
 
-  static final navigatorKey = GlobalKey<NavigatorState>();
 }

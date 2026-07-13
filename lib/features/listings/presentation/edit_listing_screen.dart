@@ -325,13 +325,13 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
 
     final keywords = ListingModel.generateKeywords(title, desc);
 
-    String firstName = 'Χρήστης';
+    String firstName = 'common.userFallback'.tr();
     String? userAvatar;
     try {
       final userDoc = await UserRepository().get(user.uid);
       if (userDoc != null) {
         firstName =
-            userDoc.firstName.isNotEmpty ? userDoc.firstName : 'Χρήστης';
+            userDoc.firstName.isNotEmpty ? userDoc.firstName : 'common.userFallback'.tr();
         userAvatar = userDoc.avatarUrl;
       }
     } catch (_) {}

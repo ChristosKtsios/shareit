@@ -648,7 +648,7 @@ class _OwnerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      fullName.isNotEmpty ? fullName : 'Χρήστης',
+                      fullName.isNotEmpty ? fullName : 'common.userFallback'.tr(),
                       style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 14,
@@ -709,8 +709,18 @@ class _ActionButtons extends ConsumerWidget {
       ),
     );
     if (confirm != true) return;
-    await ListingRepository().deleteListing(listing.id);
-    if (context.mounted) context.pop();
+
+    // ΣΕΙΡΑ: pop ΠΡΙΝ τη διαγραφή. Το Firestore εφαρμόζει τη διαγραφή τοπικά
+    // ΑΜΕΣΩΣ, οπότε το stream έβγαζε null και η οθόνη αποσυναρμολογούνταν πριν
+    // επιστρέψει το await → `context.mounted` false → το pop ΔΕΝ εκτελούνταν
+    // ποτέ. Ο χρήστης έμενε σε οθόνη «δεν βρέθηκε» ΧΩΡΙΣ κουμπί επιστροφής.
+    context.pop();
+    try {
+      await ListingRepository().deleteListing(listing.id);
+    } catch (_) {
+      // Η οθόνη έχει ήδη κλείσει· η αποτυχία φαίνεται από το ότι η αγγελία
+      // παραμένει στη λίστα.
+    }
   }
 
   Future<void> _startChat(BuildContext context, String uid) async {

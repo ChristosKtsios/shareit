@@ -39,7 +39,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       }
       final pos = await Geolocator.getCurrentPosition(
           locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.high));
+              const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            // ΧΩΡΙΣ timeLimit το getCurrentPosition ΔΕΝ επιστρέφει ποτέ σε
+            // πραγματικές συσκευές Android όταν το GPS δεν πιάνει σήμα —
+            // το loading έμενε true και το κουμπί «Δημοσίευση» ΝΕΚΡΟ.
+            timeLimit: Duration(seconds: 12),
+          ));
       setState(() {
         _selectedLocation = LatLng(pos.latitude, pos.longitude);
         _loading = false;

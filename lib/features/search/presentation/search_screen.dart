@@ -384,7 +384,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 radius: 22,
                                 showVerified: isVerified),
                             title: Text(
-                              fullName.isEmpty ? 'Χρήστης' : fullName,
+                              fullName.isEmpty ? 'common.userFallback'.tr() : fullName,
                               style: const TextStyle(
                                   color: AppColors.textPrimary,
                                   fontWeight: FontWeight.w600),

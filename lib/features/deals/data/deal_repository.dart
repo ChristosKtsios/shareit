@@ -74,7 +74,8 @@ class DealRepository {
     required DealProposal proposal,
   }) async {
     final doc = await _db.collection('deals').doc(dealId).get();
-    final data = doc.data()!;
+    final data = doc.data();
+    if (data == null) throw Exception('deals.dealNotFound'.tr());
     final isUser1 = data['user1Uid'] == userId;
     final field = isUser1 ? 'proposal1' : 'proposal2';
 
@@ -95,12 +96,21 @@ class DealRepository {
     required String userId,
   }) async {
     final doc = await _db.collection('deals').doc(dealId).get();
-    final data = doc.data()!;
+    final data = doc.data();
+    if (data == null) throw Exception('deals.dealNotFound'.tr());
     final p1 = data['proposal1'];
     if (p1 == null) return;
 
-    final startDate = (p1['startDate'] as Timestamp).toDate();
-    final endDate = (p1['endDate'] as Timestamp).toDate();
+    // Ανεκτικό parsing: παλιές προτάσεις χρησιμοποιούσαν `deliveryAt` αντί για
+    // `endDate`. Σκέτο `as Timestamp` έριχνε "Null is not a subtype of
+    // Timestamp" και ΚΡΑΣΑΡΕ την αποδοχή του deal.
+    final startTs = p1['startDate'] as Timestamp?;
+    final endTs = (p1['endDate'] ?? p1['deliveryAt']) as Timestamp?;
+    if (startTs == null || endTs == null) {
+      throw Exception('deals.errCannotAccept'.tr());
+    }
+    final startDate = startTs.toDate();
+    final endDate = endTs.toDate();
 
     // Update deal → active. Τα startDate/endDate μπαίνουν top-level γιατί τα
     // διαβάζει το Cloud Function για να φτιάξει τα wall posts με το countdown.
@@ -154,7 +164,8 @@ class DealRepository {
     required double rating,
   }) async {
     final doc = await _db.collection('deals').doc(dealId).get();
-    final data = doc.data()!;
+    final data = doc.data();
+    if (data == null) throw Exception('deals.dealNotFound'.tr());
     final isUser1 = data['user1Uid'] == raterUid;
     final field = isUser1 ? 'ownerRating' : 'seekerRating';
 

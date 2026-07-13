@@ -482,8 +482,15 @@ class _VideoBubbleState extends State<_VideoBubble> {
     _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
         if (mounted) setState(() {});
+      // Χωρίς catchError: ένα νεκρό URL άφηνε το βίντεο να «φορτώνει» για
+      // πάντα, ΚΑΙ το unhandled async error καταγραφόταν ως FATAL crash στο
+      // Crashlytics (runZonedGuarded στο main.dart).
+      }).catchError((_) {
+        if (mounted) setState(() => _failed = true);
       });
   }
+
+  bool _failed = false;
 
   @override
   void dispose() {
@@ -513,6 +520,15 @@ class _VideoBubbleState extends State<_VideoBubble> {
                       ? AspectRatio(
                           aspectRatio: _ctrl!.value.aspectRatio,
                           child: VideoPlayer(_ctrl!),
+                        )
+                      : _failed
+                      ? Container(
+                          height: 180,
+                          color: AppColors.surfaceVariant,
+                          child: const Center(
+                            child: Icon(Icons.videocam_off_outlined,
+                                color: AppColors.textHint, size: 32),
+                          ),
                         )
                       : Container(
                           height: 180,
@@ -574,6 +590,10 @@ class _VideoFullscreenState extends State<_VideoFullscreen> {
           setState(() {});
           _ctrl.play();
         }
+      // Νεκρό URL → μην αφήνεις άπειρο spinner ούτε unhandled async error
+      // (θα καταγραφόταν ως fatal crash).
+      }).catchError((_) {
+        if (mounted) setState(() {});
       });
   }
 

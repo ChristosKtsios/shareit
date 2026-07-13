@@ -75,7 +75,7 @@ class MapListingCard extends ConsumerWidget {
               builder: (context, snap) {
                 String displayName = listing.userFirstName.isNotEmpty
                     ? listing.userFirstName
-                    : 'Χρήστης';
+                    : 'common.userFallback'.tr();
                 String? avatarUrl = listing.userAvatarUrl;
 
                 if (snap.hasData && snap.data!.exists) {

@@ -127,7 +127,7 @@ class _RequestTileState extends State<_RequestTile> {
           .doc(widget.fromUid)
           .snapshots(),
       builder: (context, snap) {
-        String name = 'Χρήστης';
+        String name = 'common.userFallback'.tr();
         String? avatarUrl;
 
         if (snap.hasData && snap.data!.exists) {

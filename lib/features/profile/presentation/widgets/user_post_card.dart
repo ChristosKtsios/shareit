@@ -45,7 +45,7 @@ class _UserPostCardState extends ConsumerState<UserPostCard> {
       final first = d['firstName'] as String? ?? '';
       final last = d['lastName'] as String? ?? '';
       final name = '$first $last'.trim().isEmpty
-          ? 'Χρήστης'
+          ? 'common.userFallback'.tr()
           : '$first $last'.trim();
       await UserPostRepository().addComment(
         postId: widget.post.id,

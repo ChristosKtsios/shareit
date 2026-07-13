@@ -91,7 +91,13 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       }
       final pos = await Geolocator.getCurrentPosition(
           locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.high));
+              const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            // ΧΩΡΙΣ timeLimit το getCurrentPosition ΔΕΝ επιστρέφει ποτέ σε
+            // πραγματικές συσκευές Android όταν το GPS δεν πιάνει σήμα —
+            // το loading έμενε true και το κουμπί «Δημοσίευση» ΝΕΚΡΟ.
+            timeLimit: Duration(seconds: 12),
+          ));
       final label =
           await LocationService.reverseGeocode(pos.latitude, pos.longitude);
       if (mounted) {
@@ -342,13 +348,13 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
     final keywords = ListingModel.generateKeywords(title, desc);
 
-    String firstName = 'Χρήστης';
+    String firstName = 'common.userFallback'.tr();
     String? userAvatar;
     try {
       final userDoc = await UserRepository().get(user.uid);
       if (userDoc != null) {
         firstName =
-            userDoc.firstName.isNotEmpty ? userDoc.firstName : 'Χρήστης';
+            userDoc.firstName.isNotEmpty ? userDoc.firstName : 'common.userFallback'.tr();
         userAvatar = userDoc.avatarUrl;
       }
     } catch (_) {}

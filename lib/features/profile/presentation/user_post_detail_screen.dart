@@ -65,7 +65,7 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
       await UserPostRepository().addComment(
         postId: widget.postId,
         authorUid: uid,
-        authorName: user?.fullName ?? 'Χρήστης',
+        authorName: user?.fullName ?? 'common.userFallback'.tr(),
         authorAvatar: user?.avatarUrl,
         text: text,
         parentCommentId: _replyToCommentId,

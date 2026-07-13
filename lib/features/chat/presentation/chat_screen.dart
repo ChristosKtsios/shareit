@@ -576,6 +576,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 .orderBy('sentAt')
                 .snapshots(),
             builder: (context, snap) {
+              // Χωρίς κλάδο σφάλματος, ένα permission-denied άφηνε τη
+              // συνομιλία να γυρίζει spinner ΓΙΑ ΠΑΝΤΑ — ο χρήστης δεν
+              // καταλάβαινε ποτέ ότι κάτι πήγε στραβά.
+              if (snap.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text('common.errorGeneric'.tr(),
+                        textAlign: TextAlign.center,
+                        style:
+                            const TextStyle(color: AppColors.textSecondary)),
+                  ),
+                );
+              }
               if (!snap.hasData) {
                 return const Center(
                     child: CircularProgressIndicator(color: AppColors.primary));

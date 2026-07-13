@@ -64,7 +64,7 @@ class ProfileScreen extends ConsumerWidget {
           } else {
             // Το email ΔΕΝ χρησιμοποιείται πια ως fallback: δεν είναι πλέον
             // αναγνώσιμο για ξένα προφίλ (ζει στο private doc).
-            fullName = 'Χρήστης';
+            fullName = 'common.userFallback'.tr();
           }
 
           String initials;

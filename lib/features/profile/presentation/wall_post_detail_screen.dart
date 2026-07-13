@@ -91,7 +91,7 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
           .collection('users')
           .doc(currentUid)
           .get();
-      String authorName = 'Χρήστης';
+      String authorName = 'common.userFallback'.tr();
       String? authorAvatar;
 
       if (userDoc.exists) {
@@ -99,7 +99,7 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
         final first = (d['firstName'] as String?) ?? '';
         final last = (d['lastName'] as String?) ?? '';
         authorName = '$first $last'.trim();
-        if (authorName.isEmpty) authorName = 'Χρήστης';
+        if (authorName.isEmpty) authorName = 'common.userFallback'.tr();
         authorAvatar = d['avatarUrl'] as String?;
       }
 

@@ -200,10 +200,14 @@ class _DealProposalScreenState extends ConsumerState<DealProposalScreen> {
   }
 
   /// Ελέγχει αν τίτλος περιέχει @full_name και των 2 χρηστών.
+  // ΚΡΙΣΙΜΟ: αν το όνομα δεν φορτώθηκε (κενό), η απαίτηση mention γινόταν
+  // ΑΔΥΝΑΤΗ να ικανοποιηθεί — και τα δύο getters επέστρεφαν πάντα false, οπότε
+  // το κουμπί υποβολής ήταν μόνιμα νεκρό και ο χρήστης δεν καταλάβαινε γιατί.
+  // Αν λείπει το όνομα, η απαίτηση απλώς δεν ισχύει.
   bool get _hasMyMention =>
-      _myFullName.isNotEmpty && _titleCtrl.text.contains('@$_myFullName');
+      _myFullName.isEmpty || _titleCtrl.text.contains('@$_myFullName');
   bool get _hasOtherMention =>
-      _otherFullName.isNotEmpty && _titleCtrl.text.contains('@$_otherFullName');
+      _otherFullName.isEmpty || _titleCtrl.text.contains('@$_otherFullName');
 
   Future<void> _pickDateTime({required bool isStart}) async {
     final initialDate = (isStart ? _startDate : _endDate) ?? DateTime.now();

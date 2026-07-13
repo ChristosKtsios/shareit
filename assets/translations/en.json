@@ -6,7 +6,8 @@
     "delete": "Delete",
     "confirm": "Confirm",
     "errorGeneric": "Something went wrong. Please try again.",
-    "errorLocation": "Access to your location is required."
+    "errorLocation": "Access to your location is required.",
+    "userFallback": "User"
   },
   "language": {
     "title": "Choose language",

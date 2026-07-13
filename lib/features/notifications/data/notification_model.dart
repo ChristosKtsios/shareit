@@ -37,7 +37,9 @@ class NotificationModel {
       title: d['title'] ?? '', body: d['body'] ?? '',
       routePath: d['routePath'],
       isRead: d['isRead'] ?? false,
-      createdAt: (d['createdAt'] as Timestamp).toDate(),
+      // Το `as Timestamp` σκέτο κρασάριζε ΟΛΗ τη λίστα ειδοποιήσεων αν ένα doc
+      // δεν είχε ακόμα createdAt (serverTimestamp: null για λίγα ms).
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 

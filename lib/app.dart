@@ -157,14 +157,20 @@ final _routerProvider = Provider<GoRouter>((ref) {
           path: '/chat/:chatId',
           builder: (_, s) => ChatScreen(chatId: s.pathParameters['chatId']!)),
       // Profile
-      GoRoute(
-          path: '/profile/:uid',
-          builder: (_, s) => ProfileScreen(userId: s.pathParameters['uid'])),
+      //
+      // ΚΡΙΣΙΜΗ ΣΕΙΡΑ: το go_router ταιριάζει τις διαδρομές με τη σειρά που
+      // δηλώνονται. Αν το `/profile/:uid` μπει ΠΡΩΤΟ, καταπίνει και το
+      // `/profile/photos` και το `/profile/edit` — δηλαδή το «Προσθήκη
+      // φωτογραφίας» άνοιγε το προφίλ ενός ανύπαρκτου χρήστη με uid "photos".
+      // Οι σταθερές διαδρομές ΠΑΝΤΑ πριν από την παραμετρική.
       GoRoute(
           path: '/profile/edit', builder: (_, __) => const EditProfileScreen()),
       GoRoute(
           path: '/profile/photos',
           builder: (_, __) => const ProfilePhotosScreen()),
+      GoRoute(
+          path: '/profile/:uid',
+          builder: (_, s) => ProfileScreen(userId: s.pathParameters['uid'])),
       GoRoute(
           path: '/delete-account',
           builder: (_, __) => const DeleteAccountScreen()),

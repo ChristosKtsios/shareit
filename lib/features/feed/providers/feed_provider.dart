@@ -143,7 +143,13 @@ class FeedNotifier extends StateNotifier<FeedState> {
       }
       final pos = await Geolocator.getCurrentPosition(
           locationSettings:
-              const LocationSettings(accuracy: LocationAccuracy.high));
+              const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            // ΧΩΡΙΣ timeLimit το getCurrentPosition ΔΕΝ επιστρέφει ποτέ σε
+            // πραγματικές συσκευές Android όταν το GPS δεν πιάνει σήμα —
+            // το loading έμενε true και το κουμπί «Δημοσίευση» ΝΕΚΡΟ.
+            timeLimit: Duration(seconds: 12),
+          ));
       state = state.copyWith(userPosition: pos);
     } catch (_) {}
   }
@@ -152,27 +158,38 @@ class FeedNotifier extends StateNotifier<FeedState> {
     state = state.copyWith(
         isLoading: true, listings: [], hasMore: true, clearLastDoc: true);
 
-    final result = await _repo.getPageWithCursor();
-    state = state.copyWith(
-      listings: result.listings,
-      lastDoc: result.lastDoc,
-      hasMore: result.fetched >= 20,
-      isLoading: false,
-    );
+    // ΚΡΙΣΙΜΟ: χωρίς try/catch, ένα σφάλμα (offline, permission-denied) άφηνε
+    // το isLoading = true → το feed γύριζε shimmer ΓΙΑ ΠΑΝΤΑ, χωρίς μήνυμα.
+    try {
+      final result = await _repo.getPageWithCursor();
+      state = state.copyWith(
+        listings: result.listings,
+        lastDoc: result.lastDoc,
+        hasMore: result.fetched >= 20,
+        isLoading: false,
+      );
+    } catch (_) {
+      state = state.copyWith(isLoading: false, hasMore: false);
+    }
   }
 
   Future<void> loadNextPage() async {
     if (state.isLoading || !state.hasMore) return;
     state = state.copyWith(isLoading: true);
 
-    final result = await _repo.getPageWithCursor(lastDoc: state.lastDoc);
-
-    state = state.copyWith(
-      listings: [...state.listings, ...result.listings],
-      lastDoc: result.lastDoc,
-      hasMore: result.fetched >= 20,
-      isLoading: false,
-    );
+    // Ίδιος λόγος με το loadFirstPage: ένα σφάλμα άφηνε το isLoading = true
+    // και ο guard από πάνω σκότωνε ΜΟΝΙΜΑ το pagination.
+    try {
+      final result = await _repo.getPageWithCursor(lastDoc: state.lastDoc);
+      state = state.copyWith(
+        listings: [...state.listings, ...result.listings],
+        lastDoc: result.lastDoc,
+        hasMore: result.fetched >= 20,
+        isLoading: false,
+      );
+    } catch (_) {
+      state = state.copyWith(isLoading: false);
+    }
   }
 
   void setTagFilter(String? tag) {

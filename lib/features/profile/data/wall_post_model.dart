@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class WallPostModel {
   final String id;
@@ -80,12 +81,12 @@ class WallPostModel {
       listingTitle: d['listingTitle'] as String? ?? '',
       user1Uid: d['user1Uid'] as String? ?? '',
       user2Uid: d['user2Uid'] as String? ?? '',
-      user1Name: d['user1Name'] as String? ?? 'Χρήστης',
-      user2Name: d['user2Name'] as String? ?? 'Χρήστης',
+      user1Name: d['user1Name'] as String? ?? 'common.userFallback'.tr(),
+      user2Name: d['user2Name'] as String? ?? 'common.userFallback'.tr(),
       user1Avatar: d['user1Avatar'] as String?,
       user2Avatar: d['user2Avatar'] as String?,
       authorUid: d['authorUid'] as String? ?? '',
-      authorName: d['authorName'] as String? ?? 'Χρήστης',
+      authorName: d['authorName'] as String? ?? 'common.userFallback'.tr(),
       startDate: (d['startDate'] as Timestamp?)?.toDate(),
       endDate: (d['endDate'] as Timestamp?)?.toDate() ??
           (d['deliveryAt'] as Timestamp?)?.toDate(),
@@ -129,7 +130,7 @@ class CommentModel {
     return CommentModel(
       id: doc.id,
       authorUid: d['authorUid'] as String? ?? '',
-      authorName: d['authorName'] as String? ?? 'Χρήστης',
+      authorName: d['authorName'] as String? ?? 'common.userFallback'.tr(),
       authorAvatar: d['authorAvatar'] as String?,
       text: d['text'] as String? ?? '',
       imageUrl: d['imageUrl'] as String?,

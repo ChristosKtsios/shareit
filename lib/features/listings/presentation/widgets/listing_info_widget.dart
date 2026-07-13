@@ -67,7 +67,7 @@ class ListingInfoWidget extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        fullName.isNotEmpty ? fullName : 'Χρήστης',
+                        fullName.isNotEmpty ? fullName : 'common.userFallback'.tr(),
                         style: const TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 14,

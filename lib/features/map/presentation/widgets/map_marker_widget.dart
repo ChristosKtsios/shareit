@@ -25,7 +25,7 @@ class MapMarkerBuilder {
         ? userInfo.firstName
         : (listing.userFirstName.isNotEmpty
             ? listing.userFirstName
-            : 'Χρήστης');
+            : 'common.userFallback'.tr());
     final displayInitial = (userInfo != null && userInfo.initial != '?')
         ? userInfo.initial
         : (listing.userFirstName.isNotEmpty

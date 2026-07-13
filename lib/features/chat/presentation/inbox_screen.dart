@@ -330,7 +330,7 @@ class _ChatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     if (otherUid.isEmpty) {
       return _tile(
-          name: fallbackName.isEmpty ? 'Χρήστης' : fallbackName,
+          name: fallbackName.isEmpty ? 'common.userFallback'.tr() : fallbackName,
           avatarUrl: null,
           context: context);
     }
@@ -341,7 +341,7 @@ class _ChatTile extends StatelessWidget {
           .doc(otherUid)
           .snapshots(),
       builder: (context, snap) {
-        String name = fallbackName.isEmpty ? 'Χρήστης' : fallbackName;
+        String name = fallbackName.isEmpty ? 'common.userFallback'.tr() : fallbackName;
         String? avatarUrl;
 
         if (snap.hasData && snap.data!.exists) {
@@ -854,7 +854,7 @@ class _PersonTile extends StatelessWidget {
     final first = ((data['firstName'] as String?) ?? '').trim();
     final last = ((data['lastName'] as String?) ?? '').trim();
     final name = '$first $last'.trim();
-    final display = name.isEmpty ? 'Χρήστης' : name;
+    final display = name.isEmpty ? 'common.userFallback'.tr() : name;
     final avatar = data['avatarUrl'] as String?;
     final sub = subtitle;
 

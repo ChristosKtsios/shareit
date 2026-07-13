@@ -263,7 +263,7 @@ class _FriendTile extends StatelessWidget {
     } else if (last.isNotEmpty) {
       fullName = last;
     } else {
-      fullName = 'Χρήστης';
+      fullName = 'common.userFallback'.tr();
     }
 
     String initials;

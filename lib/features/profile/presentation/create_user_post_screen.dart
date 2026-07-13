@@ -75,7 +75,7 @@ class _CreateUserPostScreenState extends ConsumerState<CreateUserPostScreen> {
 
       await UserPostRepository().create(
         authorUid: uid,
-        authorName: user?.fullName ?? 'Χρήστης',
+        authorName: user?.fullName ?? 'common.userFallback'.tr(),
         authorAvatar: user?.avatarUrl,
         text: text,
         mediaUrls: urls,

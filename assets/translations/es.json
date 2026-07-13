@@ -6,7 +6,8 @@
     "delete": "Eliminar",
     "confirm": "Confirmar",
     "errorGeneric": "Algo salió mal. Inténtalo de nuevo.",
-    "errorLocation": "Se requiere acceso a tu ubicación."
+    "errorLocation": "Se requiere acceso a tu ubicación.",
+    "userFallback": "Usuario"
   },
   "language": {
     "title": "Elegir idioma",

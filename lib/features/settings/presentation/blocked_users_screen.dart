@@ -14,7 +14,14 @@ class BlockedUsersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final uid = ref.watch(currentUserProvider)?.uid ?? '';
+    final uid = ref.watch(currentUserProvider)?.uid;
+    // ΚΡΙΣΙΜΟ: το `?? ''` έριχνε `doc('')` → "document path must be non-empty".
+    // Ο currentUserProvider είναι null όσο το auth stream φορτώνει (cold start).
+    if (uid == null || uid.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(title: Text('settings.blockedUsers'.tr())),
