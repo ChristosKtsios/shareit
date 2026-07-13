@@ -143,30 +143,30 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     }
 
     // 3. Cloud Function call
+    //
+    // ΠΡΟΣΟΧΗ: ΠΟΤΕ μη δηλώσεις επιτυχία αν δεν επιβεβαιώθηκε από τον server.
+    // Παλιότερα κάθε σφάλμα (δίκτυο, λάθος region, App Check) το θεωρούσαμε
+    // «επιτυχία»: ο χρήστης έβλεπε «ο λογαριασμός σου διαγράφηκε», αποσυνδεόταν
+    // — και ο λογαριασμός με όλα του τα δεδομένα υπήρχε ακόμα. Ψευδής
+    // επιβεβαίωση διαγραφής είναι και παραβίαση GDPR και του Play.
     bool deletionSucceeded = false;
     try {
       final callable = FirebaseFunctions.instanceFor(region: 'europe-west1')
           .httpsCallable('deleteUserAccount');
       await callable.call();
       deletionSucceeded = true;
-    } on FirebaseFunctionsException catch (e) {
-      if (e.code == 'not-found' ||
-          (e.message?.contains('not found') ?? false)) {
-        deletionSucceeded = true;
-      } else {
-        if (mounted) {
-          setState(() => _loading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${'common.error'.tr()}: ${e.message ?? e.code}'),
-              backgroundColor: AppColors.danger,
-            ),
-          );
-        }
-        return;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('delacc.failed'.tr()),
+            backgroundColor: AppColors.danger,
+            duration: const Duration(seconds: 6),
+          ),
+        );
       }
-    } catch (_) {
-      deletionSucceeded = true;
+      return;
     }
 
     if (deletionSucceeded) {

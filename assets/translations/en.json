@@ -574,7 +574,8 @@
     "whatsOnMind": "What's on your mind?",
     "addPhotoVideo": "Add photo/video",
     "addMore": "Add more ({n}/10)",
-    "commentDeleted": "{name} deleted this comment"
+    "commentDeleted": "{name} deleted this comment",
+    "notFound": "This post was not found or has been deleted."
   },
   "photos": {
     "profileUpdated": "Profile picture updated!",
@@ -677,7 +678,8 @@
     "ok": "OK",
     "confirmWord": "DELETE",
     "activeDealsWarn": "You have {n} active deal(s). If you continue, they will be cancelled and permanently deleted.",
-    "continueAnyway": "Continue"
+    "continueAnyway": "Continue",
+    "failed": "Deletion did NOT complete. Your account still exists. Check your connection and try again."
   },
   "changePass": {
     "passwordsMismatch": "Passwords don't match.",
@@ -799,7 +801,7 @@
   },
   "locperm": {
     "title": "Location access",
-    "body": "ShareIt uses your location to show you listings near you and to calculate the distance to them. Your location is only used while you are using the app.",
+    "body": "ShareIt uses your location to show you nearby listings and calculate distances. When you create a listing, the location you choose is stored and shown on the map to other users — you can move it anywhere you like before publishing.",
     "notNow": "Not now",
     "continue": "Continue"
   },

@@ -574,7 +574,8 @@
     "whatsOnMind": "¿Qué estás pensando?",
     "addPhotoVideo": "Añadir foto/vídeo",
     "addMore": "Añadir más ({n}/10)",
-    "commentDeleted": "{name} eliminó este comentario"
+    "commentDeleted": "{name} eliminó este comentario",
+    "notFound": "Esta publicación no se encontró o fue eliminada."
   },
   "photos": {
     "profileUpdated": "¡Foto de perfil actualizada!",
@@ -677,7 +678,8 @@
     "ok": "Entendido",
     "confirmWord": "ELIMINAR",
     "activeDealsWarn": "Tienes {n} deal(s) activo(s). Si continúas, se cancelarán y se eliminarán permanentemente.",
-    "continueAnyway": "Continuar"
+    "continueAnyway": "Continuar",
+    "failed": "La eliminación NO se completó. Tu cuenta sigue existiendo. Comprueba tu conexión e inténtalo de nuevo."
   },
   "changePass": {
     "passwordsMismatch": "Las contraseñas no coinciden.",
@@ -799,7 +801,7 @@
   },
   "locperm": {
     "title": "Acceso a la ubicación",
-    "body": "ShareIt usa tu ubicación para mostrarte anuncios cerca de ti y calcular la distancia hasta ellos. La ubicación solo se usa mientras usas la aplicación.",
+    "body": "ShareIt usa tu ubicación para mostrarte anuncios cercanos y calcular distancias. Cuando creas un anuncio, la ubicación que elijas se guarda y se muestra en el mapa a otros usuarios — puedes moverla donde quieras antes de publicar.",
     "notNow": "Ahora no",
     "continue": "Continuar"
   },

@@ -60,10 +60,15 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
           SnackBar(content: Text('report.submitted'.tr())));
         context.pop();
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('report.errorRetry'.tr())));
+        // Το «το έχεις ήδη αναφέρει» ΔΕΝ είναι σφάλμα — αν το δείξουμε ως
+        // «δοκίμασε ξανά», ο χρήστης νομίζει ότι η αναφορά χάλασε.
+        final msg = e.toString().contains('alreadyReported')
+            ? 'report.alreadyReported'.tr()
+            : 'report.errorRetry'.tr();
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
     } finally {
       if (mounted) setState(() => _loading = false);

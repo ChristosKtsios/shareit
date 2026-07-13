@@ -69,6 +69,7 @@ class ChatMessageBubble extends StatelessWidget {
               onEdit!();
             },
           ),
+        if (messageType == 'text')
         ListTile(
           leading: const Icon(Icons.copy, color: AppColors.textSecondary),
           title: Text('msg.copy'.tr(),
@@ -294,19 +295,30 @@ class ChatMessageBubble extends StatelessWidget {
       );
     }
 
+    // ΚΡΙΣΙΜΟ: οι φωτογραφίες/βίντεο ΠΡΕΠΕΙ να έχουν το ίδιο μενού με τα
+    // μηνύματα κειμένου (αναφορά, διαγραφή, απάντηση, αντίδραση). Πριν, τα
+    // media έκαναν early return ΠΡΙΝ το GestureDetector: μια φωτογραφία που
+    // έστελνε άγνωστος σε DM ΔΕΝ αναφερόταν και ΔΕΝ σβηνόταν — το χειρότερο
+    // δυνατό κενό σε εφαρμογή με περιεχόμενο χρηστών.
     if (messageType == 'image' && mediaUrl != null) {
-      return _ImageBubble(
-        isMe: isMe,
-        sentAt: sentAt,
-        url: mediaUrl!,
+      return GestureDetector(
+        onLongPress: () => _showMessageOptions(context, text, isMe),
+        child: _ImageBubble(
+          isMe: isMe,
+          sentAt: sentAt,
+          url: mediaUrl!,
+        ),
       );
     }
 
     if (messageType == 'video' && mediaUrl != null) {
-      return _VideoBubble(
-        isMe: isMe,
-        sentAt: sentAt,
-        url: mediaUrl!,
+      return GestureDetector(
+        onLongPress: () => _showMessageOptions(context, text, isMe),
+        child: _VideoBubble(
+          isMe: isMe,
+          sentAt: sentAt,
+          url: mediaUrl!,
+        ),
       );
     }
 

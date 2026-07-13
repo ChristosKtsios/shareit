@@ -91,9 +91,17 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
                 .doc(widget.postId)
                 .snapshots(),
             builder: (context, snap) {
-              if (!snap.hasData || !snap.data!.exists) {
+              if (!snap.hasData) {
                 return const Center(
                   child: CircularProgressIndicator(color: AppColors.primary),
+                );
+              }
+              // Η ανάρτηση διαγράφηκε ή κρύφτηκε από αναφορές. Χωρίς αυτό, ένα
+              // deep link (π.χ. από ειδοποίηση) γύριζε ΑΤΕΡΜΟΝΟ spinner.
+              if (!snap.data!.exists) {
+                return Center(
+                  child: Text('userPost.notFound'.tr(),
+                      style: const TextStyle(color: AppColors.textSecondary)),
                 );
               }
               final post = UserPostModel.fromFirestore(snap.data!);

@@ -47,12 +47,18 @@ service firebase.storage {
     }
 
     // Wall post comment images — /wallComments/{postId}/...
-    // Το ποιος επιτρέπεται να σχολιάσει το επιβάλλουν τα Firestore rules· εδώ
-    // αρκεί authenticated χρήστης να ανεβάσει έγκυρη εικόνα.
+    //
+    // Η διαδρομή ΔΕΝ περιέχει uid, οπότε δεν μπορούμε να ταυτοποιήσουμε τον
+    // ιδιοκτήτη του αρχείου. Πριν, οποιοσδήποτε συνδεδεμένος μπορούσε να
+    // ΑΝΤΙΚΑΤΑΣΤΗΣΕΙ ή να ΣΒΗΣΕΙ την εικόνα σχολίου οποιουδήποτε άλλου —
+    // ακόμα και να τη γυρίσει σε άλλο περιεχόμενο.
+    //
+    // Λύση: μόνο ΔΗΜΙΟΥΡΓΙΑ νέου αρχείου (resource == null → δεν υπάρχει ήδη).
+    // Καμία αντικατάσταση, καμία διαγραφή από τον client.
     match /wallComments/{postId}/{allPaths=**} {
       allow read:   if isAuth();
-      allow write:  if isAuth() && isValidMedia();
-      allow delete: if isAuth();
+      allow create: if isAuth() && isValidMedia() && resource == null;
+      // update/delete: ποτέ από client.
     }
 
     // Any path not matched above is denied by default.

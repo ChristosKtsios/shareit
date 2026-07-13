@@ -5,12 +5,8 @@
 const {onDocumentWritten, onDocumentCreated} =
   require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {onCall, HttpsError} =
-  require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
-const {getAuth} = require("firebase-admin/auth");
-const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 
 initializeApp();
@@ -378,162 +374,16 @@ exports.checkExpiredDeals = onSchedule(
     },
 );
 
-/**
- * Σβήνει σε batches τα documents.
- *
- * @param {FirebaseFirestore.Query} query Query
- * @return {Promise<number>}
- */
-async function deleteQueryBatch(query) {
-  let totalDeleted = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const snapshot = await query.limit(400).get();
-    if (snapshot.empty) {
-      hasMore = false;
-      break;
-    }
-
-    const batch = db.batch();
-    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    totalDeleted += snapshot.size;
-
-    if (snapshot.size < 400) hasMore = false;
-  }
-  return totalDeleted;
-}
-
-/**
- * Σβήνει υπο-collection.
- *
- * @param {FirebaseFirestore.Query} parentQuery Query
- * @param {string} subCollection Όνομα
- * @return {Promise<number>}
- */
-async function deleteSubcollections(parentQuery, subCollection) {
-  const parents = await parentQuery.get();
-  let totalDeleted = 0;
-
-  for (const parent of parents.docs) {
-    const subRef = parent.ref.collection(subCollection);
-    const deleted = await deleteQueryBatch(subRef);
-    totalDeleted += deleted;
-  }
-  return totalDeleted;
-}
-
-/**
- * Σβήνει files.
- *
- * @param {string} uid User ID
- * @return {Promise<number>}
- */
-async function deleteUserStorage(uid) {
-  let deleted = 0;
-  const bucket = getStorage().bucket();
-
-  try {
-    const [files] = await bucket.getFiles({prefix: `users/${uid}/`});
-    for (const file of files) {
-      await file.delete();
-      deleted++;
-    }
-  } catch (e) {
-    logger.warn(`Σφάλμα users/${uid}: ${e.message}`);
-  }
-
-  try {
-    const [files] = await bucket.getFiles({prefix: `listings/${uid}/`});
-    for (const file of files) {
-      await file.delete();
-      deleted++;
-    }
-  } catch (e) {
-    logger.warn(`Σφάλμα listings/${uid}: ${e.message}`);
-  }
-
-  return deleted;
-}
-
-exports.deleteUserAccount = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Πρέπει να είσαι συνδεδεμένος.");
-  }
-
-  const uid = request.auth.uid;
-  logger.info(`Διαγραφή χρήστη ${uid}`);
-
-  const results = {
-    listings: 0, chats: 0, messages: 0, deals: 0,
-    notifications: 0, friendRequests: 0, wallPosts: 0, storageFiles: 0,
-  };
-
-  try {
-    results.listings = await deleteQueryBatch(
-        db.collection("listings").where("userId", "==", uid),
-    );
-
-    const chatsQuery = db.collection("chats")
-        .where("participants", "array-contains", uid);
-    results.messages = await deleteSubcollections(chatsQuery, "messages");
-    results.chats = await deleteQueryBatch(chatsQuery);
-
-    const dealsUser1 = db.collection("deals").where("user1Uid", "==", uid);
-    const dealsUser2 = db.collection("deals").where("user2Uid", "==", uid);
-    results.deals += await deleteQueryBatch(dealsUser1);
-    results.deals += await deleteQueryBatch(dealsUser2);
-
-    results.notifications = await deleteQueryBatch(
-        db.collection("notifications").where("targetUid", "==", uid),
-    );
-
-    const frFrom = db.collection("friendRequests")
-        .where("fromUid", "==", uid);
-    const frTo = db.collection("friendRequests").where("toUid", "==", uid);
-    results.friendRequests += await deleteQueryBatch(frFrom);
-    results.friendRequests += await deleteQueryBatch(frTo);
-
-    results.wallPosts = await deleteQueryBatch(
-        db.collection("wallPosts").where("targetUid", "==", uid),
-    );
-
-    const friendsOf = await db.collection("users")
-        .where("friends", "array-contains", uid).get();
-    for (const friendDoc of friendsOf.docs) {
-      await friendDoc.ref.update({
-        friends: FieldValue.arrayRemove(uid),
-      });
-    }
-
-    results.storageFiles = await deleteUserStorage(uid);
-
-    // Private subcollection (email/phone/fcmToken) — δεν σβήνεται αυτόματα
-    // με το parent doc.
-    const priv = await db.collection("users").doc(uid)
-        .collection("private").get();
-    for (const doc of priv.docs) await doc.ref.delete();
-
-    await db.collection("users").doc(uid).delete();
-    await getAuth().deleteUser(uid);
-
-    logger.info(`Χρήστης ${uid} διαγράφηκε`, results);
-
-    return {
-      success: true,
-      message: "Ο λογαριασμός σου διαγράφηκε επιτυχώς.",
-      details: results,
-    };
-  } catch (error) {
-    logger.error(`Σφάλμα διαγραφής ${uid}:`, error);
-    throw new HttpsError("internal", `Αποτυχία: ${error.message}`);
-  }
-});
 
 // Τα ευαίσθητα πεδία που ΔΕΝ επιτρέπεται να μένουν στο δημόσιο user doc.
 // Τα μεταφέρει στο users/{uid}/private/data το stripSensitiveFromUserDoc.
 const SENSITIVE_FIELDS = ["email", "phone", "fcmToken", "language"];
+
+// ΑΦΑΙΡΕΘΗΚΕ το `deleteUserAccount` από ΑΥΤΟ το codebase (us-central1).
+// Ήταν ΔΙΠΛΟ: ο client καλεί την έκδοση του `push-notifications`
+// (europe-west1).
+// Η εδώ έκδοση ήταν αποκλίνουσα — ΔΕΝ ανωνυμοποιούσε τις αναφορές, δηλαδή αν
+// ποτέ καλούνταν κατά λάθος θα παραβίαζε την πολιτική απορρήτου μας.
 
 exports.stripSensitiveFromUserDoc = onDocumentWritten(
     "users/{uid}",
