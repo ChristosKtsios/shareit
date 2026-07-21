@@ -48,6 +48,16 @@ android {
 
     buildTypes {
         release {
+            // Fail-fast: χωρίς το key.properties (π.χ. σε νέο μηχάνημα ή CI) το
+            // signingConfig θα είχε null storeFile και το Gradle θα παρήγαγε
+            // ΑΝΥΠΟΓΡΑΦΟ .aab σιωπηλά — που απορρίπτεται στο upload. Καλύτερα να
+            // σκάσει το build εδώ με σαφές μήνυμα.
+            if (!keystorePropertiesFile.exists()) {
+                throw GradleException(
+                    "android/key.properties δεν βρέθηκε — το release build θα ήταν " +
+                    "ανυπόγραφο. Επανάφερε το key.properties + το upload keystore."
+                )
+            }
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false

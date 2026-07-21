@@ -145,7 +145,9 @@
     "tapMapHint": "Tap to open the map and drop a pin",
     "updated": "Listing updated!",
     "titleHintOffer": "e.g. Lending tools",
-    "titleHintSeek": "e.g. Looking for moving help"
+    "titleHintSeek": "e.g. Looking for moving help",
+    "locationSelected": "Selected location",
+    "photoTip": "Listings with a photo get far more interest"
   },
   "listing": {
     "offer": "Offer",
@@ -174,6 +176,15 @@
     "onShareit": "📍 On ShareIt",
     "deleteTitle": "Delete listing",
     "deleteBody": "The listing will be permanently deleted.",
+    "expiresInDays": "Expires in {n} days",
+    "expiresSoon": "Expiring soon",
+    "renew": "Renew",
+    "renewed": "Listing renewed",
+    "pause": "Pause",
+    "reactivate": "Reactivate",
+    "paused": "Listing paused",
+    "reactivated": "Listing reactivated",
+    "pausedBadge": "Paused",
     "message": "Message",
     "removedFav": "Removed from favorites",
     "savedFav": "Saved to favorites"
@@ -296,6 +307,7 @@
     "agreeCaps": "AGREE",
     "cancelProposalCaps": "CANCEL PROPOSAL",
     "errCannotCancel": "You can't cancel — the proposal is no longer pending.",
+    "errCannotAccept": "You can't accept this proposal — it's missing details (dates).",
     "errAlreadyRated": "You've already rated this deal",
     "errNotCompleted": "The deal is not completed yet"
   },
@@ -512,7 +524,7 @@
     "message": "Message",
     "friends": "Friends",
     "privateProfile": "Private profile",
-    "onlyFriendsWall": "Only friends can see the wall.",
+    "onlyFriendsWall": "Only friends can see this profile's content.",
     "noDealsYet": "No deals yet.",
     "activeDealSection": "Active Deals",
     "completedDealSection": "Completed Deals",
@@ -750,12 +762,27 @@
     "symbol": "Symbol (!@#\\$%^&*)",
     "needs": "Password needs: {label}."
   },
+  "notifsettings": {
+    "title": "Notifications",
+    "subtitle": "Choose what you want to be notified about.",
+    "chat": "Messages",
+    "chatSub": "New messages in your chats",
+    "deals": "Deals",
+    "dealsSub": "Deal proposals and updates",
+    "friends": "Friend requests",
+    "friendsSub": "When someone sends you a friend request",
+    "social": "Comments & reactions",
+    "socialSub": "Comments on your posts",
+    "listings": "Listing expiry",
+    "listingsSub": "Reminder before one of your listings expires"
+  },
   "notif": {
     "newMessage": "New message",
     "dealStarted": "Deal started!",
     "dealExpired": "Deal completed",
     "newRating": "New rating",
     "newComment": "New comment",
+    "listingExpiring": "Your listing is expiring",
     "title": "Notifications",
     "allRead": "All read",
     "loadError": "Loading error.",
@@ -882,5 +909,11 @@
     "tipNoBankDetails": "Never share passwords, PINs, one-time codes or card details. Nobody has a legitimate reason to ask.",
     "tipTooGood": "If an offer seems too good to be true, or you are pressured to decide fast, it is suspicious.",
     "tipReport": "Report and block anyone who behaves suspiciously. Reports are reviewed."
+  },
+  "ulist": {
+    "title": "Listings",
+    "privateProfile": "This profile is private. Become friends to see their listings.",
+    "emptyTitle": "No listings",
+    "emptyMine": "Create your first listing!"
   }
 }

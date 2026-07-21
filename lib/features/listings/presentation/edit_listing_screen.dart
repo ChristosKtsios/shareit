@@ -10,6 +10,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/services/location_service.dart';
+import '../../../core/utils/place_label.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../profile/data/user_repository.dart';
 import '../data/listing_model.dart';
@@ -127,8 +129,18 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
     if (result != null) {
       setState(() {
         _location = GeoPoint(result.latitude, result.longitude);
-        _locationLabel = 'Επιλεγμένη τοποθεσία';
+        // Κενό μέχρι να απαντήσει το geocoding (βλ. PlaceLabel).
+        _locationLabel = '';
       });
+      // ΔΙΟΡΘΩΣΗ: εδώ ΔΕΝ γινόταν καθόλου reverse geocoding (σε αντίθεση με τη
+      // δημιουργία αγγελίας). Αποτέλεσμα: αλλάζοντας τοποθεσία, η αγγελία
+      // έχανε το όνομα του τόπου και έμενε με placeholder — και στον χάρτη/
+      // αναζήτηση δεν υπήρχε πόλη.
+      final label = await LocationService.reverseGeocode(
+          result.latitude, result.longitude);
+      if (label != null && mounted) {
+        setState(() => _locationLabel = label);
+      }
     }
   }
 
@@ -201,7 +213,10 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       final uid = ref.read(currentUserProvider)!.uid;
       final ref2 = FirebaseStorage.instance
           .ref('listings/$uid/${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await ref2.putFile(File(file.path));
+      // Ρητό contentType — το Android δεν το συμπεραίνει, και τα storage rules
+      // απαιτούν image/* (αλλιώς δεν ανεβαίνει καμία εικόνα αγγελίας).
+      await ref2.putFile(
+          File(file.path), SettableMetadata(contentType: 'image/jpeg'));
       final url = await ref2.getDownloadURL();
       setState(() => _imageUrls = [..._imageUrls, url]);
     } catch (e) {
@@ -323,7 +338,13 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
     final title = _titleCtrl.text.trim();
     final desc = _descCtrl.text.trim();
 
-    final keywords = ListingModel.generateKeywords(title, desc);
+    // tags + τοποθεσία μπαίνουν κι αυτά στα keywords (βλ. create_listing_screen).
+    final keywords = ListingModel.generateKeywords(
+      title,
+      desc,
+      tags: _tags,
+      locationLabel: _locationLabel,
+    );
 
     String firstName = 'common.userFallback'.tr();
     String? userAvatar;
@@ -592,7 +613,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                           child: Text(
                         _locationLoading
                             ? 'cl.locating'.tr()
-                            : _locationLabel,
+                            : PlaceLabel.display(_locationLabel),
                         style: TextStyle(
                             color: _locationLoading
                                 ? AppColors.textHint

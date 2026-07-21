@@ -37,8 +37,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${'common.error'.tr()}: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${'common.error'.tr()}: $e')));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -51,19 +51,19 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Text('deals.rejectProposalQ'.tr(),
-            style: TextStyle(color: AppColors.textPrimary)),
+            style: const TextStyle(color: AppColors.textPrimary)),
         content: Text('deals.willCancel'.tr(),
-            style: TextStyle(color: AppColors.textSecondary)),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text('common.cancel'.tr(),
-                style: TextStyle(color: AppColors.textSecondary)),
+                style: const TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text('deals.reject'.tr(),
-                style: TextStyle(color: AppColors.danger)),
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -79,8 +79,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${'common.error'.tr()}: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${'common.error'.tr()}: $e')));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -94,20 +94,19 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Text('deals.cancelProposalQ'.tr(),
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: Text(
-            'deals.cancelProposalBody'.tr(),
-            style: TextStyle(color: AppColors.textSecondary)),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('deals.cancelProposalBody'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text('deals.back'.tr(),
-                style: TextStyle(color: AppColors.textSecondary)),
+                style: const TextStyle(color: AppColors.textSecondary)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text('deals.cancelProposal'.tr(),
-                style: TextStyle(color: AppColors.danger)),
+                style: const TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -123,8 +122,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('${'common.error'.tr()}: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${'common.error'.tr()}: $e')));
       }
     } finally {
       if (mounted) setState(() => _processing = false);
@@ -155,7 +154,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
           if (!snap.data!.exists) {
             return Center(
                 child: Text('deals.dealNotFound'.tr(),
-                    style: TextStyle(color: AppColors.textSecondary)));
+                    style: const TextStyle(color: AppColors.textSecondary)));
           }
           final deal = DealModel.fromFirestore(snap.data!);
           final isMe = deal.user1Uid == myUid || deal.user2Uid == myUid;
@@ -173,7 +172,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
           if (displayProposal == null) {
             return Center(
                 child: Text('deals.noProposalYet'.tr(),
-                    style: TextStyle(color: AppColors.textSecondary)));
+                    style: const TextStyle(color: AppColors.textSecondary)));
           }
           final iAmSender = myProposal != null &&
               myProposal.accepted &&
@@ -213,7 +212,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                   if (isActive || isCompleted || isCancelled)
                     const SizedBox(height: 16),
                   Text('deals.title'.tr(),
-                      style: TextStyle(
+                      style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -227,7 +226,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                           height: 1.3)),
                   const SizedBox(height: 20),
                   Text('deals.details'.tr(),
-                      style: TextStyle(
+                      style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
@@ -272,9 +271,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                               color: AppColors.deal, size: 20),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                                'deals.sentWaiting'.tr(),
-                                style: TextStyle(
+                            child: Text('deals.sentWaiting'.tr(),
+                                style: const TextStyle(
                                     color: AppColors.deal,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600)),
@@ -296,9 +294,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                               color: AppColors.offer, size: 20),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(
-                                'deals.bothAgreed'.tr(),
-                                style: TextStyle(
+                            child: Text('deals.bothAgreed'.tr(),
+                                style: const TextStyle(
                                     color: AppColors.offer,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600)),
@@ -327,7 +324,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                             side: const BorderSide(color: AppColors.danger),
                             minimumSize: const Size.fromHeight(48)),
                         child: Text('deals.rejectCaps'.tr(),
-                            style: TextStyle(
+                            style: const TextStyle(
                                 color: AppColors.danger,
                                 fontWeight: FontWeight.w700)),
                       ),
@@ -348,7 +345,8 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
                             : Text('deals.agreeCaps'.tr(),
-                                style: TextStyle(fontWeight: FontWeight.w700)),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ]),
@@ -375,7 +373,7 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
                         : const Icon(Icons.cancel_outlined,
                             color: AppColors.danger),
                     label: Text('deals.cancelProposalCaps'.tr(),
-                        style: TextStyle(
+                        style: const TextStyle(
                             color: AppColors.danger,
                             fontWeight: FontWeight.w700)),
                     style: OutlinedButton.styleFrom(

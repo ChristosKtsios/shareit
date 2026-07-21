@@ -18,7 +18,10 @@ const ALICE = "alice";
 const BOB = "bob";
 const MALLORY = "mallory";
 
-const alice = env.authenticatedContext(ALICE).firestore();
+// Η Alice είναι πλήρως εγγεγραμμένη χρήστρια → το token της έχει το claim
+// `phone_number` (όπως μετά το OTP + getIdToken(true)). Το χρειάζεται για να
+// δηλώσει phoneVerified:true, σύμφωνα με το phoneVerifiedIsGenuine() των rules.
+const alice = env.authenticatedContext(ALICE, { phone_number: "+306900000000" }).firestore();
 const bob = env.authenticatedContext(BOB).firestore();
 const mallory = env.authenticatedContext(MALLORY).firestore();
 
@@ -54,6 +57,12 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     chatId: "chatAB", participants: [ALICE, BOB], user1Uid: ALICE, user2Uid: BOB,
     status: "pending", createdAt: new Date(),
   });
+  // Ολοκληρωμένο deal — βάση για τα tests αξιολόγησης.
+  await setDoc(doc(db, "deals", "dealDone"), {
+    chatId: "chatAB", participants: [ALICE, BOB], user1Uid: ALICE, user2Uid: BOB,
+    status: "completed", ownerRating: null, seekerRating: null,
+    createdAt: new Date(),
+  });
   await setDoc(doc(db, "notifications", "n1"),
     { targetUid: ALICE, title: "t", body: "b", isRead: false });
   await setDoc(doc(db, "tags", "sport"), { name: "sport", count: 5 });
@@ -75,14 +84,18 @@ console.log("\n🔴 ΕΠΙΘΕΣΕΙΣ (πρέπει να ΑΠΟΡΡΙΠΤΟΝΤ
 await check("#1 Mallory ΔΕΝ διαβάζει το email/τηλέφωνο της Alice", () =>
   assertFails(getDoc(doc(mallory, "users", ALICE, "private", "data"))));
 
-// ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή): οι ΠΑΛΙΕΣ εκδόσεις γράφουν email/phone στο
-// δημόσιο doc. Αν το απαγορεύσουμε, το write απορρίπτεται ολόκληρο και σπάει το
-// Google sign-in / η εγγραφή. Το επιτρέπουμε, και το Cloud Function
-// `stripSensitiveFromUserDoc` τα μεταφέρει στο private doc μέσα σε ~1 δευτ.
-// Η ΑΝΑΓΝΩΣΗ παραμένει κλειστή (βλ. τεστ από πάνω).
-// ΝΑ ΞΑΝΑΚΛΕΙΔΩΣΕΙ όταν όλοι οι χρήστες είναι σε έκδοση ≥ 1.0.3.
-await check("ΓΕΦΥΡΑ: παλιός client γράφει email στο δημόσιο doc (επιτρεπτό, το function το σβήνει)", () =>
-  assertSucceeds(updateDoc(doc(mallory, "users", MALLORY), { email: "m@x.com" })));
+// Ο χρήστης ΕΝΗΜΕΡΩΝΕΙ το ΔΙΚΟ του δημόσιο doc με μη-ευαίσθητο πεδίο → OK.
+await check("Mallory ενημερώνει το δικό της δημόσιο doc (μη-PII) → OK", () =>
+  assertSucceeds(updateDoc(doc(mallory, "users", MALLORY), { firstName: "Mallory2" })));
+
+// PII ΔΕΝ επιτρέπεται στο δημόσιο doc (το διαβάζουν όλοι → doxxing). Ζει μόνο
+// στο users/{uid}/private/data. Καλύπτει create ΚΑΙ update, email/phone/fcmToken.
+await check("Mallory ΔΕΝ γράφει email στο δικό της δημόσιο doc (PII lockdown)", () =>
+  assertFails(updateDoc(doc(mallory, "users", MALLORY), { email: "m@x.com" })));
+await check("Mallory ΔΕΝ γράφει phone στο δικό της δημόσιο doc (PII lockdown)", () =>
+  assertFails(updateDoc(doc(mallory, "users", MALLORY), { phone: "+306999999999" })));
+await check("Mallory ΔΕΝ γράφει fcmToken στο δικό της δημόσιο doc (PII lockdown)", () =>
+  assertFails(updateDoc(doc(mallory, "users", MALLORY), { fcmToken: "leak" })));
 
 await check("#2 Mallory ΔΕΝ φτιάχνει notification (phishing push)", () =>
   assertFails(addDoc(collection(mallory, "notifications"),
@@ -127,6 +140,33 @@ await check("Mallory ΔΕΝ σβήνει τα likes άλλων σε post", () =>
 
 await check("Mallory ΔΕΝ ανεβάζει το rating της", () =>
   assertFails(updateDoc(doc(mallory, "users", MALLORY), { rating: 5, ratingCount: 99 })));
+
+// ── DEAL RATING FARMING ──────────────────────────────────────────────────
+await check("Alice ΔΕΝ βαθμολογεί τον εαυτό της (γράφει seekerRating αντί owner)", () =>
+  assertFails(updateDoc(doc(alice, "deals", "dealDone"), { seekerRating: 5 })));
+
+await check("Bob ΔΕΝ βαθμολογεί τον εαυτό του (γράφει ownerRating αντί seeker)", () =>
+  assertFails(updateDoc(doc(bob, "deals", "dealDone"), { ownerRating: 5 })));
+
+await check("ΔΕΝ γράφεται αυθαίρετη τιμή rating (1000000)", () =>
+  assertFails(updateDoc(doc(alice, "deals", "dealDone"), { ownerRating: 1000000 })));
+
+await check("ΔΕΝ γράφεται rating εκτός 1–5 (0)", () =>
+  assertFails(updateDoc(doc(alice, "deals", "dealDone"), { ownerRating: 0 })));
+
+await check("ΔΕΝ γράφεται double εκτός ορίων (1000000.5)", () =>
+  assertFails(updateDoc(doc(alice, "deals", "dealDone"), { ownerRating: 1000000.5 })));
+
+await check("ΔΕΝ βαθμολογείται deal που ΔΕΝ είναι completed", () =>
+  assertFails(updateDoc(doc(alice, "deals", "dealAB"), { ownerRating: 5 })));
+
+await check("Alice ΔΕΝ φτιάχνει deal με τον εαυτό της (self-deal)", () =>
+  assertFails(addDoc(collection(alice, "deals"), {
+    participants: [ALICE, ALICE], user1Uid: ALICE, user2Uid: ALICE, status: "pending",
+  })));
+
+await check("Ο client ΔΕΝ ολοκληρώνει μόνος του deal (status→completed)", () =>
+  assertFails(updateDoc(doc(alice, "deals", "dealAB"), { status: "completed" })));
 
 await check("Alice (αποστολέας) ΔΕΝ αποδέχεται μόνη της το αίτημα φιλίας", () =>
   assertFails(updateDoc(doc(alice, "friendRequests", "fr1"), { status: "accepted" })));
@@ -252,10 +292,26 @@ await check("Deal του chat (chatId + participants)", () =>
   assertSucceeds(getDocs(query(collection(alice, "deals"),
     where("chatId", "==", "chatAB"), where("participants", "array-contains", ALICE)))));
 
-await check("Δημιουργία deal (είμαι συμμετέχων)", () =>
+// ΑΚΡΙΒΩΣ το payload που στέλνει ο client (deal_repository.createDeal) — μαζί με
+// τα `ownerRating: null` / `seekerRating: null`. Το παλιό test τα παρέλειπε, γι'
+// αυτό δεν έπιασε ότι ένας κανόνας με `keys().hasAny([...])` μπλόκαρε ΚΑΘΕ
+// δημιουργία deal (permission-denied στην πραγματική εφαρμογή).
+await check("Δημιουργία deal (πραγματικό payload client, με null ratings)", () =>
   assertSucceeds(addDoc(collection(alice, "deals"), {
+    chatId: "chatAB", listingId: "l1", listingTitle: "T",
+    participants: [ALICE, BOB], user1Uid: ALICE, user2Uid: BOB,
+    proposerUid: ALICE, status: "pending",
+    proposal1: null, proposal2: null, activatedAt: null,
+    startDate: null, endDate: null,
+    ownerRating: null, seekerRating: null,
+    createdAt: serverTimestamp(),
+  })));
+
+await check("Δημιουργία deal ΜΕ φυτεμένο rating απορρίπτεται", () =>
+  assertFails(addDoc(collection(alice, "deals"), {
     chatId: "chatAB", participants: [ALICE, BOB], user1Uid: ALICE, user2Uid: BOB,
-    proposerUid: ALICE, status: "pending", createdAt: serverTimestamp(),
+    proposerUid: ALICE, status: "pending", ownerRating: 5,
+    createdAt: serverTimestamp(),
   })));
 
 await check("Πρόταση + αποδοχή deal, ακύρωση pending", async () => {
@@ -267,6 +323,15 @@ await check("Πρόταση + αποδοχή deal, ακύρωση pending", asyn
 
 await check("Ακύρωση ΜΗ-pending deal απορρίπτεται (deal είναι active)", () =>
   assertFails(updateDoc(doc(alice, "deals", "dealAB"), { status: "cancelled" })));
+
+await check("Νόμιμη αξιολόγηση: user1 βαθμολογεί (ownerRating 1–5) completed deal", () =>
+  assertSucceeds(updateDoc(doc(alice, "deals", "dealDone"), { ownerRating: 5 })));
+
+// ΣΚΟΠΙΜΑ double (4.5): ο Dart client στέλνει `double rating` (deal_repository),
+// που το Firestore αποθηκεύει ως double. Ένα `v is int` στα rules απέρριπτε ΚΑΘΕ
+// αξιολόγηση της πραγματικής εφαρμογής με permission-denied.
+await check("Νόμιμη αξιολόγηση: user2 βαθμολογεί με DOUBLE (όπως ο Dart client)", () =>
+  assertSucceeds(updateDoc(doc(bob, "deals", "dealDone"), { seekerRating: 4.5 })));
 
 await check("Ο παραλήπτης αποδέχεται αίτημα φιλίας", () =>
   assertSucceeds(updateDoc(doc(bob, "friendRequests", "fr1"),

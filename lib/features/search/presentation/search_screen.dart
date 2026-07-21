@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/providers/blocked_users_provider.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../listings/data/listing_model.dart';
 import '../../listings/data/tags_repository.dart';
@@ -262,8 +263,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(searchProvider);
+    final rawState = ref.watch(searchProvider);
     final notifier = ref.read(searchProvider.notifier);
+    // Οι αγγελίες μπλοκαρισμένων χρηστών δεν εμφανίζονται στα αποτελέσματα.
+    final blocked = ref.blockedUids;
+    final state = blocked.isEmpty
+        ? rawState
+        : rawState.copyWith(
+            results: rawState.results
+                .where((l) => !blocked.contains(l.userId))
+                .toList());
+    // Το ίδιο και στην αναζήτηση χρηστών: ο μπλοκαρισμένος δεν εμφανίζεται.
+    final userResults = blocked.isEmpty
+        ? _userResults
+        : _userResults
+            .where((u) => !blocked.contains(u['uid'] as String?))
+            .toList();
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -343,7 +358,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             child: _userLoading
                 ? const Center(
                     child: CircularProgressIndicator(color: AppColors.primary))
-                : _userResults.isEmpty
+                : userResults.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
@@ -359,9 +374,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(vertical: 8),
-                        itemCount: _userResults.length,
+                        itemCount: userResults.length,
                         itemBuilder: (_, i) {
-                          final u = _userResults[i];
+                          final u = userResults[i];
                           final first = u['firstName'] as String? ?? '';
                           final last = u['lastName'] as String? ?? '';
                           final fullName = '$first $last'.trim();
@@ -370,7 +385,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                               (u['rating'] as num?)?.toDouble() ?? 0.0;
                           final ratingCount =
                               (u['ratingCount'] as num?)?.toInt() ?? 0;
-                          final isVerified = u['isVerified'] as bool? ?? false;
+                          // Badge = γνήσιο OTP (phoneVerified), όχι το
+                          // always-true isVerified.
+                          final isVerified =
+                              u['phoneVerified'] as bool? ?? false;
                           String initials = '?';
                           if (first.isNotEmpty && last.isNotEmpty) {
                             initials = '${first[0]}${last[0]}'.toUpperCase();

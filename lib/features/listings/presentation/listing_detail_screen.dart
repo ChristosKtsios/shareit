@@ -9,6 +9,7 @@ import '../../../core/services/location_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/place_label.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../chat/data/chat_repository.dart';
@@ -25,13 +26,9 @@ final _listingDetailProvider =
     StreamProvider.autoDispose.family<ListingModel?, String>(
         (ref, id) => ListingRepository().watchById(id));
 
-/// Placeholder labels από παλιές αγγελίες που δεν έχουν πραγματική διεύθυνση.
-const _placeholderLabels = {
-  'Τρέχουσα τοποθεσία',
-  'Επιλεγμένη τοποθεσία',
-  'Δεν βρέθηκε τοποθεσία',
-  '',
-};
+/// Placeholder labels — μία πηγή αλήθειας στο [PlaceLabel] (τα ελληνικά
+/// sentinels υπάρχουν ακόμα σε παλιές αγγελίες, γι' αυτό τα αναγνωρίζουμε).
+const _placeholderLabels = PlaceLabel.placeholders;
 
 /// Reverse-geocode μιας αγγελίας κατά την προβολή, για να δείχνει σωστή περιοχή
 /// ακόμα κι όταν έχει αποθηκευμένο placeholder label. Key: "lat,lng".
@@ -448,7 +445,10 @@ class _HeroSectionState extends State<_HeroSection> {
               shape: const RoundedRectangleBorder(
                   borderRadius:
                       BorderRadius.vertical(top: Radius.circular(20))),
-              builder: (_) => Column(mainAxisSize: MainAxisSize.min, children: [
+              builder: (_) => SafeArea(
+                top: false,
+                child:
+                    Column(mainAxisSize: MainAxisSize.min, children: [
                 ListTile(
                   leading:
                       const Icon(Icons.flag_outlined, color: AppColors.danger),
@@ -467,12 +467,17 @@ class _HeroSectionState extends State<_HeroSection> {
                       style: const TextStyle(color: AppColors.textPrimary)),
                   onTap: () {
                     Navigator.pop(context);
+                    // Deep link: ανοίγει κατευθείαν την αγγελία στην εφαρμογή
+                    // (App Link) ή στον browser αν δεν είναι εγκατεστημένη.
+                    final url =
+                        'https://shareit-6cfa0.web.app/listing/${listing.id}';
                     final text =
-                        '${listing.title}\n\n${listing.description}\n\n${'ld.onShareit'.tr()}';
+                        '${listing.title}\n\n${listing.description}\n\n${'ld.onShareit'.tr()}\n$url';
                     SharePlus.instance.share(ShareParams(text: text));
                   },
                 ),
-              ]),
+                ]),
+              ),
             );
           },
         ),
@@ -687,6 +692,68 @@ class _ActionButtons extends ConsumerWidget {
   final ListingModel listing;
   const _ActionButtons({required this.listing});
 
+  /// Ίδιο TTL με τη scheduled function (deleteExpiredListings). Αν αλλάξει εκεί,
+  /// άλλαξέ το κι εδώ ώστε η ένδειξη να συμφωνεί με την πραγματική λήξη.
+  static const int _ttlDays = 30;
+
+  /// Banner λήξης για τον ιδιοκτήτη + κουμπί «Ανανέωση». Εμφανίζεται μόνο για
+  /// αγγελίες ΧΩΡΙΣ ρητή ημερομηνία λήξης (availableUntil) — αυτές λήγουν
+  /// αυτόματα [_ttlDays] μέρες μετά την (επανα)δημοσίευση.
+  Widget _buildExpiryBanner(BuildContext context) {
+    if (listing.availableUntil != null) return const SizedBox.shrink();
+    // Παγωμένη αγγελία δεν λήγει αυτόματα (την εξαιρεί ο server) → κανένα banner.
+    if (!listing.isActive) return const SizedBox.shrink();
+    final ageDays = DateTime.now().difference(listing.createdAt).inDays;
+    final daysLeft = _ttlDays - ageDays;
+    if (daysLeft > 7) return const SizedBox.shrink(); // δείξ' το μόνο κοντά στη λήξη
+    final expired = daysLeft <= 0;
+    final color = expired || daysLeft <= 3 ? AppColors.danger : AppColors.deal;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        Icon(Icons.hourglass_bottom, size: 18, color: color),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            expired
+                ? 'ld.expiresSoon'.tr()
+                : 'ld.expiresInDays'.tr(namedArgs: {'n': '$daysLeft'}),
+            style: TextStyle(
+                color: color, fontSize: 12.5, fontWeight: FontWeight.w600),
+          ),
+        ),
+        TextButton(
+          onPressed: () => _renew(context),
+          child: Text('ld.renew'.tr(),
+              style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _renew(BuildContext context) async {
+    try {
+      await ListingRepository().renew(listing.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ld.renewed'.tr())),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('common.errorGeneric'.tr())),
+        );
+      }
+    }
+  }
+
   Future<void> _confirmDelete(BuildContext context) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -709,6 +776,8 @@ class _ActionButtons extends ConsumerWidget {
       ),
     );
     if (confirm != true) return;
+    // Ο χρήστης μπορεί να έφυγε από την οθόνη όσο ήταν ανοιχτό το dialog.
+    if (!context.mounted) return;
 
     // ΣΕΙΡΑ: pop ΠΡΙΝ τη διαγραφή. Το Firestore εφαρμόζει τη διαγραφή τοπικά
     // ΑΜΕΣΩΣ, οπότε το stream έβγαζε null και η οθόνη αποσυναρμολογούνταν πριν
@@ -740,7 +809,11 @@ class _ActionButtons extends ConsumerWidget {
     final isOwner = listing.userId == currentUid;
 
     if (isOwner) {
-      return Row(children: [
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        _buildExpiryBanner(context),
+        _PauseButton(listing: listing),
+        const SizedBox(height: 10),
+        Row(children: [
         Expanded(
           child: OutlinedButton.icon(
             onPressed: () => context.push('/edit-listing/${listing.id}'),
@@ -772,6 +845,7 @@ class _ActionButtons extends ConsumerWidget {
             ),
           ),
         ),
+      ]),
       ]);
     }
 
@@ -794,6 +868,67 @@ class _ActionButtons extends ConsumerWidget {
         ),
       ),
     ]);
+  }
+}
+
+/// Κουμπί Παύσης/Ενεργοποίησης της αγγελίας (μόνο ο ιδιοκτήτης). Σε παύση, η
+/// αγγελία φεύγει από χάρτη/feed αλλά ΔΕΝ σβήνεται — ο χρήστης την ξαναδείχνει
+/// με ένα πάτημα. Χρήσιμο για «δόθηκε προσωρινά / λείπω για λίγο».
+class _PauseButton extends StatefulWidget {
+  final ListingModel listing;
+  const _PauseButton({required this.listing});
+
+  @override
+  State<_PauseButton> createState() => _PauseButtonState();
+}
+
+class _PauseButtonState extends State<_PauseButton> {
+  bool _busy = false;
+
+  Future<void> _toggle() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final nowActive = !widget.listing.isActive; // η νέα κατάσταση
+    try {
+      await ListingRepository().setActive(widget.listing.id, nowActive);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+              nowActive ? 'ld.reactivated'.tr() : 'ld.paused'.tr())),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('common.errorGeneric'.tr())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.listing.isActive;
+    final color = active ? AppColors.deal : AppColors.offer;
+    return OutlinedButton.icon(
+      onPressed: _busy ? null : _toggle,
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(active ? Icons.pause_circle_outline : Icons.play_circle_outline,
+              size: 18, color: color),
+      label: Text(active ? 'ld.pause'.tr() : 'ld.reactivate'.tr(),
+          style: TextStyle(color: color)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color),
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
   }
 }
 

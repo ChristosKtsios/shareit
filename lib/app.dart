@@ -22,6 +22,7 @@ import 'features/listings/presentation/create_listing_screen.dart';
 import 'features/listings/presentation/edit_listing_screen.dart';
 import 'features/listings/presentation/listing_detail_screen.dart';
 import 'features/listings/presentation/my_listings_screen.dart';
+import 'features/listings/presentation/user_listings_screen.dart';
 import 'features/chat/presentation/chat_screen.dart';
 import 'features/chat/presentation/inbox_screen.dart';
 import 'features/profile/presentation/profile_screen.dart';
@@ -39,6 +40,7 @@ import 'features/settings/presentation/change_password_screen.dart';
 import 'features/profile/presentation/change_phone_screen.dart';
 import 'features/profile/presentation/change_email_screen.dart';
 import 'features/settings/presentation/blocked_users_screen.dart';
+import 'features/settings/presentation/notification_settings_screen.dart';
 import 'features/settings/presentation/help_support_screen.dart';
 import 'features/notifications/presentation/notifications_screen.dart';
 import 'features/deals/presentation/rate_user_screen.dart';
@@ -152,6 +154,12 @@ final _routerProvider = Provider<GoRouter>((ref) {
               ListingDetailScreen(listingId: s.pathParameters['id']!)),
       GoRoute(
           path: '/my-listings', builder: (_, __) => const MyListingsScreen()),
+      // Οι αγγελίες ΕΝΟΣ χρήστη («ShareIt» κουτί στο προφίλ). Ο έλεγχος
+      // ιδιωτικότητας γίνεται μέσα στην οθόνη, όχι εδώ.
+      GoRoute(
+          path: '/user-listings/:uid',
+          builder: (_, state) =>
+              UserListingsScreen(uid: state.pathParameters['uid']!)),
       // Chat
       GoRoute(
           path: '/chat/:chatId',
@@ -209,6 +217,9 @@ final _routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: '/settings/blocked',
           builder: (_, __) => const BlockedUsersScreen()),
+      GoRoute(
+          path: '/settings/notifications',
+          builder: (_, __) => const NotificationSettingsScreen()),
       GoRoute(
           path: '/settings/help',
           builder: (_, __) => const HelpSupportScreen()),

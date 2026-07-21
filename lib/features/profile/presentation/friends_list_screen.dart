@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/friend_requests_banner.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../data/friends_repository.dart';
@@ -72,6 +73,9 @@ class _FriendsListScreenState extends ConsumerState<FriendsListScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('friends.myFriends'.tr())),
       body: Column(children: [
+        // Εκκρεμή αιτήματα φιλίας — στην κορυφή, ίδιο banner με το inbox, ώστε
+        // ο χρήστης να τα βλέπει και μέσα από τους «Φίλους».
+        FriendRequestsBanner(uid: currentUid),
         // Search bar
         Padding(
           padding: const EdgeInsets.all(16),
@@ -251,7 +255,8 @@ class _FriendTile extends StatelessWidget {
     final first = (d['firstName'] as String? ?? '').trim();
     final last = (d['lastName'] as String? ?? '').trim();
     final avatarUrl = (d['avatarUrl'] as String?) ?? (d['photoUrl'] as String?);
-    final isVerified = d['isVerified'] as bool? ?? false;
+    // Badge = γνήσιο OTP (phoneVerified), όχι το always-true isVerified.
+    final isVerified = d['phoneVerified'] as bool? ?? false;
     final rating = (d['rating'] as num?)?.toDouble() ?? 0.0;
     final ratingCount = (d['ratingCount'] as num?)?.toInt() ?? 0;
 
@@ -345,16 +350,26 @@ class _FriendTile extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await FriendsRepository().remove(
-                currentUid: currentUid,
-                targetUid: friendUid,
-              );
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content: Text(
-                          'friends.removed'.tr(namedArgs: {'name': name}))),
+              try {
+                await FriendsRepository().remove(
+                  currentUid: currentUid,
+                  targetUid: friendUid,
                 );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text(
+                            'friends.removed'.tr(namedArgs: {'name': name}))),
+                  );
+                }
+              } catch (_) {
+                // Το remove() κάνει rethrow· χωρίς catch η αποτυχία ήταν σιωπηλή
+                // (ο φίλος έμενε στη λίστα χωρίς κανένα μήνυμα).
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('common.errorGeneric'.tr())),
+                  );
+                }
               }
             },
             child: Text('friends.remove'.tr(),

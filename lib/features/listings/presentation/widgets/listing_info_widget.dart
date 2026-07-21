@@ -36,7 +36,9 @@ class ListingInfoWidget extends StatelessWidget {
             firstName = (d['firstName'] as String?) ?? firstName;
             lastName = (d['lastName'] as String?) ?? '';
             avatarUrl = (d['avatarUrl'] as String?) ?? avatarUrl;
-            isVerified = (d['isVerified'] as bool?) ?? false;
+            // «Επαληθευμένος» = γνήσιο OTP (phoneVerified), όχι το always-true
+            // isVerified — ώστε το badge να σημαίνει κάτι πραγματικό.
+            isVerified = (d['phoneVerified'] as bool?) ?? false;
           }
 
           final fullName =

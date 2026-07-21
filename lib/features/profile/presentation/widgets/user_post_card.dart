@@ -389,6 +389,10 @@ class _VideoThumbState extends State<_VideoThumb> {
     _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..initialize().then((_) {
         if (mounted) setState(() {});
+      // Χωρίς catchError, ένα νεκρό URL γινόταν unhandled async error → το
+      // runZonedGuarded στο main.dart το κατέγραφε ως FATAL crash.
+      }).catchError((_) {
+        if (mounted) setState(() {});
       });
   }
 

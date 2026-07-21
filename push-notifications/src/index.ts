@@ -1,3 +1,4 @@
+// deploy bump: 2026-07-13 (force redeploy μετά την πρώτη αποτυχία API identity)
 import * as admin from "firebase-admin";
 import {
   onDocumentCreated,
@@ -52,6 +53,16 @@ const STR: Record<string, Record<Lang, string>> = {
     en: "{name} wants to be your friend",
     es: "{name} quiere ser tu amigo",
   },
+  listingExpiringTitle: {
+    el: "⏳ Η αγγελία σου λήγει σύντομα",
+    en: "⏳ Your listing expires soon",
+    es: "⏳ Tu anuncio caduca pronto",
+  },
+  listingExpiringBody: {
+    el: "Η «{title}» θα αφαιρεθεί σε {days} μέρες. Άνοιξέ την και πάτα «Ανανέωση» για να μείνει ενεργή.",
+    en: "\"{title}\" will be removed in {days} days. Open it and tap \"Renew\" to keep it active.",
+    es: "\"{title}\" se eliminará en {days} días. Ábrelo y pulsa \"Renovar\" para mantenerlo activo.",
+  },
 };
 
 function t(lang: string, key: string, args: Record<string, string> = {}): string {
@@ -73,7 +84,10 @@ function privateRef(uid: string) {
 async function sendToUser(
   uid: string,
   build: (lang: string) => Msg,
-  data: Record<string, string> = {}
+  data: Record<string, string> = {},
+  // Κατηγορία push (chat|deals|friends|social|listings). Αν ο χρήστης την έχει
+  // κλείσει στις ρυθμίσεις (private.notifPrefs[category] === false), δεν στέλνεται.
+  category?: string
 ): Promise<void> {
   const [userDoc, privDoc] = await Promise.all([
     db.collection("users").doc(uid).get(),
@@ -81,6 +95,18 @@ async function sendToUser(
   ]);
   const priv = privDoc.data() ?? {};
   const pub = userDoc.data() ?? {};
+
+  // Έλεγχος προτίμησης: απουσία κλειδιού = ενεργό (προεπιλογή on). Μόνο ρητό
+  // `false` σταματά το push.
+  if (category) {
+    const prefs = (priv.notifPrefs ?? pub.notifPrefs ?? {}) as
+      Record<string, unknown>;
+    if (prefs[category] === false) {
+      logger.info(`User ${uid} disabled '${category}' push`);
+      return;
+    }
+  }
+
   const lang = (priv.language as string) ?? (pub.language as string) ?? "el";
   const tokens: string[] = priv.fcmTokens ?? pub.fcmTokens ?? [];
   if (tokens.length === 0) {
@@ -143,7 +169,7 @@ export const onNewMessage = onDocumentCreated(
       default: body = (msg.text as string) ?? t(lang, "newMessageTitle");
       }
       return { title: senderName ?? t(lang, "newMessageTitle"), body };
-    }, { type: "chat", chatId });
+    }, { type: "chat", chatId }, "chat");
   }
 );
 
@@ -223,7 +249,7 @@ export const onDealProposalSent = onDocumentUpdated(
       title: t(l, "dealProposalTitle"),
       body: t(l, "dealProposalBody",
         { name: proposerName ?? t(l, "someone") }),
-    }), { type: "deal", dealId: event.params.dealId });
+    }), { type: "deal", dealId: event.params.dealId }, "deals");
 
     await createNotification(
       receiverId,
@@ -254,7 +280,7 @@ export const onNewPostComment = onDocumentCreated(
     await sendToUser(postAuthorUid, (l) => ({
       title: `💬 ${commenterName ?? t(l, "someone")}`,
       body: preview,
-    }), { type: "post_comment", postId });
+    }), { type: "post_comment", postId }, "social");
 
     await createNotification(
       postAuthorUid,
@@ -435,7 +461,7 @@ export const onNewFriendRequest = onDocumentCreated(
     await sendToUser(toUid, (lang) => ({
       title: t(lang, "friendReqTitle"),
       body: t(lang, "friendReqBody", { name: fromName ?? t(lang, "someone") }),
-    }), { type: "friend_request", fromUid });
+    }), { type: "friend_request", fromUid }, "friends");
   }
 );
 
@@ -657,9 +683,22 @@ export const deleteUserAccount = onCall(async (request) => {
   }
 });
 
+/** Αυτόματη λήξη αγγελιών (μέρες). Μια αγγελία χωρίς δική της ημερομηνία λήξης
+ *  (`availableUntil`) αφαιρείται τόσες μέρες μετά την τελευταία (επανα)δημοσίευση
+ *  — αλλιώς ο χάρτης γεμίζει με εγκαταλελειμμένες αγγελίες που κανείς δεν σβήνει.
+ *  Ο χρήστης μπορεί να την «Ανανεώσει» (bump του createdAt) πριν λήξει. */
+const LISTING_TTL_DAYS = 30;
+/** Πόσες μέρες πριν τη λήξη στέλνεται η προειδοποίηση (μία φορά). */
+const LISTING_WARN_DAYS = 3;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 /**
- * Scheduled function — τρέχει κάθε μέρα στις 03:00 UTC
- * και διαγράφει αγγελίες με availableUntil στο παρελθόν.
+ * Scheduled function — τρέχει κάθε μέρα στις 03:00 (Europe/Athens).
+ *  1) Διαγράφει αγγελίες με `availableUntil` στο παρελθόν (ρητή λήξη χρήστη).
+ *  2) Διαγράφει αγγελίες ΧΩΡΙΣ `availableUntil` που είναι παλαιότερες από
+ *     LISTING_TTL_DAYS (με βάση το `createdAt`).
+ *  3) Προειδοποιεί τον ιδιοκτήτη LISTING_WARN_DAYS μέρες πριν (μία φορά, μέσω
+ *     του flag `expiryWarned`), ώστε να προλάβει να ανανεώσει.
  */
 export const deleteExpiredListings = onSchedule(
   {
@@ -668,14 +707,22 @@ export const deleteExpiredListings = onSchedule(
     region: "europe-west1",
   },
   async () => {
-    const now = admin.firestore.Timestamp.now();
-    const snap = await db
+    const nowMs = Date.now();
+    const now = admin.firestore.Timestamp.fromMillis(nowMs);
+    const ttlCutoff = admin.firestore.Timestamp.fromMillis(
+      nowMs - LISTING_TTL_DAYS * MS_PER_DAY);
+    const warnCutoff = admin.firestore.Timestamp.fromMillis(
+      nowMs - (LISTING_TTL_DAYS - LISTING_WARN_DAYS) * MS_PER_DAY);
+
+    let deleted = 0;
+    let warned = 0;
+
+    // ── (1) Ρητή λήξη χρήστη: availableUntil στο παρελθόν ──
+    const explicit = await db
       .collection("listings")
       .where("availableUntil", "<", now)
       .get();
-
-    let deleted = 0;
-    for (const doc of snap.docs) {
+    for (const doc of explicit.docs) {
       try {
         await doc.ref.delete();
         deleted++;
@@ -683,7 +730,66 @@ export const deleteExpiredListings = onSchedule(
         logger.error(`Failed to delete listing ${doc.id}:`, err);
       }
     }
-    logger.info(`Deleted ${deleted} expired listings`);
+
+    // ── (2)+(3) TTL βάσει ηλικίας για αγγελίες ΧΩΡΙΣ ρητή λήξη ──
+    // Παίρνουμε όσες δημιουργήθηκαν πριν το warnCutoff (δηλ. είναι είτε προς
+    // λήξη είτε ήδη ληγμένες) και αποφασίζουμε ανά αγγελία. Το `availableUntil`
+    // το χειρίζεται το (1), οπότε εδώ αγνοούμε όσες το έχουν ορισμένο.
+    const aging = await db
+      .collection("listings")
+      .where("createdAt", "<", warnCutoff)
+      .get();
+
+    for (const doc of aging.docs) {
+      const d = doc.data();
+      // Έχει ρητή λήξη → την ελέγχει το βήμα (1), μην την πειράξεις εδώ.
+      if (d.availableUntil != null) continue;
+
+      // Παγωμένη αγγελία (isActive=false): ο χρήστης την κράτησε ΕΠΙΤΗΔΕΣ σε
+      // παύση — δεν την διαγράφουμε ούτε τον ειδοποιούμε για λήξη. Το TTL 30
+      // ημερών αφορά ΕΝΕΡΓΕΣ αγγελίες που ξεχάστηκαν και γεμίζουν τον χάρτη.
+      if (d.isActive === false) continue;
+
+      const created = d.createdAt as admin.firestore.Timestamp | undefined;
+      if (!created) continue; // χωρίς createdAt δεν υπολογίζεται ηλικία
+
+      if (created.toMillis() < ttlCutoff.toMillis()) {
+        // Ληγμένη → διαγραφή.
+        try {
+          await doc.ref.delete();
+          deleted++;
+        } catch (err) {
+          logger.error(`Failed to delete aged listing ${doc.id}:`, err);
+        }
+      } else if (d.expiryWarned !== true) {
+        // Προς λήξη και δεν έχει ειδοποιηθεί ακόμα → προειδοποίηση (μία φορά).
+        const ownerUid = (d.userId as string) ?? "";
+        const title = (d.title as string) ?? "";
+        const daysLeft = Math.max(1, Math.ceil(
+          (created.toMillis() + LISTING_TTL_DAYS * MS_PER_DAY - nowMs) /
+            MS_PER_DAY));
+        if (ownerUid) {
+          try {
+            const lang = await langOf(ownerUid);
+            const nTitle = t(lang, "listingExpiringTitle");
+            const nBody = t(lang, "listingExpiringBody",
+              {title, days: String(daysLeft)});
+            await sendToUser(
+              ownerUid,
+              () => ({title: nTitle, body: nBody}),
+              {type: "listing", listingId: doc.id}, "listings");
+            await createNotification(
+              ownerUid, "listingExpiring", nTitle, nBody, `/listing/${doc.id}`);
+            await doc.ref.update({expiryWarned: true});
+            warned++;
+          } catch (err) {
+            logger.error(`Failed to warn for listing ${doc.id}:`, err);
+          }
+        }
+      }
+    }
+
+    logger.info(`Listings TTL: deleted ${deleted}, warned ${warned}`);
   }
 );
 

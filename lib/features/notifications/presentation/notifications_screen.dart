@@ -69,6 +69,7 @@ class _NotificationTile extends StatelessWidget {
       case NotificationType.dealExpired: return Icons.check_circle_outline;
       case NotificationType.newRating:   return Icons.star_outline;
       case NotificationType.newComment:  return Icons.comment_outlined;
+      case NotificationType.listingExpiring: return Icons.hourglass_bottom;
     }
   }
 

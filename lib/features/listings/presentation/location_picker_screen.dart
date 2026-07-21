@@ -46,11 +46,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             // το loading έμενε true και το κουμπί «Δημοσίευση» ΝΕΚΡΟ.
             timeLimit: Duration(seconds: 12),
           ));
+      if (!mounted) return; // το GPS αργεί έως 12s· ο χρήστης μπορεί να έφυγε
       setState(() {
         _selectedLocation = LatLng(pos.latitude, pos.longitude);
         _loading = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _selectedLocation = const LatLng(39.6222, 20.8465); // Ιωάννινα default
         _loading = false;

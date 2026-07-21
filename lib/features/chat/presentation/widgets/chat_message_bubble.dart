@@ -25,7 +25,11 @@ class ChatMessageBubble extends StatelessWidget {
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Column(mainAxisSize: MainAxisSize.min, children: [
+      // top: false → μόνο το κάτω inset. Χωρίς αυτό, το τελευταίο ListTile
+      // («Διαγραφή») έπεφτε κάτω από τα κουμπιά πλοήγησης του κινητού.
+      builder: (_) => SafeArea(
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
         // Μπάρα αντιδράσεων — μόνο σε μηνύματα ΑΛΛΟΥ χρήστη (onReact != null).
         if (!mine && onReact != null)
           Padding(
@@ -103,7 +107,8 @@ class ChatMessageBubble extends StatelessWidget {
               ctx.push('/report/message/$senderId/$chatId/$messageId');
             },
           ),
-      ]),
+        ]),
+      ),
     );
   }
 
@@ -164,6 +169,8 @@ class ChatMessageBubble extends StatelessWidget {
     this.editedAt,
     this.onReply,
     this.onEdit,
+    // Διαγραφή μηνύματος: `onDelete` == null σημαίνει «δεν επιτρέπεται»
+    // (π.χ. ξένο μήνυμα ή κάρτα deal). `isDeleted` δείχνει το «διαγράφηκε».
     this.onDelete,
     this.isDeleted = false,
   });
@@ -655,7 +662,6 @@ class _DealCard extends StatelessWidget {
   });
 
   Future<void> _openDeal(BuildContext context) async {
-    debugPrint('💼 _openDeal called. chatId=$chatId');
     final embeddedDealId = data['dealId'] as String?;
     if (embeddedDealId != null && embeddedDealId.isNotEmpty) {
       context.push('/deal-review/$embeddedDealId');

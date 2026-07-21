@@ -1,0 +1,40 @@
+SHORT DESCRIPTION (80 chars max — currently 61):
+Borrow, lend, share. The app for your local sharing community.
+
+FULL DESCRIPTION (4000 chars max):
+🤲 ShareIt — bringing your community closer
+
+Need a drill for a single weekend? Looking for someone to help with a house clean? Have things sitting unused that a neighbour could borrow? ShareIt connects you with people nearby to share items and services, and to build relationships of trust inside your own community.
+
+✨ WHAT YOU CAN DO
+🤲 Offer tools, items or services you can share
+🔍 Ask for what you need from people around you
+🗺️ Browse listings on a map, within a radius you choose
+💬 Chat directly, with photos, replies and reactions
+🤝 Agree on deals with clear terms and dates
+⭐ Rate each other and build a reputation in the community
+
+💎 FEATURES
+- Smart search with trending hashtags
+- Photo carousel on every listing
+- Push notifications for new messages and deals
+- Friends and ratings system
+- Block & report on listings, messages, posts, comments and photos
+- Automatic hiding of content with multiple reports
+- GDPR-compliant account deletion, directly in the app
+- Quick reactions on messages and comments
+- Save your favourite listings
+
+🛡️ SECURITY & PRIVACY
+All communication with our servers is encrypted (HTTPS), and data is stored on Google Firebase infrastructure inside the European Union. Your email address and phone number are never visible to other users. We do not sell your data and we do not share it with advertisers.
+
+You can set your profile visibility, block users, report content, and permanently delete your account from inside the app at any time.
+
+🌍 WHY SHAREIT?
+In a world where we waste items and services, ShareIt lets you make use of what you already have and find what you need. Less buying, more cooperation. Less waste, more connection.
+
+💚 Built in Greece, for sharing communities everywhere
+
+📩 Questions: Christos.katsios1@gmail.com
+🔒 Privacy: https://shareit-6cfa0.web.app/privacy_policy_en.html
+📄 Terms: https://shareit-6cfa0.web.app/terms_en.html

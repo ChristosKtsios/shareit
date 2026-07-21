@@ -145,7 +145,9 @@
     "tapMapHint": "Toca para abrir el mapa y poner un pin",
     "updated": "¡Anuncio actualizado!",
     "titleHintOffer": "p.ej. Presto herramientas",
-    "titleHintSeek": "p.ej. Busco ayuda para mudanza"
+    "titleHintSeek": "p.ej. Busco ayuda para mudanza",
+    "locationSelected": "Ubicación seleccionada",
+    "photoTip": "Los anuncios con foto reciben mucho más interés"
   },
   "listing": {
     "offer": "Ofrezco",
@@ -174,6 +176,15 @@
     "onShareit": "📍 En ShareIt",
     "deleteTitle": "Eliminar anuncio",
     "deleteBody": "El anuncio se eliminará permanentemente.",
+    "expiresInDays": "Caduca en {n} días",
+    "expiresSoon": "Caduca pronto",
+    "renew": "Renovar",
+    "renewed": "Anuncio renovado",
+    "pause": "Pausar",
+    "reactivate": "Reactivar",
+    "paused": "Anuncio pausado",
+    "reactivated": "Anuncio reactivado",
+    "pausedBadge": "En pausa",
     "message": "Mensaje",
     "removedFav": "Eliminado de favoritos",
     "savedFav": "Guardado en favoritos"
@@ -296,6 +307,7 @@
     "agreeCaps": "ACEPTAR",
     "cancelProposalCaps": "CANCELAR PROPUESTA",
     "errCannotCancel": "No puedes cancelar: la propuesta ya no está pendiente.",
+    "errCannotAccept": "No puedes aceptar esta propuesta: faltan datos (fechas).",
     "errAlreadyRated": "Ya has valorado este deal",
     "errNotCompleted": "El deal aún no se ha completado"
   },
@@ -512,7 +524,7 @@
     "message": "Mensaje",
     "friends": "Amigos",
     "privateProfile": "Perfil privado",
-    "onlyFriendsWall": "Solo los amigos pueden ver el muro.",
+    "onlyFriendsWall": "Solo los amigos pueden ver el contenido de este perfil.",
     "noDealsYet": "Aún no hay tratos.",
     "activeDealSection": "Tratos activos",
     "completedDealSection": "Tratos completados",
@@ -750,12 +762,27 @@
     "symbol": "Símbolo (!@#\\$%^&*)",
     "needs": "La contraseña necesita: {label}."
   },
+  "notifsettings": {
+    "title": "Notificaciones",
+    "subtitle": "Elige sobre qué quieres recibir notificaciones.",
+    "chat": "Mensajes",
+    "chatSub": "Nuevos mensajes en tus chats",
+    "deals": "Deals",
+    "dealsSub": "Propuestas y actualizaciones de deals",
+    "friends": "Solicitudes de amistad",
+    "friendsSub": "Cuando alguien te envía una solicitud de amistad",
+    "social": "Comentarios y reacciones",
+    "socialSub": "Comentarios en tus publicaciones",
+    "listings": "Caducidad de anuncios",
+    "listingsSub": "Recordatorio antes de que caduque uno de tus anuncios"
+  },
   "notif": {
     "newMessage": "Nuevo mensaje",
     "dealStarted": "¡Deal iniciado!",
     "dealExpired": "Deal completado",
     "newRating": "Nueva valoración",
     "newComment": "Nuevo comentario",
+    "listingExpiring": "Tu anuncio va a caducar",
     "title": "Notificaciones",
     "allRead": "Todo leído",
     "loadError": "Error al cargar.",
@@ -882,5 +909,11 @@
     "tipNoBankDetails": "Nunca compartas contraseñas, PIN, códigos de un solo uso ni datos de tarjeta. Nadie tiene motivo legítimo para pedirlos.",
     "tipTooGood": "Si una oferta parece demasiado buena o te presionan para decidir rápido, es sospechosa.",
     "tipReport": "Denuncia y bloquea a quien se comporte de forma sospechosa. Las denuncias se revisan."
+  },
+  "ulist": {
+    "title": "Anuncios",
+    "privateProfile": "Este perfil es privado. Hazte amigo para ver sus anuncios.",
+    "emptyTitle": "Sin anuncios",
+    "emptyMine": "¡Crea tu primer anuncio!"
   }
 }

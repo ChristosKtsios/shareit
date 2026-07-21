@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../../core/providers/blocked_users_provider.dart';
 import '../../../core/services/error_logger.dart';
 import '../../../core/services/location_permission_gate.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -96,15 +98,34 @@ class MapState {
 
 class MapNotifier extends StateNotifier<MapState> {
   final ListingRepository _repo;
+  final Ref _ref;
   List<ListingModel> _allListings = [];
 
-  MapNotifier(this._repo) : super(const MapState()) {
+  /// UIDs που έχει μπλοκάρει ο χρήστης — οι αγγελίες τους δεν μπαίνουν στα markers.
+  Set<String> _blocked = const {};
+
+  MapNotifier(this._repo, this._ref) : super(const MapState()) {
     _init();
   }
 
   Future<void> _init() async {
+    _watchBlocked();
     await _resolveLocation();
     _listenListings();
+  }
+
+  void _watchBlocked() {
+    _ref.listen<AsyncValue<Set<String>>>(
+      blockedUidsProvider,
+      (_, next) {
+        final b = next.valueOrNull ?? const <String>{};
+        // Ίδιο σύνολο → μην ξαναχτίζεις markers χωρίς λόγο (ακριβό).
+        if (b.length == _blocked.length && b.containsAll(_blocked)) return;
+        _blocked = b;
+        if (mounted) _rebuildMarkers();
+      },
+      fireImmediately: true,
+    );
   }
 
   /// Προσπαθεί να βρει την πραγματική τοποθεσία του χρήστη.
@@ -235,13 +256,39 @@ class MapNotifier extends StateNotifier<MapState> {
     super.dispose();
   }
 
-  double _radiusForZoom(double zoom) {
-    if (zoom >= 17) return 10;
-    if (zoom >= 15) return 30;
-    if (zoom >= 12) return 100;
-    if (zoom >= 10) return 500;
-    return 1500;
+  /// Πλάτος της κάρτας-marker σε logical pixels, σε scale 1.0.
+  /// ΠΡΕΠΕΙ να ταιριάζει με το `width` στο map_marker_widget.dart (180 * scale).
+  static const double _markerWidthPx = 180.0;
+
+  /// Μικρό περιθώριο ώστε οι κάρτες να μην ακουμπάνε ούτε οριακά.
+  static const double _clusterPadding = 1.15;
+
+  /// Πόσα ΜΕΤΡΑ αντιστοιχούν σε ένα logical pixel του χάρτη.
+  ///
+  /// Τυπικός τύπος Web Mercator (Google Maps): στο zoom z ο κόσμος έχει
+  /// πλάτος 256·2^z pixels, άρα η κλίμακα εξαρτάται και από το γεωγραφικό
+  /// πλάτος (οι μεσημβρινοί «στενεύουν» όσο ανεβαίνεις).
+  double _metersPerPixel(double zoom, double latitude) =>
+      156543.03392 * math.cos(latitude * math.pi / 180) / math.pow(2, zoom);
+
+  /// Ακτίνα ομαδοποίησης — προκύπτει από το ΠΟΣΟ ΧΩΡΟ ΠΙΑΝΕΙ Η ΚΑΡΤΑ ΣΤΗΝ
+  /// ΟΘΟΝΗ, όχι από αυθαίρετα μέτρα.
+  ///
+  /// ΠΡΙΝ ήταν σταθερές τιμές (10/30/100/500/1500m) διαλεγμένες «με το μάτι».
+  /// Το πρόβλημα: η επικάλυψη συμβαίνει σε PIXELS, όχι σε μέτρα. Στο zoom 13
+  /// μία κάρτα 140px «σκεπάζει» ~2.100m εδάφους, ενώ ομαδοποιούσαμε μόνο κάτω
+  /// από 100m — δηλαδή ~21x μικρότερη ακτίνα από την πραγματικά αναγκαία. Έτσι
+  /// δύο αγγελίες με 1 χλμ απόσταση εμφανίζονταν ως δύο κάρτες που
+  /// επικαλύπτονταν σχεδόν πλήρως. Το ίδιο σφάλμα (14x–21x) σε ΚΑΘΕ zoom.
+  ///
+  /// Με τον υπολογισμό αυτό διορθώνεται αυτόματα σε κάθε zoom, και δεν
+  /// ξαναχαλάει αν αλλάξει το μέγεθος της κάρτας (αρκεί να ενημερωθεί το
+  /// [_markerWidthPx]).
+  double _radiusForZoom(double zoom, double latitude) {
+    final widthPx = _markerWidthPx * _markerScaleForZoom(zoom);
+    return widthPx * _metersPerPixel(zoom, latitude) * _clusterPadding;
   }
+
   int _minClusterSize(double zoom) {
     return 2;
   }
@@ -275,13 +322,25 @@ class MapNotifier extends StateNotifier<MapState> {
   }
 
   Future<void> _rebuildMarkers() async {
-    final filtered = state.activeTagFilter != null
+    // Οι αγγελίες μπλοκαρισμένων χρηστών δεν εμφανίζονται στον χάρτη.
+    final visible = _blocked.isEmpty
         ? _allListings
-            .where((l) => l.tags.contains(state.activeTagFilter))
-            .toList()
-        : _allListings;
+        : _allListings.where((l) => !_blocked.contains(l.userId)).toList();
 
-    final radius = _radiusForZoom(state.zoomLevel);
+    final filtered = state.activeTagFilter != null
+        ? visible.where((l) => l.tags.contains(state.activeTagFilter)).toList()
+        : visible;
+
+    // Το γεωγραφικό πλάτος χρειάζεται γιατί η κλίμακα του Mercator αλλάζει με
+    // αυτό. Παίρνουμε τη θέση του χρήστη· αν λείπει, το πλάτος της πρώτης
+    // αγγελίας· αλλιώς το προεπιλεγμένο κέντρο (Αθήνα). Η ακρίβεια δεν είναι
+    // κρίσιμη — μικρές διαφορές πλάτους αλλάζουν ελάχιστα την ακτίνα.
+    final lat = state.userPosition?.latitude ??
+        (filtered.isNotEmpty
+            ? filtered.first.location.latitude
+            : _defaultLocation.latitude);
+
+    final radius = _radiusForZoom(state.zoomLevel, lat);
     final minSize = _minClusterSize(state.zoomLevel);
     final scale = _markerScaleForZoom(state.zoomLevel);
 
@@ -400,4 +459,4 @@ class MapNotifier extends StateNotifier<MapState> {
 }
 
 final mapProvider = StateNotifierProvider<MapNotifier, MapState>(
-    (ref) => MapNotifier(ListingRepository()));
+    (ref) => MapNotifier(ListingRepository(), ref));

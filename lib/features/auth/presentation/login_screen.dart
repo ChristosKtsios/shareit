@@ -411,22 +411,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => ListView.builder(
-        itemCount: _countries.length,
-        itemBuilder: (_, i) {
-          final c = _countries[i];
-          return ListTile(
-            leading: Text(c['flag']!, style: const TextStyle(fontSize: 24)),
-            title: Text(c['name']!,
-                style: const TextStyle(color: AppColors.textPrimary)),
-            trailing: Text(c['code']!,
-                style: const TextStyle(color: AppColors.textSecondary)),
-            onTap: () {
-              setState(() => _countryCode = c['code']!);
-              Navigator.pop(context);
-            },
-          );
-        },
+      builder: (_) => SafeArea(
+        top: false,
+        child: ListView.builder(
+          itemCount: _countries.length,
+          itemBuilder: (_, i) {
+            final c = _countries[i];
+            return ListTile(
+              leading: Text(c['flag']!, style: const TextStyle(fontSize: 24)),
+              title: Text(c['name']!,
+                  style: const TextStyle(color: AppColors.textPrimary)),
+              trailing: Text(c['code']!,
+                  style: const TextStyle(color: AppColors.textSecondary)),
+              onTap: () {
+                setState(() => _countryCode = c['code']!);
+                Navigator.pop(context);
+              },
+            );
+          },
+        ),
       ),
     );
   }

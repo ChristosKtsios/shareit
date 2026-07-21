@@ -5,12 +5,20 @@ service firebase.storage {
     function isAuth()      { return request.auth != null; }
     function isOwner(uid)  { return isAuth() && request.auth.uid == uid; }
 
-    // Uploads must be an image or video and under 100 MB. contentType may be
-    // absent on some uploads, so only enforce the type check when it is set.
+    // Uploads must be an image or video and under 100 MB.
+    //
+    // Το contentType ΠΡΕΠΕΙ να είναι εικόνα/βίντεο. Πριν, ο κανόνας δεχόταν
+    // `contentType == null`, οπότε ένας client που απλώς παρέλειπε τον header
+    // ανέβαζε ΟΠΟΙΟΔΗΠΟΤΕ αρχείο (HTML, script, binary) έως 100 MB σε δημόσια
+    // αναγνώσιμη διαδρομή — φιλοξενία αυθαίρετου περιεχομένου με κόστος δικό μας.
+    // ΠΡΟΣΟΧΗ: στο ANDROID το `putFile` ΔΕΝ συμπεραίνει contentType από την
+    // κατάληξη — ο SDK βάζει `application/octet-stream`. Γι' αυτό ΚΑΘΕ upload
+    // στον client περνά ΡΗΤΟ `SettableMetadata(contentType: ...)`. Αν προστεθεί
+    // νέο upload, ΠΡΕΠΕΙ να κάνει το ίδιο, αλλιώς θα κόβεται εδώ.
     function isValidMedia() {
       return request.resource.size < 100 * 1024 * 1024
-             && (request.resource.contentType == null
-                 || request.resource.contentType.matches('(image|video)/.*'));
+             && request.resource.contentType != null
+             && request.resource.contentType.matches('(image|video)/.*');
     }
 
     // Participants of a chat, read from the corresponding Firestore document.

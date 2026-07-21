@@ -101,7 +101,10 @@ class ProfileScreen extends ConsumerWidget {
               for (final f in files) {
                 final ref = FirebaseStorage.instance.ref(
                     'users/$targetUid/${DateTime.now().millisecondsSinceEpoch}_${urls.length}.jpg');
-                await ref.putFile(File(f.path));
+                // Ρητό contentType — το Android δεν το συμπεραίνει, και τα
+                // storage rules απαιτούν image/* (αλλιώς permission-denied).
+                await ref.putFile(File(f.path),
+                    SettableMetadata(contentType: 'image/jpeg'));
                 urls.add(await ref.getDownloadURL());
               }
               await FirebaseFirestore.instance
@@ -265,11 +268,16 @@ class ProfileScreen extends ConsumerWidget {
                   ]),
                 ],
                 const SizedBox(height: 16),
+                // ΙΔΙΩΤΙΚΟ ΠΡΟΦΙΛ: κανένα κουτάκι δεν αποκαλύπτει νούμερα σε
+                // μη-φίλους — ούτε deals, ούτε φίλοι, ούτε posts, ούτε αγγελίες.
+                // Το προφίλ λειτουργεί ως ενιαίος κλειστός χώρος: για να δεις
+                // οτιδήποτε πρέπει να γίνετε φίλοι. (Οι ΜΕΜΟΝΩΜΕΝΕΣ αγγελίες
+                // παραμένουν δημόσιες σε χάρτη/αναζήτηση — αυτό είναι σκόπιμο.)
                 Row(children: [
                   Expanded(
                     child: _StatBox(
                       label: 'Deals',
-                      value: '$dealsCount',
+                      value: canSeeWall ? '$dealsCount' : '—',
                       icon: Icons.handshake_outlined,
                       color: AppColors.deal,
                       onTap: isMe ? () => context.push('/my-deals') : null,
@@ -277,13 +285,35 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: _StatBox(
-                      label: 'pf.friends'.tr(),
-                      value: '${friends.length}',
-                      icon: Icons.people_outline,
-                      color: AppColors.primary,
-                      onTap: isMe ? () => context.push('/friends') : null,
-                    ),
+                    // Στο δικό μου προφίλ, το κουτί «Φίλοι» δείχνει κόκκινο
+                    // badge με τα εκκρεμή αιτήματα φιλίας — ώστε να τα προσέξω
+                    // ακόμα κι από εδώ. Tap → λίστα φίλων (με το banner επάνω).
+                    child: isMe
+                        ? StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('friendRequests')
+                                .where('toUid', isEqualTo: currentUid)
+                                .where('status', isEqualTo: 'pending')
+                                .snapshots(),
+                            builder: (context, reqSnap) {
+                              final pending = reqSnap.data?.docs.length ?? 0;
+                              return _StatBox(
+                                label: 'pf.friends'.tr(),
+                                value: '${friends.length}',
+                                icon: Icons.people_outline,
+                                color: AppColors.primary,
+                                badgeCount: pending,
+                                onTap: () => context.push('/friends'),
+                              );
+                            },
+                          )
+                        : _StatBox(
+                            label: 'pf.friends'.tr(),
+                            value: canSeeWall ? '${friends.length}' : '—',
+                            icon: Icons.people_outline,
+                            color: AppColors.primary,
+                            onTap: null,
+                          ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -320,6 +350,41 @@ class ProfileScreen extends ConsumerWidget {
                             value: '—',
                             icon: Icons.article_outlined,
                             color: AppColors.offer,
+                          ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    // «ShareIt»: οι αγγελίες του χρήστη. Ίδιο gating με τα Posts
+                    // — σε κλειστό προφίλ χωρίς φιλία δεν δείχνουμε ούτε πλήθος.
+                    // Ο κάτοχος μετράει και τις παγωμένες (τις διαχειρίζεται)·
+                    // οι άλλοι μόνο τις ενεργές, όπως ακριβώς και η λίστα.
+                    child: canSeeWall
+                        ? StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('listings')
+                                .where('userId', isEqualTo: targetUid)
+                                .snapshots(),
+                            builder: (context, snap) {
+                              final count = (snap.data?.docs ?? []).where((d) {
+                                final m = d.data() as Map<String, dynamic>;
+                                if (m['isHidden'] == true) return false;
+                                return isMe || m['isActive'] != false;
+                              }).length;
+                              return _StatBox(
+                                label: 'ShareIt',
+                                value: '$count',
+                                icon: Icons.inventory_2_outlined,
+                                color: AppColors.seek,
+                                onTap: () =>
+                                    context.push('/user-listings/$targetUid'),
+                              );
+                            },
+                          )
+                        : const _StatBox(
+                            label: 'ShareIt',
+                            value: '—',
+                            icon: Icons.inventory_2_outlined,
+                            color: AppColors.seek,
                           ),
                   ),
                 ]),
@@ -424,7 +489,9 @@ class ProfileScreen extends ConsumerWidget {
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Column(
+      builder: (_) => SafeArea(
+        top: false,
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (isFriend)
@@ -464,6 +531,7 @@ class ProfileScreen extends ConsumerWidget {
             },
           ),
         ],
+        ),
       ),
     );
   }
@@ -914,17 +982,21 @@ class _StatBox extends StatelessWidget {
   final Color color;
   final VoidCallback? onTap;
 
+  /// Κόκκινο badge πάνω δεξιά (π.χ. πλήθος εκκρεμών αιτημάτων φιλίας). 0 = κρυφό.
+  final int badgeCount;
+
   const _StatBox({
     required this.label,
     required this.value,
     required this.icon,
     required this.color,
     this.onTap,
+    this.badgeCount = 0,
   });
 
   @override
   Widget build(BuildContext context) {
-    final content = Container(
+    Widget content = Container(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -942,6 +1014,31 @@ class _StatBox extends StatelessWidget {
             style: const TextStyle(color: AppColors.textHint, fontSize: 11)),
       ]),
     );
+
+    if (badgeCount > 0) {
+      content = Stack(clipBehavior: Clip.none, children: [
+        content,
+        Positioned(
+          top: -4,
+          right: -4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            constraints: const BoxConstraints(minWidth: 20),
+            decoration: BoxDecoration(
+              color: AppColors.danger,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.background, width: 1.5),
+            ),
+            child: Text(badgeCount > 9 ? '9+' : '$badgeCount',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]);
+    }
 
     if (onTap == null) return content;
 

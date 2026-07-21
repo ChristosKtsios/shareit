@@ -55,7 +55,7 @@ class SettingsScreen extends ConsumerWidget {
             leading: UserAvatar(
                 initials: user.initials,
                 avatarUrl: user.avatarUrl,
-                showVerified: user.isVerified),
+                showVerified: user.phoneVerified),
             title: Text(user.fullName,
                 style: const TextStyle(
                     color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
@@ -135,6 +135,10 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.block,
             label: 'settings.blockedUsers'.tr(),
             onTap: () => context.push('/settings/blocked')),
+        _SettingsTile(
+            icon: Icons.notifications_none,
+            label: 'notifsettings.title'.tr(),
+            onTap: () => context.push('/settings/notifications')),
 
         const Divider(),
 

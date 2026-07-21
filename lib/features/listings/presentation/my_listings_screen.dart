@@ -38,10 +38,41 @@ class MyListingsScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             itemCount: listings.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (_, i) => ListingCard(
-              listing: listings[i],
-              onTap: () => context.push('/listing/${listings[i].id}'),
-            ),
+            itemBuilder: (_, i) {
+              final l = listings[i];
+              final card = ListingCard(
+                listing: l,
+                onTap: () => context.push('/listing/${l.id}'),
+              );
+              // Παγωμένες αγγελίες: θαμπές + badge «Σε παύση», ώστε ο χρήστης να
+              // ξεχωρίζει ποιες δεν φαίνονται σε χάρτη/feed.
+              if (l.isActive) return card;
+              return Stack(children: [
+                Opacity(opacity: 0.55, child: card),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.offer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.pause_circle_outline,
+                          size: 13, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text('ld.pausedBadge'.tr(),
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
+              ]);
+            },
           );
         },
       ),

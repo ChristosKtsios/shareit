@@ -108,46 +108,11 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
   }
 
   /// Dialog κωδικού. Επιστρέφει `null` αν ο χρήστης ακυρώσει.
-  Future<String?> _askPassword() async {
-    final ctrl = TextEditingController();
-    try {
-      return await showDialog<String>(
-        context: context,
-        builder: (dCtx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text('reauth.title'.tr(),
-              style: const TextStyle(color: AppColors.textPrimary)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('reauth.body'.tr(),
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: ctrl,
-              obscureText: true,
-              autofocus: true,
-              style: const TextStyle(color: AppColors.textPrimary),
-              decoration:
-                  InputDecoration(labelText: 'ce.currentPassword'.tr()),
-            ),
-          ]),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dCtx),
-              child: Text('common.cancel'.tr(),
-                  style: const TextStyle(color: AppColors.textSecondary)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dCtx, ctrl.text),
-              child: Text('reauth.confirm'.tr(),
-                  style: const TextStyle(color: AppColors.primary)),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      ctrl.dispose();
-    }
+  Future<String?> _askPassword() {
+    return showDialog<String>(
+      context: context,
+      builder: (_) => const _ReauthPasswordDialog(),
+    );
   }
 
   Future<void> _sendOtp() async {
@@ -291,23 +256,26 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        children: _countries
-            .map((c) => ListTile(
-                  leading:
-                      Text(c['flag']!, style: const TextStyle(fontSize: 24)),
-                  title: Text(c['name']!,
-                      style: const TextStyle(color: AppColors.textPrimary)),
-                  trailing: Text(c['code']!,
-                      style:
-                          const TextStyle(color: AppColors.textSecondary)),
-                  onTap: () {
-                    setState(() => _countryCode = c['code']!);
-                    Navigator.pop(context);
-                  },
-                ))
-            .toList(),
+      builder: (_) => SafeArea(
+        top: false,
+        child: ListView(
+          shrinkWrap: true,
+          children: _countries
+              .map((c) => ListTile(
+                    leading:
+                        Text(c['flag']!, style: const TextStyle(fontSize: 24)),
+                    title: Text(c['name']!,
+                        style: const TextStyle(color: AppColors.textPrimary)),
+                    trailing: Text(c['code']!,
+                        style:
+                            const TextStyle(color: AppColors.textSecondary)),
+                    onTap: () {
+                      setState(() => _countryCode = c['code']!);
+                      Navigator.pop(context);
+                    },
+                  ))
+              .toList(),
+        ),
       ),
     );
   }
@@ -440,6 +408,61 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
         ),
       ),
       ),
+    );
+  }
+}
+
+/// Dialog επανεπαλήθευσης με κωδικό — ξεχωριστό StatefulWidget ώστε ο
+/// TextEditingController να ζει ΜΕΣΑ στο dialog. Αν ζούσε έξω (και γινόταν
+/// dispose σε finally μόλις επέστρεφε το showDialog), το TextField έπεφτε πάνω
+/// σε disposed controller κατά το exit animation → framework assertion.
+class _ReauthPasswordDialog extends StatefulWidget {
+  const _ReauthPasswordDialog();
+
+  @override
+  State<_ReauthPasswordDialog> createState() => _ReauthPasswordDialogState();
+}
+
+class _ReauthPasswordDialogState extends State<_ReauthPasswordDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('reauth.title'.tr(),
+          style: const TextStyle(color: AppColors.textPrimary)),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('reauth.body'.tr(),
+            style: const TextStyle(
+                color: AppColors.textSecondary, fontSize: 13)),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _ctrl,
+          obscureText: true,
+          autofocus: true,
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: InputDecoration(labelText: 'ce.currentPassword'.tr()),
+        ),
+      ]),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('common.cancel'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text),
+          child: Text('reauth.confirm'.tr(),
+              style: const TextStyle(color: AppColors.primary)),
+        ),
+      ],
     );
   }
 }

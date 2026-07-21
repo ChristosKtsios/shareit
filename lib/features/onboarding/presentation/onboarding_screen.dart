@@ -16,6 +16,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _pageCtrl = PageController();
   int _index = 0;
 
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
   final List<_Slide> _slides = [
     _Slide(
       emoji: '🤲',

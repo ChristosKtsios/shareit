@@ -42,27 +42,50 @@ service cloud.firestore {
                 'friends'];
       }
 
+      // Ευαίσθητα PII δεν ζουν ΠΟΤΕ στο δημόσιο doc (το διαβάζει κάθε χρήστης —
+      // search/inbox/αγγελίες). Ζουν στο users/{uid}/private/data. Όλες οι ροές
+      // του client (register, Google sign-in, complete/edit profile, FCM) ήδη τα
+      // γράφουν μόνο εκεί· αυτός ο κανόνας εμποδίζει έναν ΤΡΟΠΟΠΟΙΗΜΕΝΟ client να
+      // γράψει π.χ. το τηλέφωνο θύματος σε πεδίο ορατό σε όλους (doxxing).
+      function publicPII() { return ['email', 'phone', 'fcmToken']; }
+
       allow read: if isAuth();
 
-      // ── ΕΚΚΡΕΜΕΙ: γνήσιο phoneVerified ──────────────────────────────────
-      // Σήμερα το `phoneVerified: true` το γράφει ο client — άρα ένας
-      // τροποποιημένος client δηλώνεται «επαληθευμένος» ΧΩΡΙΣ ποτέ να λάβει
-      // SMS, παρακάμπτοντας την υποχρεωτική πύλη κινητού.
+      // ── ΓΝΗΣΙΟ phoneVerified (ΕΝΕΡΓΟ) ────────────────────────────────────
+      // Το `phoneVerified: true` το γράφει ο client. Χωρίς αυτόν τον κανόνα,
+      // ένας τροποποιημένος client δηλωνόταν «επαληθευμένος» ΧΩΡΙΣ ποτέ να
+      // λάβει SMS — παρακάμπτοντας την υποχρεωτική πύλη κινητού και παίρνοντας
+      // το σήμα εμπιστοσύνης που βλέπουν οι άλλοι χρήστες πριν συναλλαχθούν.
       //
-      // Η λύση (δοκιμασμένη: firestore-tests/phone.test.mjs, 4/4) είναι να
-      // απαιτούμε το claim `phone_number` στο ίδιο το Auth token:
+      // Η απόδειξη ότι πέρασε OTP δεν μπορεί να έρθει από τον client: έρχεται
+      // από το ίδιο το Auth token, που το υπογράφει το Firebase. Ο μόνος τρόπος
+      // να αποκτήσει κανείς το claim `phone_number` είναι να ολοκληρώσει OTP.
       //
-      //   function phoneVerifiedIsGenuine() {
-      //     return request.resource.data.get('phoneVerified', false) == false
-      //         || request.auth.token.get('phone_number', '') != '';
-      //   }
-      //   ... && phoneVerifiedIsGenuine()   σε create ΚΑΙ update
+      // ΠΡΟΫΠΟΘΕΣΗ: ο client πρέπει να κάνει `getIdToken(true)` ΠΡΙΝ το write,
+      // αλλιώς το token είναι ακόμα το παλιό (χωρίς το claim) και το write
+      // απορρίπτεται. Και τα δύο σημεία που γράφουν phoneVerified το κάνουν:
+      //   - lib/features/auth/data/auth_repository.dart:186
+      //   - lib/features/profile/presentation/change_phone_screen.dart:226
+      // Τεστ: firestore-tests/phone.test.mjs
       //
-      // ΔΕΝ ενεργοποιείται ακόμα: οι ΠΑΛΙΕΣ εκδόσεις γράφουν το phoneVerified
-      // χωρίς να ανανεώσουν πρώτα το ID token (μετά το updatePhoneNumber), οπότε
-      // θα κλείδωναν έξω κάθε χρήστη που επαληθεύει κινητό — ιδίως τους Google.
-      // Η έκδοση ≥1.0.4 κάνει `getIdToken(true)` πριν το write.
-      // ΕΝΕΡΓΟΠΟΙΗΣΗ μαζί με την αφαίρεση της γέφυρας, όταν όλοι είναι σε ≥1.0.4.
+      // ΣΤΗ ΔΗΜΙΟΥΡΓΙΑ: δεν φυτεύεις phoneVerified:true χωρίς OTP.
+      function phoneVerifiedGenuineOnCreate() {
+        return request.resource.data.get('phoneVerified', false) == false
+            || request.auth.token.get('phone_number', '') != '';
+      }
+      //
+      // ΣΤΟ UPDATE: ο έλεγχος ισχύει ΜΟΝΟ όταν ΑΓΓΙΖΕΙΣ το phoneVerified.
+      // ΚΡΙΣΙΜΟ: το `request.resource.data` είναι ΟΛΟΚΛΗΡΟ το τελικό doc. Αν
+      // ελέγχαμε σκέτα την τιμή του, τότε ένας ήδη επαληθευμένος χρήστης
+      // (phoneVerified:true) θα χρειαζόταν το claim σε ΚΑΘΕ άσχετο write —
+      // αλλαγή ονόματος, block, αποθήκευση αγγελίας, online status. Αν το claim
+      // έλειπε για οποιονδήποτε λόγο, θα κλεινόταν ΜΟΝΙΜΑ έξω από το προφίλ του.
+      // Η ασφάλεια είναι ίδια: το phoneVerified ΔΕΝ γίνεται true χωρίς OTP.
+      function phoneVerifiedGenuineOnUpdate() {
+        return !touched().hasAny(['phoneVerified'])
+            || request.resource.data.get('phoneVerified', false) == false
+            || request.auth.token.get('phone_number', '') != '';
+      }
 
       // ── ΓΕΦΥΡΑ ΣΥΜΒΑΤΟΤΗΤΑΣ (προσωρινή) ──────────────────────────────────
       // Οι ΠΑΛΙΕΣ εκδόσεις γράφουν email/phone/fcmToken/language στο δημόσιο
@@ -73,17 +96,22 @@ service cloud.firestore {
       // ΝΑ ΞΑΝΑΚΛΕΙΔΩΣΕΙ όταν όλοι οι χρήστες είναι σε έκδοση ≥ 1.0.3.
       allow create: if isOwner(uid)
                     && !request.resource.data.keys().hasAny(['reportCount', 'isReported'])
+                    && !request.resource.data.keys().hasAny(publicPII())
                     && request.resource.data.get('rating', 0) <= 0
                     && request.resource.data.get('ratingCount', 0) <= 0
                     && request.resource.data.get('dealsCount', 0) <= 0
-                    && request.resource.data.get('friends', []).size() == 0;
+                    && request.resource.data.get('friends', []).size() == 0
+                    && phoneVerifiedGenuineOnCreate();
 
       // ΜΟΝΟ ο ίδιος, και ποτέ τα server-managed πεδία. Κανείς δεν γράφει στο
       // doc άλλου χρήστη — ούτε στο `friends`. (Οι ΠΑΛΙΕΣ εκδόσεις το έκαναν
       // στην αποδοχή φιλίας· εκεί το write θα αποτυγχάνει μέχρι να ενημερωθούν.
       // Το εναλλακτικό —να επιτραπεί— σημαίνει ότι οποιοσδήποτε μπορεί να
       // αυτοπροστεθεί στη λίστα φίλων σου και να δει ιδιωτικό προφίλ.)
-      allow update: if isOwner(uid) && !touchesAny(serverManaged());
+      allow update: if isOwner(uid)
+                    && !touchesAny(serverManaged())
+                    && !touchesAny(publicPII())
+                    && phoneVerifiedGenuineOnUpdate();
       // delete: ΜΟΝΟ server (deleteUserAccount).
 
       // Ευαίσθητα δεδομένα — ούτε διαβάζονται ούτε γράφονται από άλλον χρήστη.
@@ -208,21 +236,77 @@ service cloud.firestore {
             || request.auth.uid == request.resource.data.user2Uid;
       }
 
+      // Έγκυρη εγγραφή rating από συμμετέχοντα:
+      //  - ownerRating: το γράφει ΜΟΝΟ ο user1 (βαθμολογεί τον user2).
+      //  - seekerRating: το γράφει ΜΟΝΟ ο user2 (βαθμολογεί τον user1).
+      // Έτσι κανείς δεν βαθμολογεί τον εαυτό του. Επιπλέον: τιμή 1–5, deal
+      // ΟΛΟΚΛΗΡΩΜΕΝΟ, και μόνο μία φορά (null → value). Χωρίς αυτούς τους
+      // ελέγχους ένας παρακαμμένος client έγραφε seekerRating:1000000 στον
+      // εαυτό του και εκτόξευε το rating του προφίλ του.
+      //
+      // ΚΡΙΣΙΜΟ: δέχεται ΚΑΙ float. Ο Dart client στέλνει `double rating`
+      // (deal_repository.rate → 5.0), που το Firestore αποθηκεύει ως double.
+      // Ένα σκέτο `v is int` απέρριπτε ΚΑΘΕ αξιολόγηση με permission-denied
+      // (και τα rating/ratingCount έμεναν μόνιμα 0). Το εύρος 1–5 είναι που
+      // μπλοκάρει την κατάχρηση — όχι ο τύπος.
+      function ratingInRange(v) {
+        return (v is int || v is float) && v >= 1 && v <= 5;
+      }
+      function validRatingWrite() {
+        return (onlyTouched(['ownerRating'])
+                  && request.auth.uid == resource.data.user1Uid
+                  && resource.data.get('ownerRating', null) == null
+                  && ratingInRange(request.resource.data.ownerRating)
+                  && resource.data.status == 'completed')
+            || (onlyTouched(['seekerRating'])
+                  && request.auth.uid == resource.data.user2Uid
+                  && resource.data.get('seekerRating', null) == null
+                  && ratingInRange(request.resource.data.seekerRating)
+                  && resource.data.status == 'completed');
+      }
+
       allow read:   if isAuth() && (isPeer() || isLegacyPeer());
       allow create: if isAuth()
                     && creatorIsPeer()
                     && request.resource.data.status == 'pending'
+                    // Χωρίς αυτό, φτιάχνεις deal με τον εαυτό σου (participants
+                    // [self, self]) και μετά βαθμολογείς τον εαυτό σου — χωρίς θύμα.
+                    && request.resource.data.user1Uid != request.resource.data.user2Uid
+                    // Δεν φυτεύεις rating κατά τη δημιουργία.
+                    // ΠΡΟΣΟΧΗ: ελέγχουμε την ΤΙΜΗ, όχι την ύπαρξη του κλειδιού.
+                    // Ο client δημιουργεί το deal με `ownerRating: null` και
+                    // `seekerRating: null` (deal_repository.dart) — το `keys()`
+                    // τα μετράει κι αυτά, οπότε ένα `hasAny` θα μπλόκαρε ΚΑΘΕ
+                    // νόμιμη δημιουργία deal με permission-denied.
+                    && request.resource.data.get('ownerRating', null) == null
+                    && request.resource.data.get('seekerRating', null) == null
                     && (!('participants' in request.resource.data)
                         || (request.resource.data.participants.size() == 2
                             && request.resource.data.participants.hasOnly(
                                  [request.resource.data.user1Uid,
                                   request.resource.data.user2Uid])));
-      // Ακύρωση επιτρέπεται ΜΟΝΟ όσο το deal είναι pending — δεν ακυρώνεται
-      // accepted/active/completed deal ακόμα κι από παρακαμμένο client.
       allow update: if isAuth() && (isPeer() || isLegacyPeer())
                     && !touchesAny(['participants', 'user1Uid', 'user2Uid', 'chatId'])
-                    && (request.resource.data.status != 'cancelled'
-                        || resource.data.status == 'pending');
+                    && (
+                      // Είτε έγκυρη βαθμολογία…
+                      validRatingWrite()
+                      // …είτε μη-rating ενημέρωση (πρόταση/αποδοχή/ακύρωση).
+                      || (
+                        !touchesAny(['ownerRating', 'seekerRating'])
+                        // Ένα ΟΛΟΚΛΗΡΩΜΕΝΟ deal είναι κλειδωμένο για τον client:
+                        // καμία μη-rating αλλαγή. Αλλιώς θα το γύριζε πίσω σε
+                        // active και θα διπλομετρούσε το dealsCount στο επόμενο
+                        // completion.
+                        && resource.data.status != 'completed'
+                        // Η ΟΛΟΚΛΗΡΩΣΗ είναι αποκλειστικά server-side (λήξη
+                        // countdown / scheduler). Ο client δεν κατασκευάζει
+                        // «ολοκληρωμένα» deals για να φουσκώσει το dealsCount.
+                        && request.resource.data.status != 'completed'
+                        // Ακύρωση μόνο όσο είναι pending.
+                        && (request.resource.data.status != 'cancelled'
+                            || resource.data.status == 'pending')
+                      )
+                    );
       allow delete: if isAuth() && (isPeer() || isLegacyPeer());
     }
 

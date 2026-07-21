@@ -75,19 +75,7 @@ class DealProposalCard extends ConsumerWidget {
               ],
               if (deal.status == DealStatus.pending) ...[
                 if (otherProposal != null && myProposal?.accepted != true) ...[
-                  ElevatedButton(
-                    onPressed: () async {
-                      await ref.read(dealRepoProvider).acceptProposal(
-                            dealId: deal.id,
-                            userId: currentUid,
-                          );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.deal,
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                    child: Text('dcard.agree'.tr()),
-                  ),
+                  _AgreeButton(dealId: deal.id, currentUid: currentUid),
                   const SizedBox(height: 8),
                 ],
                 if (myProposal == null)
@@ -135,6 +123,66 @@ class DealProposalCard extends ConsumerWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// Κουμπί «Αποδοχή» πρότασης deal, με προστασία από διπλό πάτημα και feedback.
+///
+/// Πριν ήταν σκέτο ElevatedButton χωρίς guard/try-catch: διπλό γρήγορο tap
+/// καλούσε `acceptProposal` δύο φορές (διπλή ενεργοποίηση), και αν το write
+/// αποτύγχανε (offline/permission) το κουμπί έμοιαζε «νεκρό» χωρίς μήνυμα.
+class _AgreeButton extends ConsumerStatefulWidget {
+  final String dealId;
+  final String currentUid;
+  const _AgreeButton({required this.dealId, required this.currentUid});
+
+  @override
+  ConsumerState<_AgreeButton> createState() => _AgreeButtonState();
+}
+
+class _AgreeButtonState extends ConsumerState<_AgreeButton> {
+  bool _busy = false;
+
+  Future<void> _accept() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(dealRepoProvider).acceptProposal(
+            dealId: widget.dealId,
+            userId: widget.currentUid,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('chatx.dealStarted'.tr())),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${'common.error'.tr()}: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: _busy ? null : _accept,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.deal,
+        minimumSize: const Size(double.infinity, 48),
+      ),
+      child: _busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white))
+          : Text('dcard.agree'.tr()),
     );
   }
 }

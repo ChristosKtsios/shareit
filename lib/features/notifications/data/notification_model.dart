@@ -1,7 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
 
-enum NotificationType { newMessage, dealStarted, dealExpired, newRating, newComment }
+enum NotificationType {
+  newMessage,
+  dealStarted,
+  dealExpired,
+  newRating,
+  newComment,
+  listingExpiring,
+}
 
 extension NotificationTypeX on NotificationType {
   String get title { switch (this) {
@@ -10,6 +17,7 @@ extension NotificationTypeX on NotificationType {
     case NotificationType.dealExpired: return 'notif.dealExpired'.tr();
     case NotificationType.newRating:   return 'notif.newRating'.tr();
     case NotificationType.newComment:  return 'notif.newComment'.tr();
+    case NotificationType.listingExpiring: return 'notif.listingExpiring'.tr();
   }}
   static NotificationType fromString(String? v) =>
       NotificationType.values.firstWhere((e) => e.name == v,

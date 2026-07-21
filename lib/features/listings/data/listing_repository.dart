@@ -82,6 +82,15 @@ class ListingRepository {
   Future<void> deactivate(String id) async =>
       await _col.doc(id).update({'isActive': false});
 
+  /// Ανανέωση αγγελίας: μηδενίζει το «ρολόι» λήξης (30 μέρες από τώρα) φέρνοντας
+  /// το `createdAt` στο τώρα, καθαρίζει το flag προειδοποίησης, και τη γυρίζει
+  /// ενεργή. Έτσι η αγγελία ξαναεμφανίζεται φρέσκια στην κορυφή του feed.
+  Future<void> renew(String id) async => await _col.doc(id).update({
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiryWarned': false,
+        'isActive': true,
+      });
+
   /// Helper για να φιλτράρουμε hidden αγγελίες client-side.
   /// (Firestore δεν επιτρέπει "where != true" εύκολα)
   List<ListingModel> _filterVisible(List<DocumentSnapshot> docs) {
@@ -102,12 +111,36 @@ class ListingRepository {
       .snapshots()
       .map((s) => _filterVisible(s.docs));
 
+  /// ΟΛΕΣ οι αγγελίες του χρήστη — και ενεργές ΚΑΙ σε παύση (isActive=false) —
+  /// ώστε ο ίδιος να μπορεί να διαχειριστεί/ξαναενεργοποιήσει τις παγωμένες.
+  /// Ταξινόμηση στον client (χωρίς orderBy) → δεν χρειάζεται composite index:
+  /// ένα σκέτο where('userId') χρησιμοποιεί μόνο το αυτόματο single-field index.
   Stream<List<ListingModel>> watchUserListings(String uid) => _col
       .where('userId', isEqualTo: uid)
-      .where('isActive', isEqualTo: true)
-      .orderBy('createdAt', descending: true)
       .snapshots()
-      .map((s) => _filterVisible(s.docs));
+      .map((s) {
+        final list = _filterVisible(s.docs);
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list;
+      });
+
+  /// Οι ΔΗΜΟΣΙΑ ορατές αγγελίες ενός χρήστη — μόνο ενεργές.
+  ///
+  /// Διαφέρει από το [watchUserListings], που δείχνει ΚΑΙ τις παγωμένες επειδή
+  /// προορίζεται για τον ίδιο τον κάτοχο. Όταν κοιτάζει ΑΛΛΟΣ το προφίλ, οι
+  /// παγωμένες δεν πρέπει να φαίνονται: ο χρήστης τις έβγαλε επίτηδες από
+  /// χάρτη/feed και θα ήταν έκπληξη να εμφανίζονται εδώ.
+  ///
+  /// Το φιλτράρισμα γίνεται στον client (όχι δεύτερο where) ώστε να μη
+  /// χρειάζεται composite index — ίδια λογική με το [watchUserListings].
+  Stream<List<ListingModel>> watchUserActiveListings(String uid) =>
+      watchUserListings(uid)
+          .map((list) => list.where((l) => l.isActive).toList());
+
+  /// Παύση/επανενεργοποίηση αγγελίας (isActive). Σε παύση φεύγει από χάρτη/feed
+  /// αλλά ΔΕΝ σβήνεται και ΔΕΝ μηδενίζει το ρολόι λήξης (σε αντίθεση με το renew).
+  Future<void> setActive(String id, bool active) async =>
+      await _col.doc(id).update({'isActive': active});
 
   Future<({List<ListingModel> listings, DocumentSnapshot? lastDoc, int fetched})>
       getPageWithCursor({DocumentSnapshot? lastDoc}) async {
@@ -144,22 +177,85 @@ class ListingRepository {
     return ListingModel.fromFirestore(doc);
   }
 
+  /// Firestore: το `arrayContainsAny` δέχεται έως 30 τιμές.
+  static const int _maxQueryTokens = 30;
+
+  /// Οι όροι του χρήστη, κανονικοποιημένοι ΑΚΡΙΒΩΣ όπως τα searchKeywords των
+  /// αγγελιών (ίδιο [ListingModel.tokenize]) — αλλιώς δεν ταιριάζουν ποτέ.
+  static List<String> queryTokens(String raw) {
+    final t = ListingModel.tokenize(raw);
+    return t.length > _maxQueryTokens ? t.sublist(0, _maxQueryTokens) : t;
+  }
+
+  /// Πόντοι για όρο που βρίσκεται στον ΤΙΤΛΟ (έναντι 1 για οπουδήποτε αλλού).
+  ///
+  /// Μια αγγελία με τίτλο «Τρυπάνι» είναι προφανώς πιο σχετική από μία που
+  /// απλώς αναφέρει «τρυπάνι» μέσα στην περιγραφή. Χωρίς αυτό, οι δύο έπαιρναν
+  /// ακριβώς το ίδιο score και η σειρά έβγαινε ουσιαστικά τυχαία.
+  static const int _titleWeight = 3;
+
+  /// Σκορ σχετικότητας: όσο μεγαλύτερο, τόσο πιο ψηλά στα αποτελέσματα.
+  ///
+  /// Κάθε όρος του χρήστη μετράει μία φορά:
+  /// - στον τίτλο            → [_titleWeight] πόντοι
+  /// - αλλού (περιγραφή/tags/τοποθεσία) → 1 πόντος
+  /// Μπόνους για αγγελία ΜΕ φωτογραφία.
+  ///
+  /// Σε marketplace, αγγελία χωρίς φωτό εμπνέει λιγότερη εμπιστοσύνη και
+  /// αγνοείται. Το μπόνους είναι μικρό επίτηδες: σπάει την ισοπαλία υπέρ των
+  /// πλήρων αγγελιών, αλλά ΔΕΝ θάβει μια πιο σχετική αγγελία χωρίς φωτό.
+  static const int _photoBonus = 1;
+
+  static int relevance(ListingModel l, List<String> tokens) {
+    if (tokens.isEmpty) return 0;
+    final all = l.searchKeywords.toSet();
+    final titleWords = ListingModel.tokenize(l.title).toSet();
+    var score = 0;
+    for (final t in tokens) {
+      // Πλήρης λέξη τίτλου ή ΠΡΟΘΕΜΑ λέξης τίτλου («τρυπ» → «τρυπανι»):
+      // και τα δύο δείχνουν ότι ο όρος αφορά τον τίτλο.
+      final hitsTitle =
+          titleWords.contains(t) || titleWords.any((w) => w.startsWith(t));
+      if (hitsTitle) {
+        score += _titleWeight;
+      } else if (all.contains(t)) {
+        score += 1;
+      }
+    }
+    // Μόνο σε αγγελίες που ήδη ταιριάζουν — δεν εμφανίζει άσχετες.
+    if (score > 0 && l.imageUrls.isNotEmpty) score += _photoBonus;
+    return score;
+  }
+
   Future<List<ListingModel>> search({
     required String keyword,
     Set<String> tags = const {},
     ListingType? type,
   }) async {
-    final lowerKeyword = keyword.toLowerCase().trim();
+    final tokens = queryTokens(keyword);
+
+    // Ο χρήστης έγραψε κάτι, αλλά καμία λέξη δεν είναι αναζητήσιμη (π.χ. μόνο
+    // 1-2 χαρακτήρες). Τα searchKeywords κρατούν λέξεις >2 χαρ., οπότε τίποτα
+    // δεν θα ταίριαζε — γύρνα κενό αντί για ΟΛΕΣ τις αγγελίες.
+    if (keyword.trim().isNotEmpty && tokens.isEmpty) return [];
+
     Query<Map<String, dynamic>> q = _col.where('isActive', isEqualTo: true);
 
-    if (lowerKeyword.isNotEmpty) {
-      q = q.where('searchKeywords', arrayContains: lowerKeyword);
+    if (tokens.isNotEmpty) {
+      // OR: κάθε αγγελία που περιέχει ΕΣΤΩ ΜΙΑ από τις λέξεις.
+      //
+      // ΠΡΙΝ: `arrayContains: lowerKeyword` έψαχνε ΟΛΟ το κείμενο ως ΜΙΑ λέξη.
+      // Τα searchKeywords όμως είναι μεμονωμένες λέξεις, οπότε κάθε αναζήτηση
+      // με 2+ λέξεις («τρυπάνι bosch») επέστρεφε ΠΑΝΤΑ 0 αποτελέσματα.
+      q = q.where('searchKeywords', arrayContainsAny: tokens);
     }
     if (type != null) {
       q = q.where('type', isEqualTo: type.name);
     }
 
-    final snap = await q.limit(40).get();
+    // Μεγαλύτερο από το παλιό 40: με OR έρχονται περισσότεροι υποψήφιοι και
+    // θέλουμε αρκετούς για να έχει νόημα η ταξινόμηση κατά σχετικότητα.
+    final snap = await q.limit(60).get();
     var results = _filterVisible(snap.docs);
 
     // Multi-tag filter (OR): keep listings matching ANY selected tag.

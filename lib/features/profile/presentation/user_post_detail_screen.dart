@@ -71,8 +71,17 @@ class _UserPostDetailScreenState extends ConsumerState<UserPostDetailScreen> {
         parentCommentId: _replyToCommentId,
         parentAuthorName: _replyToAuthorName,
       );
+      if (!mounted) return; // ο χρήστης μπορεί να έφυγε όσο έστελνε
       _ctrl.clear();
       _cancelReply();
+    } catch (_) {
+      // Χωρίς catch, μια αποτυχία (offline/permission) άφηνε το σχόλιο να «χαθεί»
+      // σιωπηλά — ο χρήστης νόμιζε ότι στάλθηκε.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('common.errorGeneric'.tr())),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -495,7 +504,9 @@ class _CommentTile extends ConsumerWidget {
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Padding(
+      builder: (_) => SafeArea(
+        top: false,
+        child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -513,6 +524,7 @@ class _CommentTile extends ConsumerWidget {
               child: Text(e, style: const TextStyle(fontSize: 28)),
             );
           }).toList(),
+        ),
         ),
       ),
     );

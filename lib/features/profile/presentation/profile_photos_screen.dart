@@ -39,7 +39,10 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
       for (final file in files) {
         final storageRef = FirebaseStorage.instance.ref(
             'users/$uid/${DateTime.now().millisecondsSinceEpoch}_${newUrls.length}.jpg');
-        await storageRef.putFile(File(file.path));
+        // Ρητό contentType — το Android δεν το συμπεραίνει, και τα storage
+        // rules απαιτούν image/* (αλλιώς permission-denied).
+        await storageRef.putFile(
+            File(file.path), SettableMetadata(contentType: 'image/jpeg'));
         newUrls.add(await storageRef.getDownloadURL());
       }
 

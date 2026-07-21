@@ -99,7 +99,20 @@ class SearchNotifier extends StateNotifier<SearchState> {
           });
         }
       } else {
-        results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        // Προεπιλογή: ΣΧΕΤΙΚΟΤΗΤΑ. Όσο περισσότερες λέξεις του ερωτήματος
+        // περιέχει η αγγελία, τόσο πιο ψηλά· σε ισοβαθμία, η νεότερη πρώτη.
+        // Χωρίς όρους (π.χ. μόνο φίλτρο tag) κρατάμε την παλιά ταξινόμηση
+        // κατά ημερομηνία, ώστε να μην αλλάξει η υπάρχουσα συμπεριφορά.
+        final tokens = ListingRepository.queryTokens(query);
+        if (tokens.isEmpty) {
+          results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        } else {
+          results.sort((a, b) {
+            final byScore = ListingRepository.relevance(b, tokens)
+                .compareTo(ListingRepository.relevance(a, tokens));
+            return byScore != 0 ? byScore : b.createdAt.compareTo(a.createdAt);
+          });
+        }
       }
 
       state = state.copyWith(results: results, loading: false);

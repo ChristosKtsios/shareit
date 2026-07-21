@@ -151,6 +151,14 @@ async function completeDeal(dealId, dealData) {
  */
 async function applyRating(targetUid, rating) {
   if (!targetUid || typeof rating !== "number") return;
+  // Defense-in-depth: τα Firestore rules ήδη επιβάλλουν ακέραιο 1–5, αλλά ο
+  // server δεν εμπιστεύεται ποτέ την τιμή — αν φτάσει εκτός ορίων (π.χ. από
+  // μελλοντικό μονοπάτι ή παρακαμμένο rules deploy), την απορρίπτει αντί να
+  // εκτοξεύσει το rating του προφίλ.
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+    logger.warn(`applyRating: μη έγκυρο rating ${rating} για ${targetUid}`);
+    return;
+  }
   const userRef = db.collection("users").doc(targetUid);
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);

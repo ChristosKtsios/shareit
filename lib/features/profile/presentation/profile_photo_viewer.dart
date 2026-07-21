@@ -72,7 +72,10 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
       for (final file in files) {
         final ref = FirebaseStorage.instance.ref(
             'users/${widget.uid}/${DateTime.now().millisecondsSinceEpoch}_${newUrls.length}.jpg');
-        await ref.putFile(File(file.path));
+        // Ρητό contentType — το Android δεν το συμπεραίνει, και τα storage
+        // rules απαιτούν image/* (αλλιώς permission-denied).
+        await ref.putFile(
+            File(file.path), SettableMetadata(contentType: 'image/jpeg'));
         newUrls.add(await ref.getDownloadURL());
       }
       final updated = [..._photos, ...newUrls];
@@ -102,11 +105,10 @@ class _ProfilePhotoViewerState extends State<ProfilePhotoViewer> {
         .collection('users')
         .doc(widget.uid)
         .set({'avatarUrl': url}, SetOptions(merge: true));
+    if (!mounted) return; // ο χρήστης μπορεί να έκλεισε το viewer στο μεταξύ
     setState(() => _avatarUrl = url);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('photos.setAsProfileDone'.tr())));
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('photos.setAsProfileDone'.tr())));
   }
 
   Future<void> _deleteCurrent() async {

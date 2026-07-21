@@ -54,8 +54,14 @@
     "public": "public",
     "ignore": [
       "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "**/.DS_Store"
+    ],
+    "rewrites": [
+      {
+        "source": "/listing/**",
+        "destination": "/listing.html"
+      }
     ]
   },
   "firestore": {

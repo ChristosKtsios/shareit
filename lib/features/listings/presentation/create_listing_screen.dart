@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/location_permission_gate.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/utils/place_label.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -103,14 +104,17 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       if (mounted) {
         setState(() {
           _location = GeoPoint(pos.latitude, pos.longitude);
-          _locationLabel = label ?? 'Τρέχουσα τοποθεσία';
+          // Αποθηκεύουμε ΜΟΝΟ πραγματικό τόπο ή κενό — ποτέ κείμενο εμφάνισης
+          // (θα εμφανιζόταν στα ελληνικά σε ξενόγλωσσους και θα μόλυνε την
+          // αναζήτηση). Η μετάφραση γίνεται στην εμφάνιση, βλ. PlaceLabel.
+          _locationLabel = label ?? '';
           _locationLoading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _locationLabel = 'Δεν βρέθηκε τοποθεσία';
+          _locationLabel = '';
           _locationLoading = false;
         });
       }
@@ -130,7 +134,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     if (result != null) {
       setState(() {
         _location = GeoPoint(result.latitude, result.longitude);
-        _locationLabel = 'Επιλεγμένη τοποθεσία';
+        // Κενό μέχρι να απαντήσει το geocoding παρακάτω· η φόρμα δείχνει
+        // μεταφρασμένο placeholder μέσω PlaceLabel.display().
+        _locationLabel = '';
       });
       final label = await LocationService.reverseGeocode(
           result.latitude, result.longitude);
@@ -226,7 +232,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         try {
           final ref2 = FirebaseStorage.instance.ref(
               'listings/$uid/${DateTime.now().millisecondsSinceEpoch}_${file.name}.jpg');
-          await ref2.putFile(File(file.path));
+          // Ρητό contentType — το Android δεν το συμπεραίνει, και τα storage
+          // rules απαιτούν image/* (αλλιώς δεν ανεβαίνει καμία εικόνα αγγελίας).
+          await ref2.putFile(
+              File(file.path), SettableMetadata(contentType: 'image/jpeg'));
           final url = await ref2.getDownloadURL();
           if (mounted) setState(() => _imageUrls = [..._imageUrls, url]);
         } catch (e) {
@@ -346,7 +355,15 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     final title = _titleCtrl.text.trim();
     final desc = _descCtrl.text.trim();
 
-    final keywords = ListingModel.generateKeywords(title, desc);
+    // tags + τοποθεσία μπαίνουν κι αυτά στα keywords: ο χρήστης που γράφει το
+    // tag που βλέπει στην κάρτα («εργαλεια») ή την πόλη («Αθήνα») πρέπει να
+    // βρίσκει την αγγελία.
+    final keywords = ListingModel.generateKeywords(
+      title,
+      desc,
+      tags: _tags,
+      locationLabel: _locationLabel,
+    );
 
     String firstName = 'common.userFallback'.tr();
     String? userAvatar;
@@ -549,6 +566,22 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                   trailing: Text('${_imageUrls.length}',
                       style: const TextStyle(
                           color: AppColors.textHint, fontSize: 12))),
+              // Ήπια παρότρυνση — ΜΟΝΟ όσο δεν έχει προστεθεί φωτογραφία, ώστε
+              // να μην ενοχλεί όποιον ήδη το έκανε. Οι αγγελίες χωρίς φωτό
+              // εμπνέουν λιγότερη εμπιστοσύνη και αγνοούνται.
+              if (_imageUrls.isEmpty) ...[
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.lightbulb_outline,
+                      color: AppColors.deal, size: 15),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text('cl.photoTip'.tr(),
+                        style: const TextStyle(
+                            color: AppColors.textHint, fontSize: 11.5)),
+                  ),
+                ]),
+              ],
               const SizedBox(height: 12),
               SizedBox(
                 height: 100,
@@ -633,7 +666,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                             _locationLoading
                                 ? 'cl.locating'.tr()
                                 : (_location != null
-                                    ? _locationLabel
+                                    ? PlaceLabel.display(_locationLabel)
                                     : 'cl.pickOnMap'.tr()),
                             style: const TextStyle(
                                 color: AppColors.textPrimary,

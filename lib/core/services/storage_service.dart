@@ -8,9 +8,16 @@ class StorageService {
 
   static Future<String> uploadImage(File file, String folder) async {
     final id  = _uuid.v4();
-    final ext = file.path.split('.').last;
+    final ext = file.path.split('.').last.toLowerCase();
     final ref = _storage.ref('$folder/$id.$ext');
-    await ref.putFile(file);
+    // Ρητό contentType image/*: τα storage rules το απαιτούν. Χωρίς αυτό, μια
+    // κατάληξη που δεν αναγνωρίζεται αυτόματα (π.χ. heic) θα απορριπτόταν.
+    final subtype = (ext == 'png') ? 'png'
+        : (ext == 'webp') ? 'webp'
+        : (ext == 'heic') ? 'heic'
+        : (ext == 'gif') ? 'gif'
+        : 'jpeg';
+    await ref.putFile(file, SettableMetadata(contentType: 'image/$subtype'));
     return await ref.getDownloadURL();
   }
 

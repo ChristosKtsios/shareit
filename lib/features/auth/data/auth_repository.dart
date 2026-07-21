@@ -243,7 +243,11 @@ class AuthRepository {
     if (profilePhoto != null) {
       try {
         final ref = _storage.ref('users/$uid/profile.jpg');
-        await ref.putFile(profilePhoto);
+        // ΡΗΤΟ contentType: στο Android το `putFile` ΔΕΝ το συμπεραίνει από την
+        // κατάληξη — βάζει `application/octet-stream`, που τα storage rules
+        // απορρίπτουν (απαιτούν image/*). Χωρίς αυτό, δεν ανεβαίνει η φωτο.
+        await ref.putFile(
+            profilePhoto, SettableMetadata(contentType: 'image/jpeg'));
         final photoUrl = await ref.getDownloadURL();
         await _db.collection('users').doc(uid).update({
           'photoUrl': photoUrl,

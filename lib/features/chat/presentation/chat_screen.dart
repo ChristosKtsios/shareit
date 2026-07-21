@@ -29,6 +29,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Timer? _typingTimer;
   bool _isTyping = false;
   final _scrollCtrl = ScrollController();
+
+  /// True όταν ο χρήστης έχει ανέβει να διαβάσει παλιότερα μηνύματα.
+  /// Τότε (α) εμφανίζεται το κουμπί «κατέβα κάτω» και (β) ΔΕΝ τον τραβάμε
+  /// αυτόματα στο τέλος όταν έρθει νέο μήνυμα.
+  bool _showJumpToBottom = false;
+
+  /// Πόσα pixels από το τέλος θεωρούμε ότι είναι «στο κάτω μέρος».
+  static const _atBottomThreshold = 120.0;
+
+  bool get _isAtBottom {
+    if (!_scrollCtrl.hasClients) return true;
+    final pos = _scrollCtrl.position;
+    return pos.maxScrollExtent - pos.pixels <= _atBottomThreshold;
+  }
+
+  void _onScroll() {
+    final show = !_isAtBottom;
+    if (show != _showJumpToBottom) setState(() => _showJumpToBottom = show);
+  }
+
+  void _scrollToBottom({bool animate = true}) {
+    if (!_scrollCtrl.hasClients) return;
+    final target = _scrollCtrl.position.maxScrollExtent;
+    if (animate) {
+      _scrollCtrl.animateTo(target,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+    } else {
+      _scrollCtrl.jumpTo(target);
+    }
+  }
   final _db = FirebaseFirestore.instance;
 
   Map<String, dynamic>? _chatData;
@@ -49,6 +79,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _myUid = ref.read(currentUserProvider)?.uid;
+    _scrollCtrl.addListener(_onScroll);
     _loadChatData();
     SafetyTips.chatBannerDismissed().then((dismissed) {
       if (mounted && !dismissed) setState(() => _showSafety = true);
@@ -136,15 +167,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       text: text,
       replyTo: replyTo,
     );
+    // Όταν στέλνεις εσύ, πάντα κατεβαίνουμε στο δικό σου μήνυμα.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return; // μην αγγίζεις τον _scrollCtrl μετά το dispose
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
+      _scrollToBottom();
     });
   }
 
@@ -190,51 +216,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   /// Dialog επεξεργασίας δικού μου μηνύματος κειμένου.
   Future<void> _editMessage(String messageId, String currentText) async {
-    final ctrl = TextEditingController(text: currentText);
-    try {
-      final newText = await showDialog<String>(
+    final newText = await showDialog<String>(
       context: context,
-      builder: (dCtx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('chatx.editMessage'.tr(),
-            style: const TextStyle(color: AppColors.textPrimary)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLines: 5,
-          minLines: 1,
-          style: const TextStyle(color: AppColors.textPrimary),
-          decoration: InputDecoration(hintText: 'chatx.messageText'.tr()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx),
-            child: Text('common.cancel'.tr(),
-                style: const TextStyle(color: AppColors.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx, ctrl.text.trim()),
-            child: Text('common.save'.tr(),
-                style: const TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
+      builder: (_) => _EditMessageDialog(initialText: currentText),
     );
-      if (newText == null || newText.isEmpty || newText == currentText) return;
-      try {
-        await ChatRepository().editMessage(
-          chatId: widget.chatId,
-          messageId: messageId,
-          text: newText,
-        );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('${'common.error'.tr()}: $e')));
-        }
+    if (newText == null || newText.isEmpty || newText == currentText) return;
+    try {
+      await ChatRepository().editMessage(
+        chatId: widget.chatId,
+        messageId: messageId,
+        text: newText,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${'common.error'.tr()}: $e')));
       }
-    } finally {
-      ctrl.dispose();
     }
   }
 
@@ -595,11 +592,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     child: CircularProgressIndicator(color: AppColors.primary));
               }
               final docs = snap.data!.docs;
+              // Auto-scroll ΜΟΝΟ αν ο χρήστης είναι ήδη στο κάτω μέρος.
+              //
+              // ΠΡΙΝ γινόταν jumpTo σε ΚΑΘΕ ενημέρωση του stream: αν διάβαζες
+              // παλιότερα μηνύματα κι έφτανε νέο (ή άλλαζε ένα read receipt),
+              // σε πετούσε βίαια στο τέλος και έχανες τη θέση σου.
+              final wasAtBottom = _isAtBottom;
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return; // μην αγγίζεις τον _scrollCtrl μετά το dispose
-                if (_scrollCtrl.hasClients) {
-                  _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
-                }
+                if (wasAtBottom) _scrollToBottom(animate: false);
               });
               if (docs.isEmpty) {
                 return Center(
@@ -607,7 +608,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       style: const TextStyle(color: AppColors.textHint)),
                 );
               }
-              return ListView.builder(
+              return _withJumpToBottom(ListView.builder(
                 controller: _scrollCtrl,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -672,7 +673,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         : null,
                   );
                 },
-              );
+              ));
             },
           ),
         ),
@@ -695,6 +696,42 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ]),
     );
+  }
+
+  /// Τυλίγει τη λίστα μηνυμάτων και εμφανίζει το κουμπί «κατέβα στα πρόσφατα»
+  /// όταν ο χρήστης έχει ανέβει σε παλιότερα μηνύματα.
+  Widget _withJumpToBottom(Widget list) {
+    return Stack(children: [
+      list,
+      Positioned(
+        right: 12,
+        bottom: 12,
+        child: AnimatedOpacity(
+          opacity: _showJumpToBottom ? 1 : 0,
+          duration: const Duration(milliseconds: 150),
+          // IgnorePointer όταν είναι αόρατο: αλλιώς θα «έπιανε» πατήματα
+          // πάνω από το τελευταίο μήνυμα ενώ δεν φαίνεται.
+          child: IgnorePointer(
+            ignoring: !_showJumpToBottom,
+            child: Material(
+              color: AppColors.surface,
+              elevation: 4,
+              shape: const CircleBorder(
+                  side: BorderSide(color: AppColors.border, width: 0.5)),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _scrollToBottom,
+                child: const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: Icon(Icons.keyboard_arrow_down,
+                      color: AppColors.textPrimary, size: 26),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ]);
   }
 
   Widget _buildReplyBanner() {
@@ -850,6 +887,66 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
           ]),
+      ],
+    );
+  }
+}
+
+/// Dialog επεξεργασίας μηνύματος.
+///
+/// ΚΡΙΣΙΜΟ — ο TextEditingController ζει ΜΕΣΑ στο dialog, όχι έξω από αυτό.
+/// Πριν, ο controller φτιαχνόταν στο `_editMessage` και γινόταν `dispose()` σε
+/// `finally`, αμέσως μόλις λυνόταν το future του `showDialog`. Όμως το future
+/// λύνεται τη στιγμή του `Navigator.pop` — ΟΧΙ όταν τελειώσει το exit
+/// animation. Το TextField ήταν ακόμα ζωντανό και έπεφτε πάνω σε disposed
+/// controller κατά το ξεμοντάρισμα· η εξαίρεση έκοβε το unmount στη μέση και
+/// άφηνε κρεμασμένους dependents → «'_dependents.isEmpty': is not true».
+/// Έτσι, το dispose γίνεται στο State του dialog, δηλαδή αφού φύγει όντως από
+/// το δέντρο.
+class _EditMessageDialog extends StatefulWidget {
+  final String initialText;
+  const _EditMessageDialog({required this.initialText});
+
+  @override
+  State<_EditMessageDialog> createState() => _EditMessageDialogState();
+}
+
+class _EditMessageDialogState extends State<_EditMessageDialog> {
+  late final TextEditingController _ctrl =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('chatx.editMessage'.tr(),
+          style: const TextStyle(color: AppColors.textPrimary)),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        maxLines: 5,
+        minLines: 1,
+        maxLength: 2000,
+        style: const TextStyle(color: AppColors.textPrimary),
+        decoration: InputDecoration(hintText: 'chatx.messageText'.tr()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('common.cancel'.tr(),
+              style: const TextStyle(color: AppColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text.trim()),
+          child: Text('common.save'.tr(),
+              style: const TextStyle(color: AppColors.primary)),
+        ),
       ],
     );
   }

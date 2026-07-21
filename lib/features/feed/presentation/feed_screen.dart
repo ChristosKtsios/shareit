@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/providers/blocked_users_provider.dart';
 import '../../../core/widgets/listing_card.dart';
 import '../../../core/widgets/shimmer_loader.dart';
 import '../../listings/data/listing_model.dart';
@@ -41,7 +42,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(feedProvider);
     final notifier = ref.read(feedProvider.notifier);
-    final listings = state.filtered;
+    // Οι αγγελίες μπλοκαρισμένων χρηστών δεν εμφανίζονται στο feed.
+    final blocked = ref.blockedUids;
+    final listings = blocked.isEmpty
+        ? state.filtered
+        : state.filtered.where((l) => !blocked.contains(l.userId)).toList();
 
     return Scaffold(
       appBar: AppBar(

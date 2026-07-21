@@ -134,9 +134,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 Text(
                   'fp.chooseMethod'.tr(),
                   style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 14,
-                      height: 1.5),
+                      color: AppColors.textPrimary, fontSize: 14, height: 1.5),
                 ),
                 const SizedBox(height: 16),
                 // Toggle Email / Phone
@@ -168,7 +166,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       labelText: 'Email',
-                      labelStyle: const TextStyle(color: AppColors.textSecondary),
+                      labelStyle:
+                          const TextStyle(color: AppColors.textSecondary),
                       filled: true,
                       fillColor: AppColors.surfaceVariant,
                       border: OutlineInputBorder(
@@ -186,7 +185,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     decoration: InputDecoration(
                       labelText: 'fp.phone'.tr(),
                       hintText: '6912345678',
-                      labelStyle: const TextStyle(color: AppColors.textSecondary),
+                      labelStyle:
+                          const TextStyle(color: AppColors.textSecondary),
                       hintStyle: const TextStyle(color: AppColors.textHint),
                       filled: true,
                       fillColor: AppColors.surfaceVariant,
@@ -228,7 +228,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             child: CircularProgressIndicator(
                                 color: AppColors.background, strokeWidth: 2))
                         : Text('fp.send'.tr(),
-                            style: TextStyle(
+                            style: const TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 14)),
                   ),
                 ),
@@ -247,7 +247,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         color: AppColors.offer, size: 48),
                     const SizedBox(height: 12),
                     Text('fp.emailSent'.tr(),
-                        style: TextStyle(
+                        style: const TextStyle(
                             color: AppColors.textPrimary,
                             fontWeight: FontWeight.w700,
                             fontSize: 16)),
@@ -264,7 +264,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     TextButton(
                       onPressed: () => context.go('/login'),
                       child: Text('fp.backToLogin'.tr(),
-                          style: TextStyle(color: AppColors.primary)),
+                          style: const TextStyle(color: AppColors.primary)),
                     ),
                   ]),
                 ),
@@ -307,14 +307,14 @@ class _MethodChip extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon,
-                color: selected ? AppColors.background : AppColors.textSecondary,
+                color:
+                    selected ? AppColors.background : AppColors.textSecondary,
                 size: 18),
             const SizedBox(width: 6),
             Text(label,
                 style: TextStyle(
-                    color: selected
-                        ? AppColors.background
-                        : AppColors.textPrimary,
+                    color:
+                        selected ? AppColors.background : AppColors.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w700)),
           ],

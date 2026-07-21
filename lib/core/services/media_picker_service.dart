@@ -136,7 +136,10 @@ class MediaPickerService {
     final ext = type == MediaType.image ? 'jpg' : 'mp4';
     final fileName = '${const Uuid().v4()}.$ext';
     final ref = _storage.ref().child('$folder/$fileName');
-    await ref.putFile(file);
+    // Ρητό contentType: τα storage rules απαιτούν image/* ή video/*. Δεν
+    // βασιζόμαστε στην αυτόματη ανίχνευση, ώστε το upload να μη μπλοκάρεται ποτέ.
+    final contentType = type == MediaType.image ? 'image/jpeg' : 'video/mp4';
+    await ref.putFile(file, SettableMetadata(contentType: contentType));
     return await ref.getDownloadURL();
   }
 }

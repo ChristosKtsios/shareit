@@ -1,9 +1,21 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!--
+      Αφαίρεση των READ_MEDIA_IMAGES / READ_MEDIA_VIDEO που «κληρονομεί» το app
+      από το image_picker. Δεν τις χρειαζόμαστε: η επιλογή φωτο/βίντεο γίνεται
+      μέσω του Android Photo Picker, που ΔΕΝ απαιτεί άδεια. Έτσι δεν χρειάζεται
+      καμία δικαιολόγηση στο Play (Photo & Video Permissions policy).
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove"/>
 
     <application
         android:label="Share It"
@@ -40,15 +52,60 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!--
+              App Links: ένα link https://shareit-6cfa0.web.app/listing/<id>
+              ανοίγει κατευθείαν την εφαρμογή στη σωστή αγγελία (το go_router
+              χειρίζεται το /listing/:id). autoVerify → χωρίς «άνοιγμα με;»
+              διάλογο, ΕΦΟΣΟΝ υπάρχει το /.well-known/assetlinks.json στο domain
+              με το SHA-256 του Play App Signing (βλ. public/.well-known/).
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                    android:host="shareit-6cfa0.web.app"
+                    android:pathPrefix="/listing"/>
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>
+        <!-- Επιτρέπει στο go_router να δρομολογεί εισερχόμενα deep links
+             (App Links) στη σωστή διαδρομή, π.χ. /listing/<id>. -->
+        <meta-data
+            android:name="flutter_deeplinking_enabled"
+            android:value="true"/>
     </application>
+    <!--
+      Package visibility (Android 11+ / targetSdk 30+).
+      Χωρίς αυτές τις δηλώσεις το canLaunchUrl() επιστρέφει ΠΑΝΤΑ false, οπότε
+      τα links «Όροι Χρήσης» / «Πολιτική Απορρήτου» στην εγγραφή και στο Google
+      Sign-In ΔΕΝ άνοιγαν τίποτα, και το κουμπί υποστήριξης (mailto:) ήταν νεκρό.
+    -->
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Browser: πολιτική απορρήτου, όροι χρήσης, διαγραφή λογαριασμού -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+        <!-- Email client: κουμπί υποστήριξης -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
+        <!-- Χάρτες: «Άνοιγμα στους Χάρτες» από την αγγελία -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
         </intent>
     </queries>
 </manifest>

@@ -36,6 +36,33 @@ await check("Μετά από OTP, δηλώνεται επαληθευμένος"
 await check("Χωρίς OTP, άλλες αλλαγές προφίλ δουλεύουν κανονικά", () =>
   assertSucceeds(updateDoc(doc(noOtp, "users", "u2"), { firstName: "Νέο όνομα" })));
 
+// ── ΑΝΤΙ-LOCKOUT ────────────────────────────────────────────────────────────
+// Ο χρήστης έχει ΗΔΗ phoneVerified:true στο doc του, αλλά το token του (για
+// οποιονδήποτε λόγο) ΔΕΝ έχει το claim. Κάθε άσχετη αλλαγή στο προφίλ του
+// ΠΡΕΠΕΙ να δουλεύει — αλλιώς κλειδώνεται μόνιμα έξω από το προφίλ του.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "users", "u4"),
+    { uid: "u4", firstName: "V", phoneVerified: true });
+});
+const verifiedNoClaim = env.authenticatedContext("u4").firestore();
+
+await check("Ήδη επαληθευμένος (χωρίς claim) αλλάζει όνομα — ΔΕΝ κλειδώνεται", () =>
+  assertSucceeds(updateDoc(doc(verifiedNoClaim, "users", "u4"),
+    { firstName: "Άλλο όνομα" })));
+await check("Ήδη επαληθευμένος (χωρίς claim) μπλοκάρει χρήστη — ΔΕΝ κλειδώνεται", () =>
+  assertSucceeds(updateDoc(doc(verifiedNoClaim, "users", "u4"),
+    { blockedUids: ["x"] })));
+// Η ασφάλεια κρατάει: η ΜΕΤΑΒΑΣΗ false → true χωρίς claim απορρίπτεται.
+// (Το να ξαναγράψεις `true` πάνω σε ήδη `true` δεν αλλάζει τιμή — no-op, ακίνδυνο.)
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "users", "u5"),
+    { uid: "u5", firstName: "N", phoneVerified: false });
+});
+const notVerified = env.authenticatedContext("u5").firestore();
+await check("Μετάβαση false→true ΧΩΡΙΣ claim απορρίπτεται (ασφάλεια κρατάει)", () =>
+  assertFails(updateDoc(doc(notVerified, "users", "u5"),
+    { phoneVerified: true, firstName: "Χ" })));
+
 console.log(`\nΣΥΝΟΛΟ: ${pass} πέρασαν, ${fail} απέτυχαν\n`);
 await env.cleanup();
 process.exit(fail > 0 ? 1 : 0);
