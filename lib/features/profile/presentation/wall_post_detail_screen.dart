@@ -434,7 +434,10 @@ class _WallPostDetailScreenState extends ConsumerState<WallPostDetailScreen> {
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
                                 child: Image.network(_pendingImageUrl!,
-                                    width: 64, height: 64, fit: BoxFit.cover),
+                                    width: 64, height: 64, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textHint)),
                               ),
                               Positioned(
                                 top: -6,

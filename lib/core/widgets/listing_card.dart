@@ -111,7 +111,10 @@ class ListingCard extends StatelessWidget {
                     itemBuilder: (_, i) => ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.network(listing.imageUrls[i],
-                            width: 60, height: 60, fit: BoxFit.cover)),
+                            width: 60, height: 60, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textHint))),
                   )),
             ],
             const SizedBox(height: 10),

@@ -37,6 +37,42 @@ const words = (text, doFold) => [...new Set(
 )];
 
 // --- ΚΑΤΟΠΤΡΟ του ListingModel._prefixes (Dart) ---
+// --- ΚΑΤΟΠΤΡΟ του GreekText.greeklishVariants (Dart) ---
+// ΔΥΟ παραλλαγές: τα greeklish δεν γράφονται με έναν τρόπο.
+//   Α «φωνητική»: μπ→b,  ντ→d,  χ→ch, υ→y, ω→o, η→i   («paichnidi», «bala»)
+//   Β «οπτική»:   μπ→mp, ντ→nt, χ→x,  υ→i, ω→w, η→h   («paixnidi», «mpala»)
+const DI_A = {
+  'ου': 'ou', 'αι': 'ai', 'ει': 'ei', 'οι': 'oi', 'αυ': 'af', 'ευ': 'ef',
+  'γγ': 'ng', 'γκ': 'gk', 'μπ': 'b', 'ντ': 'd', 'τσ': 'ts', 'τζ': 'tz',
+};
+const LE_A = {
+  'α': 'a', 'β': 'v', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'i',
+  'θ': 'th', 'ι': 'i', 'κ': 'k', 'λ': 'l', 'μ': 'm', 'ν': 'n', 'ξ': 'x',
+  'ο': 'o', 'π': 'p', 'ρ': 'r', 'σ': 's', 'τ': 't', 'υ': 'y', 'φ': 'f',
+  'χ': 'ch', 'ψ': 'ps', 'ω': 'o',
+};
+const DI_B = {
+  'ου': 'ou', 'γγ': 'gg', 'γκ': 'gk', 'μπ': 'mp', 'ντ': 'nt',
+  'τσ': 'ts', 'τζ': 'tz',
+};
+const LE_B = {
+  'α': 'a', 'β': 'b', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'h',
+  'θ': 'th', 'ι': 'i', 'κ': 'k', 'λ': 'l', 'μ': 'm', 'ν': 'n', 'ξ': 'ks',
+  'ο': 'o', 'π': 'p', 'ρ': 'r', 'σ': 's', 'τ': 't', 'υ': 'i', 'φ': 'f',
+  'χ': 'x', 'ψ': 'ps', 'ω': 'w',
+};
+const HAS_GREEK = /[α-ωΑ-Ωά-ώΆ-Ώ]/;
+const mapGl = (s, di, le) => {
+  let t = fold(s);
+  for (const [k, v] of Object.entries(di)) t = t.split(k).join(v);
+  return t.split('').map((c) => le[c] ?? c).join('');
+};
+const greeklishVariants = (s) => {
+  if (!HAS_GREEK.test(s)) return [];
+  return [...new Set([mapGl(s, DI_A, LE_A), mapGl(s, DI_B, LE_B)])]
+    .filter((w) => w.length >= 3);
+};
+
 const MIN_PREFIX = 3;
 const prefixes = (w) => {
   const out = [];
@@ -50,8 +86,17 @@ const prefixes = (w) => {
 // θα σπάσει η αναζήτηση σε όποιον δεν έχει ενημερωθεί.
 // Προθέματα ΜΟΝΟ από τον τίτλο (βλ. σχόλιο στο Dart).
 const tokenize = (text, title = '') => {
-  const out = new Set([...words(text, true), ...words(text, false)]);
-  for (const w of words(title, true)) for (const p of prefixes(w)) out.add(p);
+  const folded = words(text, true);
+  const out = new Set([...folded, ...words(text, false)]);
+  // GREEKLISH: «μικρόφωνο» → «mikrofono»/«mikrofwno», ώστε η αναζήτηση με
+  // λατινικούς χαρακτήρες να βρίσκει ελληνικές αγγελίες.
+  for (const w of folded) for (const gl of greeklishVariants(w)) out.add(gl);
+  for (const w of words(title, true)) {
+    for (const p of prefixes(w)) out.add(p);
+    for (const gl of greeklishVariants(w)) {
+      if (gl.length >= MIN_PREFIX) for (const p of prefixes(gl)) out.add(p);
+    }
+  }
   return [...out];
 };
 

@@ -599,7 +599,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: Image.network(_imageUrls[i],
-                            width: 100, height: 100, fit: BoxFit.cover),
+                            width: 100, height: 100, fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textHint)),
                       ),
                       Positioned(
                           top: 4,

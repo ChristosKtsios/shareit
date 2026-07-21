@@ -103,18 +103,26 @@ class ListingModel {
     String locationLabel = '',
   }) {
     final text = '$title $desc $locationLabel ${tags.join(' ')}';
+    final folded = _words(text, fold: true);
     final out = <String>{
-      ..._words(text, fold: true),
+      ...folded,
       ..._words(text, fold: false),
+      // GREEKLISH: αποθηκεύουμε και τη λατινική μεταγραφή κάθε ελληνικής
+      // λέξης, ώστε το «mikrofono» να βρίσκει το «μικρόφωνο». Η κατεύθυνση
+      // ελληνικά→greeklish είναι μονοσήμαντη· η αντίστροφη δεν είναι.
+      ...folded.expand(GreekText.greeklishVariants),
     };
 
-    // Προθέματα ΜΟΝΟ από τον τίτλο (και άτονα).
+    // Προθέματα ΜΟΝΟ από τον τίτλο (άτονα ΚΑΙ greeklish).
     //
     // Γιατί όχι από την περιγραφή: μια περιγραφή 100 λέξεων θα παρήγαγε
     // εκατοντάδες προθέματα ανά αγγελία — τεράστιο κόστος αποθήκευσης/εγγραφών
     // για ελάχιστο όφελος. Ο κόσμος ψάχνει με λέξεις του ΤΙΤΛΟΥ.
     for (final w in _words(title, fold: true)) {
       out.addAll(_prefixes(w));
+      for (final gl in GreekText.greeklishVariants(w)) {
+        if (gl.length >= minPrefixLength) out.addAll(_prefixes(gl));
+      }
     }
     return out.toList();
   }

@@ -246,7 +246,10 @@ class _ProfilePhotosScreenState extends ConsumerState<ProfilePhotosScreen> {
                                 child: Image.network(url,
                                     width: double.infinity,
                                     height: double.infinity,
-                                    fit: BoxFit.cover),
+                                    fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textHint)),
                               ),
                               if (isProfile)
                                 Positioned(
