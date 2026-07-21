@@ -548,7 +548,11 @@
     "waiting": "Pendiente",
     "requestSent": "Solicitud enviada. Esperando aceptación.",
     "accept": "Aceptar",
-    "addFriend": "Amigo"
+    "addFriend": "Amigo",
+    "cancelRequestTitle": "¿Cancelar solicitud?",
+    "cancelRequestBody": "Tu solicitud de amistad será retirada. Puedes enviarla de nuevo cuando quieras.",
+    "cancelRequest": "Cancelar solicitud",
+    "keepRequest": "No, mantenerla"
   },
   "editProfile": {
     "changeField": "Cambiar {field}",

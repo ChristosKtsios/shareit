@@ -421,6 +421,32 @@ await check("ΞΕΝΟΣ δεν σβήνει το σχόλιό μου", async () 
     { isDeleted: true, text: "" }));
 });
 
+console.log("\n↩️  ΑΚΥΡΩΣΗ ΑΙΤΗΜΑΤΟΣ ΦΙΛΙΑΣ");
+
+await check("Ο ΑΠΟΣΤΟΛΕΑΣ ακυρώνει το δικό του pending αίτημα", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "friendRequests", "frCancel"),
+      { fromUid: ALICE, toUid: BOB, status: "pending" });
+  });
+  await assertSucceeds(deleteDoc(doc(alice, "friendRequests", "frCancel")));
+});
+
+await check("Ο ΠΑΡΑΛΗΠΤΗΣ μπορεί επίσης να το απορρίψει/σβήσει", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "friendRequests", "frReject"),
+      { fromUid: ALICE, toUid: BOB, status: "pending" });
+  });
+  await assertSucceeds(deleteDoc(doc(bob, "friendRequests", "frReject")));
+});
+
+await check("ΤΡΙΤΟΣ ΔΕΝ σβήνει ξένο αίτημα", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "friendRequests", "frOther"),
+      { fromUid: ALICE, toUid: BOB, status: "pending" });
+  });
+  await assertFails(deleteDoc(doc(mallory, "friendRequests", "frOther")));
+});
+
 console.log(results.join("\n"));
 console.log(`\n${"─".repeat(60)}\nΣΥΝΟΛΟ: ${pass} πέρασαν, ${fail} απέτυχαν\n`);
 await env.cleanup();

@@ -548,7 +548,11 @@
     "waiting": "Pending",
     "requestSent": "Request sent. Waiting for acceptance.",
     "accept": "Accept",
-    "addFriend": "Add friend"
+    "addFriend": "Add friend",
+    "cancelRequestTitle": "Cancel request?",
+    "cancelRequestBody": "Your friend request will be withdrawn. You can send it again any time.",
+    "cancelRequest": "Cancel request",
+    "keepRequest": "No, keep it"
   },
   "editProfile": {
     "changeField": "Change {field}",

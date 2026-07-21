@@ -548,7 +548,11 @@
     "waiting": "Αναμονή",
     "requestSent": "Το αίτημα στάλθηκε. Περιμένει αποδοχή.",
     "accept": "Αποδοχή",
-    "addFriend": "Φίλος"
+    "addFriend": "Φίλος",
+    "cancelRequestTitle": "Ακύρωση αιτήματος;",
+    "cancelRequestBody": "Το αίτημα φιλίας θα αποσυρθεί. Μπορείς να ξαναστείλεις όποτε θέλεις.",
+    "cancelRequest": "Ακύρωση αιτήματος",
+    "keepRequest": "Όχι, άσ’ το"
   },
   "editProfile": {
     "changeField": "Αλλαγή {field}",

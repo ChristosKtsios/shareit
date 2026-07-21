@@ -40,6 +40,31 @@ class FriendsRepository {
     });
   }
 
+  /// Ακύρωση αιτήματος που **εσύ** έστειλες, όσο είναι ακόμα σε αναμονή.
+  ///
+  /// Το σβήνει τελείως (αντί για `status: cancelled`) ώστε να μπορείς να
+  /// ξαναστείλεις αργότερα — το [sendRequest] μπλοκάρει αν βρει pending αίτημα.
+  /// Τα rules επιτρέπουν διαγραφή μόνο στον αποστολέα ή τον παραλήπτη.
+  Future<void> cancelRequest({
+    required String fromUid,
+    required String toUid,
+  }) async {
+    final snap = await _db
+        .collection('friendRequests')
+        .where('fromUid', isEqualTo: fromUid)
+        .where('toUid', isEqualTo: toUid)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    for (final doc in snap.docs) {
+      try {
+        await doc.reference.delete();
+      } catch (e) {
+        debugPrint('❌ cancelRequest ${doc.id}: $e');
+      }
+    }
+  }
+
   /// Αποδοχή αιτήματος.
   ///
   /// Ο client γράφει ΜΟΝΟ το `status: accepted` στο αίτημα (μόνο ο παραλήπτης

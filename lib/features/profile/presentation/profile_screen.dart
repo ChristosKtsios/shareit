@@ -809,6 +809,50 @@ class _FriendButtonState extends State<_FriendButton> {
     }
   }
 
+  /// Ακύρωση αιτήματος φιλίας που έστειλα, όσο είναι σε αναμονή.
+  Future<void> _confirmCancelRequest() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('pf.cancelRequestTitle'.tr(),
+            style: const TextStyle(
+                color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+        content: Text('pf.cancelRequestBody'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('pf.keepRequest'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('pf.cancelRequest'.tr(),
+                style: const TextStyle(
+                    color: AppColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await FriendsRepository().cancelRequest(
+        fromUid: widget.currentUid,
+        toUid: widget.targetUid,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('pf.errorWith'.tr(namedArgs: {'e': '$e'}))));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _acceptFromHere() async {
     setState(() => _busy = true);
     try {
@@ -907,18 +951,14 @@ class _FriendButtonState extends State<_FriendButton> {
               },
             );
           case 'sent':
+            // Το αίτημα είναι σε αναμονή — ο αποστολέας μπορεί να το πάρει
+            // πίσω. Πριν, το κουμπί έβγαζε απλώς ένα μήνυμα «στάλθηκε» και δεν
+            // υπήρχε κανένας τρόπος ακύρωσης.
             return _btn(
               label: 'pf.waiting'.tr(),
               icon: Icons.hourglass_top_outlined,
               outlined: true,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('pf.requestSent'.tr()),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              },
+              onTap: _confirmCancelRequest,
             );
           case 'received':
             return _btn(
