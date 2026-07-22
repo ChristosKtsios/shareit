@@ -7,7 +7,8 @@
     "confirm": "Confirm",
     "errorGeneric": "Something went wrong. Please try again.",
     "errorLocation": "Access to your location is required.",
-    "userFallback": "User"
+    "userFallback": "User",
+    "noConnection": "No internet connection."
   },
   "language": {
     "title": "Choose language",
@@ -77,7 +78,10 @@
     "confirmPassword": "Confirm password",
     "optionalName": "First name (optional)",
     "optionalLastName": "Last name (optional)",
-    "optionalPhone": "Mobile — optional, for verification"
+    "optionalPhone": "Mobile — optional, for verification",
+    "emailInUse": "An account with this email already exists. Try logging in.",
+    "weakPassword": "That password is too weak.",
+    "signupDisabled": "Sign-up is temporarily disabled."
   },
   "otp": {
     "givePhone": "Enter a phone number.",

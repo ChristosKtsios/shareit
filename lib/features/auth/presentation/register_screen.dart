@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -96,6 +97,28 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             lastName: lastName,
           );
       if (mounted) context.go('/map');
+    } on FirebaseAuthException catch (e) {
+      // Συγκεκριμένα μηνύματα αντί για ένα γενικό «κάτι πήγε στραβά». Χωρίς
+      // αυτά, ο χρήστης (ή ο reviewer του Play) που δοκιμάζει ξανά το ίδιο email
+      // έβλεπε αόριστο σφάλμα και δεν καταλάβαινε ότι πρέπει να συνδεθεί.
+      setState(() {
+        switch (e.code) {
+          case 'email-already-in-use':
+            _error = 'reg.emailInUse'.tr();
+          case 'invalid-email':
+            _error = 'reg.giveValidEmail'.tr();
+          case 'weak-password':
+            _error = 'reg.weakPassword'.tr();
+          case 'network-request-failed':
+            _error = 'common.noConnection'.tr();
+          case 'too-many-requests':
+            _error = 'authx.tooManyAttempts'.tr();
+          case 'operation-not-allowed':
+            _error = 'reg.signupDisabled'.tr();
+          default:
+            _error = AppStrings.errorGeneric;
+        }
+      });
     } catch (e) {
       setState(() => _error = AppStrings.errorGeneric);
     } finally {

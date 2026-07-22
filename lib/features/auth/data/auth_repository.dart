@@ -129,28 +129,49 @@ class AuthRepository {
     }
     final uid = user.uid;
 
-    // ΠΡΟΣΟΧΗ: το email ΔΕΝ μπαίνει στο δημόσιο doc — το διαβάζουν όλοι.
-    await _db.collection('users').doc(uid).set({
-      'uid': uid,
-      'firstName': firstName.trim(),
-      'lastName': lastName.trim(),
-      'isVerified': true,
-      'phoneVerified': false,
-      'rating': 0.0,
-      'ratingCount': 0,
-      'blockedUids': <String>[],
-      'savedListingIds': <String>[],
-      'friends': <String>[],
-      'dealsCount': 0,
-      'isPrivateProfile': false,
-      'showOnlineStatus': true,
-      'ageVerified': true,
-      'termsAcceptedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    // ROLLBACK: αν οτιδήποτε αποτύχει ΜΕΤΑ τη δημιουργία του Auth λογαριασμού
+    // (π.χ. πέσει το δίκτυο στο Firestore write), σβήνουμε τον λογαριασμό.
+    //
+    // Χωρίς αυτό έμενε ΟΡΦΑΝΟΣ χρήστης: το Auth account υπήρχε αλλά χωρίς
+    // users/{uid} doc. Το `authStateChanges` τον θεωρούσε συνδεδεμένο και ο
+    // router τον πήγαινε στον χάρτη· το ProfileGate επιστρέφει `none` όταν
+    // λείπει το doc, άρα ΔΕΝ τον έστελνε ποτέ να συμπληρώσει προφίλ. Ο χρήστης
+    // έμενε με μισοφτιαγμένο λογαριασμό, και η επανεγγραφή έσκαγε με
+    // `email-already-in-use` — αδιέξοδο χωρίς διαγραφή από τον server.
+    try {
+      // ΠΡΟΣΟΧΗ: το email ΔΕΝ μπαίνει στο δημόσιο doc — το διαβάζουν όλοι.
+      await _db.collection('users').doc(uid).set({
+        'uid': uid,
+        'firstName': firstName.trim(),
+        'lastName': lastName.trim(),
+        'isVerified': true,
+        'phoneVerified': false,
+        'rating': 0.0,
+        'ratingCount': 0,
+        'blockedUids': <String>[],
+        'savedListingIds': <String>[],
+        'friends': <String>[],
+        'dealsCount': 0,
+        'isPrivateProfile': false,
+        'showOnlineStatus': true,
+        'ageVerified': true,
+        'termsAcceptedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-    await UserRepository.privateRef(uid)
-        .set({'email': email.trim()}, SetOptions(merge: true));
+      await UserRepository.privateRef(uid)
+          .set({'email': email.trim()}, SetOptions(merge: true));
+    } catch (_) {
+      // Καθάρισε ώστε ο χρήστης να μπορεί να ξαναδοκιμάσει με το ίδιο email.
+      try {
+        await user.delete();
+      } catch (_) {
+        // Αν δεν σβήνεται (π.χ. requires-recent-login), τουλάχιστον αποσύνδεση
+        // ώστε να μη μείνει «μέσα» σε χαλασμένη κατάσταση.
+        await _auth.signOut();
+      }
+      rethrow;
+    }
 
     try {
       await user.updateDisplayName(

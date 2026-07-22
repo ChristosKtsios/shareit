@@ -7,7 +7,8 @@
     "confirm": "Confirmar",
     "errorGeneric": "Algo salió mal. Inténtalo de nuevo.",
     "errorLocation": "Se requiere acceso a tu ubicación.",
-    "userFallback": "Usuario"
+    "userFallback": "Usuario",
+    "noConnection": "Sin conexión a internet."
   },
   "language": {
     "title": "Elegir idioma",
@@ -77,7 +78,10 @@
     "confirmPassword": "Confirmar contraseña",
     "optionalName": "Nombre (opcional)",
     "optionalLastName": "Apellido (opcional)",
-    "optionalPhone": "Móvil — opcional, para verificación"
+    "optionalPhone": "Móvil — opcional, para verificación",
+    "emailInUse": "Ya existe una cuenta con este correo. Prueba a iniciar sesión.",
+    "weakPassword": "La contraseña es demasiado débil.",
+    "signupDisabled": "El registro está desactivado temporalmente."
   },
   "otp": {
     "givePhone": "Introduce un número de teléfono.",

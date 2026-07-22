@@ -20,6 +20,7 @@
     <application
         android:label="Share It"
         android:name="${applicationName}"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher">
 
         <!-- Google Maps API Key -->

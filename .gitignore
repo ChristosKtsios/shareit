@@ -81,3 +81,6 @@ android/local.properties
 *.log
 functions/node_modules/
 functions/lib/
+
+# Προσωπικό υλικό μελέτης (δεν ανεβαίνει στο repo)
+docs/interview/
