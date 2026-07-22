@@ -91,10 +91,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => _error = 'reg.fillName'.tr());
       return;
     }
-    if (!AuthRepository.isValidEmail(_email.text)) {
-      setState(() => _error = 'reg.giveValidEmail'.tr());
-      return;
-    }
     // Το τηλέφωνο είναι ΠΡΟΑΙΡΕΤΙΚΟ. Αν δοθεί, πρέπει να είναι έγκυρο (θα
     // ακολουθήσει OTP). Αν μείνει κενό, ο λογαριασμός φτιάχνεται αμέσως με
     // email/κωδικό και ο χρήστης εμφανίζεται ως «μη επαληθευμένος».
