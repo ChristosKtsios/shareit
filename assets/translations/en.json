@@ -74,7 +74,10 @@
     "emailExists": "An account with this email already exists.",
     "photoOptional": "Photo (optional)",
     "passwordHint": "At least 8 characters, 1 uppercase, 1 number, 1 symbol",
-    "confirmPassword": "Confirm password"
+    "confirmPassword": "Confirm password",
+    "optionalName": "First name (optional)",
+    "optionalLastName": "Last name (optional)",
+    "optionalPhone": "Mobile — optional, for verification"
   },
   "otp": {
     "givePhone": "Enter a phone number.",

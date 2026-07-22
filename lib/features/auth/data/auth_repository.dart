@@ -101,6 +101,84 @@ class AuthRepository {
   // Cloud Function `checkAccountExists` (Firebase Auth admin). Δεν κάνουμε
   // query στους users με `phone` — τα τηλέφωνα δεν είναι πια αναγνώσιμα.
 
+  /// **Γρήγορη εγγραφή με email/κωδικό — ΧΩΡΙΣ SMS.**
+  ///
+  /// Γιατί υπάρχει: η εγγραφή απαιτούσε υποχρεωτικά τηλέφωνο + OTP, οπότε αν το
+  /// SMS δεν έφτανε (όρια Firebase, πάροχος, καθυστέρηση) ο χρήστης **δεν
+  /// μπορούσε καθόλου** να φτιάξει λογαριασμό. Και ήταν ασυνεπές: η επαλήθευση
+  /// κινητού είναι ήδη προαιρετική για τη χρήση της εφαρμογής.
+  ///
+  /// Ο λογαριασμός δημιουργείται με `phoneVerified: false` → εμφανίζεται ως
+  /// «Μη επαληθευμένος χρήστης» και μπορεί να επαληθεύσει όποτε θέλει από τις
+  /// Ρυθμίσεις.
+  Future<void> registerWithEmail({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+    File? profilePhoto,
+  }) async {
+    final cred = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final user = cred.user;
+    if (user == null) {
+      throw FirebaseAuthException(
+          code: 'no-user', message: 'authx.noActiveUser'.tr());
+    }
+    final uid = user.uid;
+
+    // ΠΡΟΣΟΧΗ: το email ΔΕΝ μπαίνει στο δημόσιο doc — το διαβάζουν όλοι.
+    await _db.collection('users').doc(uid).set({
+      'uid': uid,
+      'firstName': firstName.trim(),
+      'lastName': lastName.trim(),
+      'isVerified': true,
+      'phoneVerified': false,
+      'rating': 0.0,
+      'ratingCount': 0,
+      'blockedUids': <String>[],
+      'savedListingIds': <String>[],
+      'friends': <String>[],
+      'dealsCount': 0,
+      'isPrivateProfile': false,
+      'showOnlineStatus': true,
+      'ageVerified': true,
+      'termsAcceptedAt': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    await UserRepository.privateRef(uid)
+        .set({'email': email.trim()}, SetOptions(merge: true));
+
+    try {
+      await user.updateDisplayName(
+          '${firstName.trim()} ${lastName.trim()}'.trim());
+    } catch (_) {
+      // Μη κρίσιμο — το όνομα υπάρχει ήδη στο Firestore.
+    }
+
+    await FcmService.syncToken(uid);
+
+    if (profilePhoto != null) {
+      try {
+        final ref = _storage.ref('users/$uid/profile.jpg');
+        // ΡΗΤΟ contentType — το putFile στο Android δεν το συμπεραίνει και τα
+        // storage rules απορρίπτουν το application/octet-stream.
+        await ref.putFile(
+            profilePhoto, SettableMetadata(contentType: 'image/jpeg'));
+        final photoUrl = await ref.getDownloadURL();
+        await _db.collection('users').doc(uid).update({
+          'photoUrl': photoUrl,
+          'avatarUrl': photoUrl,
+        });
+      } catch (_) {
+        // Αν αποτύχει το upload, ο χρήστης έχει ήδη προφίλ.
+      }
+    }
+  }
+
   /// ΝΕΑ ΡΟΗ — Διορθωμένη:
   /// 1) ΠΡΩΤΑ γράφει user document με όνομα/επώνυμο (πιο σημαντικό)
   /// 2) ΜΕΤΑ link email/password

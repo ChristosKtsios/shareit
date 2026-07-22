@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/legal_urls.dart';
+import '../../../core/utils/display_name.dart';
+import '../providers/auth_provider.dart';
 import '../../../core/constants/countries.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/password_strength.dart';
@@ -73,7 +75,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Future<void> _continueToVerification() async {
     setState(() => _error = null);
 
-    if (_first.text.trim().isEmpty || _last.text.trim().isEmpty) {
+    // Το όνομα είναι προαιρετικό: αν λείπει, το βγάζουμε από το email
+    // («giorgos.pap@…» → «Giorgos Pap»). Έτσι η εγγραφή είναι πιο γρήγορη και
+    // κανείς δεν εμφανίζεται ποτέ ως σκέτο «Χρήστης».
+    if (!AuthRepository.isValidEmail(_email.text)) {
+      setState(() => _error = 'reg.giveValidEmail'.tr());
+      return;
+    }
+    final derived = DisplayName.from(email: _email.text.trim());
+    final firstName =
+        _first.text.trim().isNotEmpty ? _first.text.trim() : derived.$1;
+    final lastName =
+        _last.text.trim().isNotEmpty ? _last.text.trim() : derived.$2;
+    if (firstName.isEmpty) {
       setState(() => _error = 'reg.fillName'.tr());
       return;
     }
@@ -81,7 +95,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => _error = 'reg.giveValidEmail'.tr());
       return;
     }
-    if (_phone.text.trim().isEmpty || _phone.text.trim().length < 8) {
+    // Το τηλέφωνο είναι ΠΡΟΑΙΡΕΤΙΚΟ. Αν δοθεί, πρέπει να είναι έγκυρο (θα
+    // ακολουθήσει OTP). Αν μείνει κενό, ο λογαριασμός φτιάχνεται αμέσως με
+    // email/κωδικό και ο χρήστης εμφανίζεται ως «μη επαληθευμένος».
+    final phoneRaw = _phone.text.trim();
+    if (phoneRaw.isNotEmpty && phoneRaw.length < 8) {
       setState(() => _error = 'reg.giveValidPhone'.tr());
       return;
     }
@@ -111,8 +129,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      final fullPhone = '$_countryCode${_phone.text.trim()}';
       final email = _email.text.trim();
+
+      // ── ΓΡΗΓΟΡΗ ΔΙΑΔΡΟΜΗ: χωρίς τηλέφωνο → χωρίς SMS ──
+      if (phoneRaw.isEmpty) {
+        await ref.read(authRepoProvider).registerWithEmail(
+              email: email,
+              password: pass,
+              firstName: firstName,
+              lastName: lastName,
+              profilePhoto: _profilePhoto,
+            );
+        if (mounted) context.go('/map');
+        return;
+      }
+
+      final fullPhone = '$_countryCode$phoneRaw';
 
       // Έλεγχος ΠΡΙΝ το OTP: υπάρχει ήδη λογαριασμός με αυτό το email/κινητό;
       // Γίνεται server-side (Cloud Function με admin) — δεν χρειάζεται sign-in
@@ -144,8 +176,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (!mounted) return;
       context.push('/phone-auth', extra: {
         'mode': 'register',
-        'firstName': _first.text.trim(),
-        'lastName': _last.text.trim(),
+        'firstName': firstName,
+        'lastName': lastName,
         'email': _email.text.trim(),
         'phone': fullPhone,
         'password': pass,
@@ -241,7 +273,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _first,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration:
-                      InputDecoration(hintText: AppStrings.firstName),
+                      InputDecoration(hintText: 'reg.optionalName'.tr()),
                 ),
               ),
               const SizedBox(width: 12),
@@ -250,7 +282,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _last,
                   style: const TextStyle(color: AppColors.textPrimary),
                   decoration:
-                      InputDecoration(hintText: AppStrings.lastName),
+                      InputDecoration(hintText: 'reg.optionalLastName'.tr()),
                 ),
               ),
             ]),
@@ -297,9 +329,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   controller: _phone,
                   keyboardType: TextInputType.phone,
                   style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: const InputDecoration(
-                    hintText: '6901234567',
-                    prefixIcon: Icon(Icons.phone_outlined,
+                  decoration: InputDecoration(
+                    hintText: 'reg.optionalPhone'.tr(),
+                    prefixIcon: const Icon(Icons.phone_outlined,
                         color: AppColors.textSecondary, size: 20),
                   ),
                 ),
