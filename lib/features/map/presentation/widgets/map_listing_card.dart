@@ -1,4 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -177,12 +178,13 @@ class MapListingCard extends ConsumerWidget {
                   separatorBuilder: (_, __) => const SizedBox(width: 6),
                   itemBuilder: (_, i) => ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      listing.imageUrls[i],
+                    child: CachedNetworkImage(
+                      imageUrl: listing.imageUrls[i],
                       width: 70,
                       height: 70,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                      memCacheWidth: 210,
+                      errorWidget: (_, __, ___) => Container(
                           width: 70,
                           height: 70,
                           color: AppColors.surfaceVariant,

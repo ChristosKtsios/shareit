@@ -80,7 +80,12 @@ class MediaPickerService {
                 sheetCtx: ctx,
                 type: MediaType.image,
                 pick: () => _picker.pickImage(
-                    source: ImageSource.gallery, imageQuality: 75),
+                    source: ImageSource.gallery,
+                    imageQuality: 75,
+                    // Χωρίς maxWidth ανέβαιναν φωτογραφίες σε πλήρη
+                    // ανάλυση κάμερας (4000px, ~4 MB) — τεράστιος χρόνος
+                    // ανεβάσματος ΚΑΙ κατεβάσματος για μια μικρογραφία.
+                    maxWidth: 1600),
               ),
             ),
             ListTile(
@@ -92,7 +97,8 @@ class MediaPickerService {
                 sheetCtx: ctx,
                 type: MediaType.image,
                 pick: () => _picker.pickImage(
-                    source: ImageSource.camera, imageQuality: 75),
+                    source: ImageSource.camera,
+                    imageQuality: 75, maxWidth: 1600),
               ),
             ),
             ListTile(

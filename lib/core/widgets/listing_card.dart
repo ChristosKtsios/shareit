@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../constants/app_colors.dart';
@@ -9,7 +10,8 @@ class ListingCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   final double? distanceKm;
-  const ListingCard({super.key, required this.listing, this.onTap, this.distanceKm});
+  const ListingCard(
+      {super.key, required this.listing, this.onTap, this.distanceKm});
 
   String _formatDateRange() {
     final from = listing.availableFrom;
@@ -30,7 +32,8 @@ class ListingCard extends StatelessWidget {
 
     if (fromStr != null && untilStr != null) return '$fromStr → $untilStr';
     if (fromStr != null) return 'lcard.fromDate'.tr(namedArgs: {'d': fromStr});
-    if (untilStr != null) return 'lcard.untilDate'.tr(namedArgs: {'d': untilStr});
+    if (untilStr != null)
+      return 'lcard.untilDate'.tr(namedArgs: {'d': untilStr});
     return '';
   }
 
@@ -110,9 +113,16 @@ class ListingCard extends StatelessWidget {
                     separatorBuilder: (_, __) => const SizedBox(width: 6),
                     itemBuilder: (_, i) => ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(listing.imageUrls[i],
-                            width: 60, height: 60, fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
+                        child: CachedNetworkImage(
+                            imageUrl: listing.imageUrls[i],
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                            // Αποκωδικοποίηση στο μέγεθος που ΠΡΑΓΜΑΤΙΚΑ
+                            // εμφανίζεται — αλλιώς κάθε μικρογραφία κρατά
+                            // στη μνήμη εικόνα 1600px.
+                            memCacheWidth: 180,
+                            errorWidget: (_, __, ___) => const Icon(
                                 Icons.broken_image_outlined,
                                 color: AppColors.textHint))),
                   )),
@@ -150,8 +160,7 @@ class ListingCard extends StatelessWidget {
                     backgroundImage:
                         avatar != null ? NetworkImage(avatar) : null,
                     child: avatar == null
-                        ? Text(
-                            name.isNotEmpty ? name[0].toUpperCase() : '?',
+                        ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
                             style: const TextStyle(
                                 color: AppColors.primary,
                                 fontSize: 10,
@@ -179,8 +188,7 @@ class ListingCard extends StatelessWidget {
                   ],
                   if (ratingCount > 0) ...[
                     const SizedBox(width: 6),
-                    const Icon(Icons.star,
-                        color: AppColors.deal, size: 12),
+                    const Icon(Icons.star, color: AppColors.deal, size: 12),
                     const SizedBox(width: 2),
                     Text(rating.toStringAsFixed(1),
                         style: const TextStyle(

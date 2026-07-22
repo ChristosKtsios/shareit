@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/listing_model.dart';
@@ -26,22 +27,20 @@ class ListingImagesWidget extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: Stack(children: [
-                Image.network(
-                  listing.imageUrls[i],
+                CachedNetworkImage(
+                  imageUrl: listing.imageUrls[i],
                   width: 260,
                   height: 200,
                   fit: BoxFit.cover,
-                  loadingBuilder: (_, child, progress) => progress == null
-                      ? child
-                      : Container(
-                          width: 260,
-                          height: 200,
-                          color: AppColors.surfaceVariant,
-                          child: const Center(
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: AppColors.primary)),
-                        ),
-                  errorBuilder: (_, __, ___) => Container(
+                  placeholder: (_, __) => Container(
+                    width: 260,
+                    height: 200,
+                    color: AppColors.surfaceVariant,
+                    child: const Center(
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.primary)),
+                  ),
+                  errorWidget: (_, __, ___) => Container(
                     width: 260,
                     height: 200,
                     color: AppColors.surfaceVariant,
