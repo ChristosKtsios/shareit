@@ -5,9 +5,16 @@
 const {onDocumentWritten, onDocumentCreated} =
   require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {setGlobalOptions} = require("firebase-functions/v2");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
+
+// Οροφή ταυτόχρονων instances. Χωρίς αυτό, κάθε function έτρεχε με το μέγιστο
+// της πλατφόρμας: το onReportCreated πυροδοτείται μία φορά ανά report που
+// δημιουργεί ο client, οπότε ο ρυθμός —και το κόστος— τον ορίζει ο χρήστης.
+// Ίδια τιμή με το push-notifications/src/index.ts:13.
+setGlobalOptions({maxInstances: 10});
 
 initializeApp();
 const db = getFirestore();
@@ -293,12 +300,39 @@ async function uniqueReporters(field, value) {
 async function applyReportCount(ref, count, canHide) {
   const snap = await ref.get();
   if (!snap.exists) return;
-  const update = {reportCount: count, isReported: true};
+  // `isReported` ΘΕΛΕΙ ΚΑΤΩΦΛΙ, όπως και το isHidden.
+  //
+  // Πριν γραφόταν πάντα `isReported: true`, δηλαδή ΜΙΑ αναφορά από ΕΝΑΝ
+  // λογαριασμό αρκούσε για να μαρκαριστεί οποιοσδήποτε χρήστης ή αγγελία. Το
+  // `targetUid` το ορίζει ελεύθερα ο καταγγέλλων, οπότε με ένα script ένας
+  // λογαριασμός μαρκάριζε ΟΛΗ τη βάση χρηστών με ένα write ο καθένας.
+  const update = {
+    reportCount: count,
+    isReported: count >= REPORT_AUTO_HIDE_THRESHOLD,
+  };
   if (canHide && count >= REPORT_AUTO_HIDE_THRESHOLD) {
     update.isHidden = true;
     update.hiddenReason = "auto_threshold";
   }
   await ref.update(update);
+}
+
+/**
+ * Έγκυρο Firestore document ID που προέρχεται από τον client.
+ *
+ * ΚΡΙΣΙΜΟ: το `.doc()` δέχεται ΔΙΑΔΡΟΜΗ με πολλά segments, όχι μόνο ID. Χωρίς
+ * αυτόν τον έλεγχο, ένα `postId` της μορφής "abc/comments/def" έφτανε σε
+ * ΟΠΟΙΟΔΗΠΟΤΕ έγγραφο κάτω από wallPosts/* ή userPosts/*, και ο επιτιθέμενος
+ * κατεύθυνε εκεί τα reportCount/isReported/isHidden.
+ *
+ * @param {*} v Η τιμή από το report doc
+ * @return {boolean} true αν είναι ασφαλές μονό document ID
+ */
+function isSafeDocId(v) {
+  return typeof v === "string" &&
+      v.length > 0 && v.length <= 128 &&
+      !v.includes("/") &&
+      v !== "." && v !== "..";
 }
 
 /**
@@ -312,11 +346,14 @@ exports.onReportCreated = onDocumentCreated(
       const data = event.data && event.data.data();
       if (!data) return null;
 
-      const listingId = data.listingId;
-      const targetUid = data.targetUid;
+      // ΟΛΑ αυτά τα πεδία τα γράφει ο client (firestore.rules ελέγχει μόνο τον
+      // reporterUid), οπότε είναι ΜΗ ΕΜΠΙΣΤΑ: τα φιλτράρουμε πριν φτάσουν σε
+      // .doc(), αλλιώς γίνονται path injection (βλ. isSafeDocId).
+      const listingId = isSafeDocId(data.listingId) ? data.listingId : null;
+      const targetUid = isSafeDocId(data.targetUid) ? data.targetUid : null;
       const postCollection = data.postCollection;
-      const postId = data.postId;
-      const commentId = data.commentId;
+      const postId = isSafeDocId(data.postId) ? data.postId : null;
+      const commentId = isSafeDocId(data.commentId) ? data.commentId : null;
 
       const validCollection = postCollection === "wallPosts" ||
           postCollection === "userPosts";

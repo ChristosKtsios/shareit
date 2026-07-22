@@ -42,6 +42,19 @@ service cloud.firestore {
                 'friends'];
       }
 
+      // ΑΜΕΤΑΒΛΗΤΑ μετά τη δημιουργία. Το `createdAt` είναι σήμα εμπιστοσύνης
+      // (ηλικία λογαριασμού) — χωρίς αυτό, ένας νέος λογαριασμός δηλώνει ότι
+      // υπάρχει από το 2019. Τα `ageVerified`/`termsAcceptedAt` είναι το ΝΟΜΙΚΟ
+      // αρχείο συγκατάθεσης (18+ και όροι, GDPR): αν ο χρήστης μπορεί να τα
+      // ξαναγράψει, δεν αποδεικνύουν τίποτα.
+      //
+      // ΑΣΦΑΛΕΣ: και οι τρεις ροές εγγραφής τα γράφουν ΜΟΝΟ σε νέο doc —
+      // auth_repository.dart:300 (`if (!hadDocBefore)`) και login_screen.dart:340
+      // (`.set()` σε νέο χρήστη). Καμία ροή ενημέρωσης δεν τα ακουμπά.
+      function immutableAfterCreate() {
+        return ['createdAt', 'termsAcceptedAt', 'ageVerified'];
+      }
+
       // Ευαίσθητα PII δεν ζουν ΠΟΤΕ στο δημόσιο doc (το διαβάζει κάθε χρήστης —
       // search/inbox/αγγελίες). Ζουν στο users/{uid}/private/data. Όλες οι ροές
       // του client (register, Google sign-in, complete/edit profile, FCM) ήδη τα
@@ -111,6 +124,7 @@ service cloud.firestore {
       allow update: if isOwner(uid)
                     && !touchesAny(serverManaged())
                     && !touchesAny(publicPII())
+                    && !touchesAny(immutableAfterCreate())
                     && phoneVerifiedGenuineOnUpdate();
       // delete: ΜΟΝΟ server (deleteUserAccount).
 
@@ -149,8 +163,18 @@ service cloud.firestore {
       allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
       // Ο κάτοχος επεξεργάζεται, αλλά ΔΕΝ ξεκρύβει/μηδενίζει αγγελία που
       // κρύφτηκε από reports (τα γράφει το onReportCreated).
+      //
+      // ΤΟ `userId` ΕΙΝΑΙ ΑΜΕΤΑΒΛΗΤΟ. Ο έλεγχος ιδιοκτησίας κοιτούσε μόνο το
+      // ΠΑΛΙΟ doc (`resource.data.userId`), οπότε ο κάτοχος μπορούσε να γράψει
+      // ΝΕΟ `userId` και να μεταβιβάσει την αγγελία σε ανυποψίαστο χρήστη:
+      // φτιάχνεις αγγελία με παράνομο περιεχόμενο και μετά την «περνάς» στο θύμα.
+      // Το listing_card.dart:131 δείχνει τον κάτοχο κάνοντας stream το
+      // users/{listing.userId} → το όνομα, η φωτογραφία και η βαθμολογία του
+      // θύματος κολλάνε πάνω στο περιεχόμενο του επιτιθέμενου, και τα reports
+      // πέφτουν σε αυτόν.
       allow update: if isAuth() && resource.data.userId == request.auth.uid
-                    && !touchesAny(moderationFlags());
+                    && !touchesAny(moderationFlags())
+                    && !touchesAny(['userId']);
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
 
@@ -174,7 +198,23 @@ service cloud.firestore {
       // και να του δώσει ολόκληρο το ιστορικό της συνομιλίας.
       allow update: if isAuth() && isParticipant()
                     && onlyTouched(['lastMessage', 'lastMessageAt', 'lastSenderId',
-                                    'unread', 'typingUids', 'mutedBy']);
+                                    'unread', 'typingUids', 'mutedBy'])
+                    // Η ΠΡΟΕΠΙΣΚΟΠΗΣΗ ΤΟΥ INBOX ΔΕΝ ΠΛΑΣΤΟΓΡΑΦΕΙΤΑΙ.
+                    //
+                    // Το `lastMessage` είναι ό,τι βλέπει ο άλλος στο inbox, και
+                    // γραφόταν ελεύθερα από τον συνομιλητή — χωρίς να υπάρχει
+                    // αντίστοιχο μήνυμα στη συνομιλία. Δηλαδή έστελνες «Ο
+                    // λογαριασμός σου: πάτα εδώ…» ως προεπισκόπηση, και όταν ο
+                    // άλλος άνοιγε το chat δεν υπήρχε τίποτα — κλασικό phishing
+                    // χωρίς ίχνη. Τώρα, όποιος αλλάζει την προεπισκόπηση πρέπει
+                    // να δηλωθεί και ως αποστολέας της.
+                    //
+                    // Όλες οι ροές του client γράφουν lastMessage + lastSenderId
+                    // μαζί (chat_repository.dart:55, :81, :115, :143), οπότε δεν
+                    // επηρεάζονται. Τα unread/typing/mute δεν αγγίζουν κανένα
+                    // από τα δύο και συνεχίζουν κανονικά.
+                    && (!touchesAny(['lastMessage', 'lastSenderId'])
+                        || request.resource.data.lastSenderId == request.auth.uid);
       allow delete: if isAuth() && isParticipant();
 
       match /messages/{msgId} {
@@ -305,6 +345,20 @@ service cloud.firestore {
                         // Ακύρωση μόνο όσο είναι pending.
                         && (request.resource.data.status != 'cancelled'
                             || resource.data.status == 'pending')
+                        // ── ΑΠΟΔΟΧΗ ΜΟΝΟ ΑΠΟ ΤΟΝ ΠΑΡΑΛΗΠΤΗ ──────────────────
+                        // Ο user1 στέλνει την πρόταση (proposal1), ο user2 την
+                        // αποδέχεται. Χωρίς αυτόν τον έλεγχο ο ΙΔΙΟΣ ο προτείνων
+                        // μπορούσε να γυρίσει το deal σε `active` — δηλαδή να
+                        // αποδεχτεί τη δική του πρόταση — και το onDealUpdate
+                        // έφτιαχνε wall post «deal ολοκληρώθηκε» ΚΑΙ στον τοίχο
+                        // του άλλου, χωρίς εκείνος να συμφωνήσει ποτέ.
+                        //
+                        // Ο έλεγχος αφορά ΜΟΝΟ τη μετάβαση: αν το status δεν
+                        // αλλάζει, ο user1 συνεχίζει να ενημερώνει κανονικά ένα
+                        // ήδη active deal (π.χ. proposal fields).
+                        && (!touchesAny(['status'])
+                            || request.resource.data.status != 'active'
+                            || request.auth.uid == resource.data.user2Uid)
                       )
                     );
       allow delete: if isAuth() && (isPeer() || isLegacyPeer());
@@ -313,12 +367,28 @@ service cloud.firestore {
     // ── WALL POSTS ────────────────────────────────────────────────────────
     match /wallPosts/{id} {
       allow read:   if isAuth();
-      allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
+
+      // ΔΗΜΙΟΥΡΓΙΑ: ΜΟΝΟ server (onDealUpdate → createDealWallPost, admin SDK).
+      //
+      // Ο παλιός κανόνας ζητούσε μόνο `authorUid == auth.uid` και άφηνε ΟΛΑ τα
+      // υπόλοιπα πεδία ελεύθερα — μαζί με το `targetUid`, που καθορίζει σε ΠΟΙΟΥ
+      // τον τοίχο εμφανίζεται το post (wall_post_repository.dart:16 κάνει query
+      // `where('targetUid','==',uid)`). Οποιοσδήποτε χρήστης μπορούσε λοιπόν να
+      // φυτέψει στο προφίλ ΟΠΟΙΟΥΔΗΠΟΤΕ ένα ψεύτικο «deal ολοκληρώθηκε» με
+      // αυθαίρετο κείμενο — και το θύμα ΔΕΝ μπορούσε να το σβήσει, γιατί το
+      // delete απαιτεί `authorUid == auth.uid`, δηλαδή τον επιτιθέμενο.
+      //
+      // Ο client ΔΕΝ δημιουργεί ποτέ wall posts (επαληθεύτηκε: καμία .add()/.set()
+      // στο lib/ — βλ. deal_repository.dart:90-93). Άρα η άρνηση δεν σπάει τίποτα.
+      allow create: if false;
+
       // Ο συντάκτης επεξεργάζεται. Οποιοσδήποτε άλλος: μόνο το ΔΙΚΟ του like ή
       // ο μετρητής σχολίων (±1) — δεν σβήνει τα likes των άλλων.
       allow update: if isAuth() && (
                       (resource.data.authorUid == request.auth.uid
-                        && !touchesAny(moderationFlags()))
+                        && !touchesAny(moderationFlags())
+                        // Το post δεν αλλάζει ιδιοκτήτη ούτε τοίχο.
+                        && !touchesAny(['authorUid', 'targetUid', 'dealId']))
                       || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                       || (onlyTouched(['commentsCount'])
                           && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
@@ -331,7 +401,9 @@ service cloud.firestore {
         allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
         allow update: if isAuth() && (
                         (resource.data.authorUid == request.auth.uid
-                        && !touchesAny(moderationFlags()))
+                        && !touchesAny(moderationFlags())
+                        // Το σχόλιο δεν αλλάζει συντάκτη (βλ. σχόλιο στα listings).
+                        && !touchesAny(['authorUid']))
                         || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                         || onlyTouched(['reactions'])
                       );
@@ -345,7 +417,9 @@ service cloud.firestore {
       allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
       allow update: if isAuth() && (
                       (resource.data.authorUid == request.auth.uid
-                        && !touchesAny(moderationFlags()))
+                        && !touchesAny(moderationFlags())
+                        // Το post δεν αλλάζει συντάκτη (βλ. σχόλιο στα listings).
+                        && !touchesAny(['authorUid']))
                       || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                       || (onlyTouched(['commentsCount'])
                           && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
@@ -358,7 +432,9 @@ service cloud.firestore {
         allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
         allow update: if isAuth() && (
                         (resource.data.authorUid == request.auth.uid
-                        && !touchesAny(moderationFlags()))
+                        && !touchesAny(moderationFlags())
+                        // Το σχόλιο δεν αλλάζει συντάκτη (βλ. σχόλιο στα listings).
+                        && !touchesAny(['authorUid']))
                         || (onlyTouched(['likes']) && selfOnlyListDiff('likes'))
                         || onlyTouched(['reactions'])
                       );

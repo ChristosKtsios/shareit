@@ -74,7 +74,19 @@ class DealProposalCard extends ConsumerWidget {
                 const SizedBox(height: 12),
               ],
               if (deal.status == DealStatus.pending) ...[
-                if (otherProposal != null && myProposal?.accepted != true) ...[
+                // Την πρόταση την αποδέχεται ΜΟΝΟ ο παραλήπτης (user2).
+                //
+                // Το `acceptProposal` διαβάζει πάντα το `proposal1` — την
+                // πρόταση του user1 (deal_repository.dart:101). Όταν το κουμπί
+                // εμφανιζόταν και στον user1, το πάτημά του είτε αποδεχόταν τη
+                // ΔΙΚΗ ΤΟΥ πρόταση (και το deal γινόταν active χωρίς ο άλλος να
+                // συμφωνήσει, με wall post και στους δύο τοίχους), είτε —αν δεν
+                // υπήρχε proposal1— έβγαινε σιωπηλά χωρίς κανένα μήνυμα.
+                // Τα rules πλέον το μπλοκάρουν· εδώ κρύβουμε και το κουμπί ώστε
+                // να μη βλέπει ο χρήστης permission-denied.
+                if (!isUser1 &&
+                    otherProposal != null &&
+                    myProposal?.accepted != true) ...[
                   _AgreeButton(dealId: deal.id, currentUid: currentUid),
                   const SizedBox(height: 8),
                 ],

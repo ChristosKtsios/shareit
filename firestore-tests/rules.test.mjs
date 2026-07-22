@@ -447,6 +447,132 @@ await check("ΤΡΙΤΟΣ ΔΕΝ σβήνει ξένο αίτημα", async () =
   await assertFails(deleteDoc(doc(mallory, "friendRequests", "frOther")));
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// REGRESSION — security audit (Ιούλιος 2026)
+// Κάθε test αντιστοιχεί σε ΠΡΑΓΜΑΤΙΚΗ ευπάθεια που βρέθηκε και διορθώθηκε.
+// ══════════════════════════════════════════════════════════════════════
+console.log("\n🛡️  REGRESSION — ευπάθειες που διορθώθηκαν");
+
+await check("Ο client ΔΕΝ δημιουργεί wall post (φύτεμα ψεύτικου deal σε ξένο τοίχο)", () =>
+  assertFails(addDoc(collection(mallory, "wallPosts"), {
+    authorUid: MALLORY, targetUid: ALICE, type: "deal", status: "completed",
+    dealStatus: "completed", title: "Deal ολοκληρώθηκε",
+    details: "συκοφαντικό κείμενο", user1Uid: ALICE, user2Uid: MALLORY,
+    createdAt: new Date(), likes: [], commentsCount: 0,
+  })));
+
+await check("Ο client ΔΕΝ δημιουργεί wall post ούτε στον ΔΙΚΟ του τοίχο (φούσκωμα φήμης)", () =>
+  assertFails(addDoc(collection(mallory, "wallPosts"), {
+    authorUid: MALLORY, targetUid: MALLORY, type: "deal", status: "completed",
+    createdAt: new Date(),
+  })));
+
+await check("Η αγγελία ΔΕΝ αλλάζει ιδιοκτήτη (μεταβίβαση σε ανυποψίαστο θύμα)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "listings", "lMal"),
+      { userId: MALLORY, title: "παράνομο περιεχόμενο" });
+  });
+  await assertFails(updateDoc(doc(mallory, "listings", "lMal"), { userId: BOB }));
+});
+
+await check("Ο κάτοχος επεξεργάζεται κανονικά την αγγελία του (δεν σπάσαμε το edit)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "listings", "lEdit"),
+      { userId: MALLORY, title: "παλιός", description: "π" });
+  });
+  await assertSucceeds(updateDoc(doc(mallory, "listings", "lEdit"),
+    { title: "νέος", description: "ν" }));
+});
+
+await check("Το user post ΔΕΝ αλλάζει συντάκτη", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "userPosts", "upMal"),
+      { authorUid: MALLORY, text: "κακόβουλο", likes: [] });
+  });
+  await assertFails(updateDoc(doc(mallory, "userPosts", "upMal"), { authorUid: BOB }));
+});
+
+await check("Το σχόλιο ΔΕΝ αλλάζει συντάκτη", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "userPosts", "up1", "comments", "cMal"),
+      { authorUid: MALLORY, text: "κακόβουλο", likes: [] });
+  });
+  await assertFails(updateDoc(doc(mallory, "userPosts", "up1", "comments", "cMal"),
+    { authorUid: BOB }));
+});
+
+await check("Ο χρήστης ΔΕΝ ξαναγράφει το createdAt (πλαστή ηλικία λογαριασμού)", () =>
+  assertFails(updateDoc(doc(mallory, "users", MALLORY),
+    { createdAt: new Date("2019-01-01") })));
+
+await check("Ο χρήστης ΔΕΝ ξαναγράφει το ageVerified/termsAcceptedAt (νομικό αρχείο)", () =>
+  assertFails(updateDoc(doc(mallory, "users", MALLORY),
+    { ageVerified: true, termsAcceptedAt: new Date("2030-01-01") })));
+
+await check("Κανονική ενημέρωση προφίλ δουλεύει ακόμα (δεν σπάσαμε το edit profile)", () =>
+  assertSucceeds(updateDoc(doc(mallory, "users", MALLORY),
+    { firstName: "Νέο", lastName: "Όνομα" })));
+
+await check("Ο ΠΡΟΤΕΙΝΩΝ (user1) ΔΕΝ αποδέχεται τη δική του πρόταση", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "deals", "dealSelf"), {
+      chatId: "chatAB", participants: [ALICE, BOB],
+      user1Uid: ALICE, user2Uid: BOB, status: "pending",
+      proposal1: { userId: ALICE, accepted: true }, proposal2: null,
+      ownerRating: null, seekerRating: null, createdAt: new Date(),
+    });
+  });
+  // Η Alice είναι ο user1 (προτείνων) — δεν γίνεται να ενεργοποιήσει η ίδια.
+  await assertFails(updateDoc(doc(alice, "deals", "dealSelf"),
+    { status: "active", activatedAt: new Date() }));
+});
+
+await check("Ο ΠΑΡΑΛΗΠΤΗΣ (user2) αποδέχεται κανονικά (δεν σπάσαμε τη ροή)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "deals", "dealOk"), {
+      chatId: "chatAB", participants: [ALICE, BOB],
+      user1Uid: ALICE, user2Uid: BOB, status: "pending",
+      proposal1: { userId: ALICE, accepted: true }, proposal2: null,
+      ownerRating: null, seekerRating: null, createdAt: new Date(),
+    });
+  });
+  await assertSucceeds(updateDoc(doc(bob, "deals", "dealOk"), {
+    status: "active", activatedAt: new Date(),
+    startDate: new Date(), endDate: new Date(Date.now() + 86400000),
+  }));
+});
+
+await check("Ο user1 ενημερώνει ΑΛΛΑ πεδία ενεργού deal (δεν κλειδώθηκε έξω)", () =>
+  assertSucceeds(updateDoc(doc(alice, "deals", "dealOk"),
+    { proposal1: { userId: ALICE, accepted: true, note: "ok" } })));
+
+// ΔΙΚΟ ΤΟΥΣ chat: το `chatAB` έχει ήδη διαγραφεί από το test «Διαγραφή
+// συνομιλίας» παραπάνω. Χωρίς φρέσκο doc, το assertFails θα περνούσε για ΛΑΘΟΣ
+// λόγο (ανύπαρκτο έγγραφο) και δεν θα έλεγχε τίποτα.
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "chats", "chatPreview"), {
+    participants: [ALICE, BOB], lastMessage: "hi",
+    lastSenderId: ALICE, unread: false,
+  });
+});
+
+await check("Ψεύτικη προεπισκόπηση inbox στο όνομα του άλλου απορρίπτεται (phishing)", () =>
+  assertFails(updateDoc(doc(bob, "chats", "chatPreview"), {
+    lastMessage: "Ο λογαριασμός σου κλειδώθηκε — πάτα εδώ",
+    lastSenderId: ALICE,
+  })));
+
+await check("Ψεύτικη προεπισκόπηση ΧΩΡΙΣ αλλαγή lastSenderId απορρίπτεται", () =>
+  assertFails(updateDoc(doc(bob, "chats", "chatPreview"),
+    { lastMessage: "Πάτα εδώ για να ξεκλειδώσεις" })));
+
+await check("Κανονική αποστολή ενημερώνει την προεπισκόπηση (δεν σπάσαμε το chat)", () =>
+  assertSucceeds(updateDoc(doc(bob, "chats", "chatPreview"),
+    { lastMessage: "γεια", lastSenderId: BOB, unread: true })));
+
+await check("Το mark-as-read δεν επηρεάζεται από τον νέο κανόνα", () =>
+  assertSucceeds(updateDoc(doc(alice, "chats", "chatPreview"), { unread: false })));
+
 console.log(results.join("\n"));
 console.log(`\n${"─".repeat(60)}\nΣΥΝΟΛΟ: ${pass} πέρασαν, ${fail} απέτυχαν\n`);
 await env.cleanup();

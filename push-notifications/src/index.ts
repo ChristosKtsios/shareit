@@ -578,9 +578,18 @@ export const deleteUserAccount = onCall(async (request) => {
     }
     logger.info(`Deleted ${dealsAsUser1.size + dealsAsUser2.size} deals`);
 
-    // 4. Διαγραφή chats + messages
+    // 4. Διαγραφή chats + messages (ΚΑΙ τα αρχεία τους στο Storage)
+    //
+    // Το media ΠΡΕΠΕΙ να σβήνει ΠΡΙΝ το chat doc. Ο κανόνας του Storage
+    // (storage.rules:51) ελέγχει τους συμμετέχοντες διαβάζοντας το chat doc —
+    // μόλις αυτό διαγραφεί, ο έλεγχος αποτυγχάνει και τα αρχεία γίνονται
+    // ΑΠΡΟΣΠΕΛΑΣΤΑ ΑΛΛΑ ΚΑΙ ΑΣΒΗΣΤΑ: μένουν για πάντα, συνεχίζουν να χρεώνονται,
+    // και εξακολουθούν να κατεβαίνουν από όποιον κρατάει το download URL.
     const chats = await db.collection("chats").where("participants", "array-contains", uid).get();
     for (const doc of chats.docs) {
+      try {
+        await admin.storage().bucket().deleteFiles({ prefix: `chats/${doc.id}/` });
+      } catch (e) { logger.error(`chat storage ${doc.id}:`, e); }
       try {
         const messages = await doc.ref.collection("messages").get();
         for (const msg of messages.docs) await msg.ref.delete();
@@ -589,9 +598,13 @@ export const deleteUserAccount = onCall(async (request) => {
     }
     logger.info(`Deleted ${chats.size} chats`);
 
-    // 5. Διαγραφή wall posts
+    // 5. Διαγραφή wall posts (ΚΑΙ τα συνημμένα των σχολίων τους)
     const wallPosts = await db.collection("wallPosts").where("authorUid", "==", uid).get();
     for (const doc of wallPosts.docs) {
+      try {
+        // Τα αρχεία των σχολίων κλειδώνονται στο postId, όχι στο uid.
+        await admin.storage().bucket().deleteFiles({ prefix: `wallComments/${doc.id}/` });
+      } catch (e) { logger.error(`wallComments storage ${doc.id}:`, e); }
       try {
         const comments = await doc.ref.collection("comments").get();
         for (const c of comments.docs) await c.ref.delete();
@@ -652,11 +665,18 @@ export const deleteUserAccount = onCall(async (request) => {
       } catch (e) { logger.error(`user friends ${doc.id}:`, e); }
     }
 
-    // 9b. Storage files (avatars/φωτο profile + listings)
+    // 9b. Storage files (avatars/φωτο profile + listings + αναρτήσεις τοίχου)
+    //
+    // Το `userPosts/${uid}/` έλειπε: οι φωτογραφίες κάθε ανάρτησης του χρήστη
+    // επιβίωναν της διαγραφής του λογαριασμού. Και επειδή τα download URLs του
+    // Storage φέρουν token, κατεβαίνουν ΧΩΡΙΣ καμία σύνδεση από οποιονδήποτε
+    // έχει το link — δηλαδή οι φωτογραφίες ενός διαγραμμένου χρήστη έμεναν
+    // δημόσια προσβάσιμες για πάντα (GDPR / Play Data Safety).
     try {
       const bucket = admin.storage().bucket();
       await bucket.deleteFiles({ prefix: `users/${uid}/` });
       await bucket.deleteFiles({ prefix: `listings/${uid}/` });
+      await bucket.deleteFiles({ prefix: `userPosts/${uid}/` });
     } catch (e) { logger.error("storage delete failed:", e); }
 
     // 10. Διαγραφή user document + private subcollection (email/phone/token)
@@ -678,8 +698,10 @@ export const deleteUserAccount = onCall(async (request) => {
     logger.info(`Account deletion complete for ${uid}`);
     return { success: true };
   } catch (err) {
+    // Το σφάλμα καταγράφεται, ΔΕΝ επιστρέφεται: το raw μήνυμα του Firestore/
+    // Storage περιέχει εσωτερικές διαδρομές και document ids.
     logger.error("Critical error deleting account:", err);
-    throw new HttpsError("internal", `Αποτυχία διαγραφής: ${err}`);
+    throw new HttpsError("internal", "Αποτυχία διαγραφής λογαριασμού.");
   }
 });
 

@@ -183,8 +183,17 @@ class _DealReviewScreenState extends ConsumerState<DealReviewScreen> {
           final isActive = deal.status == DealStatus.active;
           final isCompleted = deal.status == DealStatus.completed;
           final isCancelled = deal.status == DealStatus.cancelled;
-          final canAct =
-              isMe && iAmReceiver && !isActive && !isCompleted && !isCancelled;
+          // `!isUser1`: αποδέχεται ΜΟΝΟ ο παραλήπτης. Το `acceptProposal`
+          // διαβάζει πάντα το proposal1 (του user1), οπότε αν πατούσε ο user1
+          // αποδεχόταν τη ΔΙΚΗ ΤΟΥ πρόταση και το deal γινόταν active χωρίς τη
+          // συμφωνία του άλλου — με wall post και στους δύο τοίχους. Ίδια λογική
+          // με το chat_screen.dart:409 (`isReceiver`) και το deal_proposal_card.
+          final canAct = isMe &&
+              !isUser1 &&
+              iAmReceiver &&
+              !isActive &&
+              !isCompleted &&
+              !isCancelled;
           // Ο αποστολέας μπορεί να ακυρώσει ΜΟΝΟ όσο εκκρεμεί (pending) —
           // δηλαδή πριν ο παραλήπτης αποδεχτεί (active) ή απορρίψει (cancelled).
           final canCancel =
