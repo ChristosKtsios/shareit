@@ -1,17 +1,13 @@
-import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/legal_urls.dart';
 import '../../../core/utils/display_name.dart';
 import '../providers/auth_provider.dart';
-import '../../../core/constants/countries.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/widgets/password_strength.dart';
 import '../data/auth_repository.dart';
@@ -23,14 +19,10 @@ class RegisterScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
-  final _first = TextEditingController();
-  final _last = TextEditingController();
   final _email = TextEditingController();
-  final _phone = TextEditingController();
   final _pass = TextEditingController();
   final _passConfirm = TextEditingController();
 
-  String _countryCode = '+30';
   bool _loading = false;
   bool _showPass = false;
   bool _showPassConfirm = false;
@@ -38,31 +30,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _termsAccepted = false;
   String? _error;
 
-  File? _profilePhoto;
-
-  final List<Map<String, String>> _countries = Countries.all;
-
   @override
   void dispose() {
-    _first.dispose();
-    _last.dispose();
     _email.dispose();
-    _phone.dispose();
     _pass.dispose();
     _passConfirm.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 800,
-      imageQuality: 85,
-    );
-    if (picked != null) {
-      setState(() => _profilePhoto = File(picked.path));
-    }
   }
 
   Future<void> _openUrl(String url) async {
@@ -82,24 +55,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       setState(() => _error = 'reg.giveValidEmail'.tr());
       return;
     }
-    final derived = DisplayName.from(email: _email.text.trim());
-    final firstName =
-        _first.text.trim().isNotEmpty ? _first.text.trim() : derived.$1;
-    final lastName =
-        _last.text.trim().isNotEmpty ? _last.text.trim() : derived.$2;
+    // Όνομα/επώνυμο από το email: «giorgos.papadopoulos@…» → «Giorgos
+    // Papadopoulos». Ο χρήστης μπορεί να τα διορθώσει από το Προφίλ.
+    final (firstName, lastName) = DisplayName.from(email: _email.text.trim());
     if (firstName.isEmpty) {
       setState(() => _error = 'reg.fillName'.tr());
       return;
     }
-    // Το τηλέφωνο είναι ΠΡΟΑΙΡΕΤΙΚΟ. Αν δοθεί, πρέπει να είναι έγκυρο (θα
-    // ακολουθήσει OTP). Αν μείνει κενό, ο λογαριασμός φτιάχνεται αμέσως με
-    // email/κωδικό και ο χρήστης εμφανίζεται ως «μη επαληθευμένος».
-    final phoneRaw = _phone.text.trim();
-    if (phoneRaw.isNotEmpty && phoneRaw.length < 8) {
-      setState(() => _error = 'reg.giveValidPhone'.tr());
-      return;
-    }
-
     final pass = _pass.text.trim();
     final passError = AuthRepository.validatePassword(pass);
     if (passError != null) {
@@ -118,101 +80,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
 
     if (!_termsAccepted) {
-      setState(
-          () => _error = 'reg.mustAcceptTermsPolicy'.tr());
+      setState(() => _error = 'reg.mustAcceptTermsPolicy'.tr());
       return;
     }
 
     setState(() => _loading = true);
     try {
-      final email = _email.text.trim();
-
-      // ── ΓΡΗΓΟΡΗ ΔΙΑΔΡΟΜΗ: χωρίς τηλέφωνο → χωρίς SMS ──
-      if (phoneRaw.isEmpty) {
-        await ref.read(authRepoProvider).registerWithEmail(
-              email: email,
-              password: pass,
-              firstName: firstName,
-              lastName: lastName,
-              profilePhoto: _profilePhoto,
-            );
-        if (mounted) context.go('/map');
-        return;
-      }
-
-      final fullPhone = '$_countryCode$phoneRaw';
-
-      // Έλεγχος ΠΡΙΝ το OTP: υπάρχει ήδη λογαριασμός με αυτό το email/κινητό;
-      // Γίνεται server-side (Cloud Function με admin) — δεν χρειάζεται sign-in
-      // ούτε να σπαταλήσουμε OTP.
-      try {
-        final res = await FirebaseFunctions.instanceFor(region: 'europe-west1')
-            .httpsCallable('checkAccountExists')
-            .call({'email': email, 'phone': fullPhone});
-        final data = Map<String, dynamic>.from(res.data as Map);
-        if (data['phoneExists'] == true) {
-          setState(() {
-            _error = 'reg.phoneExists'.tr();
-            _loading = false;
-          });
-          return;
-        }
-        if (data['emailExists'] == true) {
-          setState(() {
-            _error = 'reg.emailExists'.tr();
-            _loading = false;
-          });
-          return;
-        }
-      } catch (_) {
-        // Αν ο έλεγχος αποτύχει (πχ δίκτυο), συνεχίζουμε — τα post-OTP
-        // safeguards στο registerWithPhoneVerified θα πιάσουν τυχόν διπλό.
-      }
-
-      if (!mounted) return;
-      context.push('/phone-auth', extra: {
-        'mode': 'register',
-        'firstName': firstName,
-        'lastName': lastName,
-        'email': _email.text.trim(),
-        'phone': fullPhone,
-        'password': pass,
-        'profilePhotoPath': _profilePhoto?.path,
-      });
+      // Η εγγραφή είναι ΠΑΝΤΑ email + κωδικός. Καμία άλλη ερώτηση: ο χρήστης
+      // μπαίνει αμέσως ως «μη επαληθευμένος» και συμπληρώνει ό,τι θέλει (φωτο,
+      // όνομα, κινητό) από το Προφίλ → Επεξεργασία, όποτε θέλει.
+      await ref.read(authRepoProvider).registerWithEmail(
+            email: _email.text.trim(),
+            password: pass,
+            firstName: firstName,
+            lastName: lastName,
+          );
+      if (mounted) context.go('/map');
     } catch (e) {
       setState(() => _error = AppStrings.errorGeneric);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  void _showCountryPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => SafeArea(
-        top: false,
-        child: ListView.builder(
-          itemCount: _countries.length,
-          itemBuilder: (_, i) {
-            final c = _countries[i];
-            return ListTile(
-              leading: Text(c['flag']!, style: const TextStyle(fontSize: 24)),
-              title: Text(c['name']!,
-                  style: const TextStyle(color: AppColors.textPrimary)),
-              trailing: Text(c['code']!,
-                  style: const TextStyle(color: AppColors.textSecondary)),
-              onTap: () {
-                setState(() => _countryCode = c['code']!);
-                Navigator.pop(context);
-              },
-            );
-          },
-        ),
-      ),
-    );
   }
 
   @override
@@ -223,67 +111,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(children: [
-            GestureDetector(
-              onTap: _pickPhoto,
-              child: Stack(children: [
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.surfaceVariant,
-                    border: Border.all(color: AppColors.border, width: 1),
-                    image: _profilePhoto != null
-                        ? DecorationImage(
-                            image: FileImage(_profilePhoto!), fit: BoxFit.cover)
-                        : null,
-                  ),
-                  child: _profilePhoto == null
-                      ? const Icon(Icons.person_outline,
-                          color: AppColors.textSecondary, size: 40)
-                      : null,
-                ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primary,
-                    ),
-                    child: const Icon(Icons.camera_alt,
-                        color: Colors.white, size: 16),
-                  ),
-                ),
-              ]),
-            ),
-            const SizedBox(height: 8),
-            Text('reg.photoOptional'.tr(),
-                style: TextStyle(color: AppColors.textHint, fontSize: 12)),
-            const SizedBox(height: 24),
-
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: _first,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration:
-                      InputDecoration(hintText: 'reg.optionalName'.tr()),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _last,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration:
-                      InputDecoration(hintText: 'reg.optionalLastName'.tr()),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 12),
-
             TextField(
               controller: _email,
               keyboardType: TextInputType.emailAddress,
@@ -294,45 +121,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     color: AppColors.textSecondary, size: 20),
               ),
             ),
-            const SizedBox(height: 12),
-
-            Row(children: [
-              GestureDetector(
-                onTap: _showCountryPicker,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border, width: 0.5),
-                  ),
-                  child: Row(children: [
-                    Text(_countryCode,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500)),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.arrow_drop_down,
-                        color: AppColors.textSecondary, size: 18),
-                  ]),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  style: const TextStyle(color: AppColors.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'reg.optionalPhone'.tr(),
-                    prefixIcon: const Icon(Icons.phone_outlined,
-                        color: AppColors.textSecondary, size: 20),
-                  ),
-                ),
-              ),
-            ]),
             const SizedBox(height: 12),
 
             TextField(
@@ -449,8 +237,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                       fontWeight: FontWeight.w600,
                                       decoration: TextDecoration.underline),
                                   recognizer: TapGestureRecognizer()
-                                    ..onTap = () => _openUrl(
-                                        LegalUrls.terms(context.locale.languageCode)),
+                                    ..onTap = () => _openUrl(LegalUrls.terms(
+                                        context.locale.languageCode)),
                                 ),
                                 TextSpan(text: 'authx.andThe'.tr()),
                                 TextSpan(
@@ -460,8 +248,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                                       fontWeight: FontWeight.w600,
                                       decoration: TextDecoration.underline),
                                   recognizer: TapGestureRecognizer()
-                                    ..onTap = () => _openUrl(
-                                        LegalUrls.privacy(context.locale.languageCode)),
+                                    ..onTap = () => _openUrl(LegalUrls.privacy(
+                                        context.locale.languageCode)),
                                 ),
                               ],
                             ),
