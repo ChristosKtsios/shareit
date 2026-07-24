@@ -233,7 +233,12 @@
     "statusActive": "Activo",
     "statusNewDeal": "Nuevo Trato",
     "statusRate": "Valorar",
-    "statusPending": "Pendiente"
+    "statusPending": "Pendiente",
+    "attachPhoto": "Foto / Vídeo",
+    "attachLocation": "Ubicación",
+    "locationFailed": "No se pudo obtener tu ubicación",
+    "locationShared": "Ubicación",
+    "openInMaps": "Abrir en Mapas"
   },
   "msg": {
     "copy": "Copiar",

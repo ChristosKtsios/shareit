@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/date_helpers.dart';
@@ -30,8 +31,9 @@ class ChatMessageBubble extends StatelessWidget {
       builder: (_) => SafeArea(
         top: false,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Μπάρα αντιδράσεων — μόνο σε μηνύματα ΑΛΛΟΥ χρήστη (onReact != null).
-        if (!mine && onReact != null)
+        // Μπάρα αντιδράσεων — σε ΚΑΘΕ μήνυμα (δικό μου ή του άλλου), όποτε
+        // επιτρέπεται (onReact != null· null μόνο σε διαγραμμένα).
+        if (onReact != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
             child: Row(
@@ -51,7 +53,7 @@ class ChatMessageBubble extends StatelessWidget {
                   .toList(),
             ),
           ),
-        if (!mine && onReact != null) const Divider(height: 1),
+        if (onReact != null) const Divider(height: 1),
         if (onReply != null)
           ListTile(
             leading: const Icon(Icons.reply, color: AppColors.textSecondary),
@@ -119,6 +121,8 @@ class ChatMessageBubble extends StatelessWidget {
   final String messageType;
   final Map<String, dynamic>? dealData;
   final String? mediaUrl;
+  final double? latitude;
+  final double? longitude;
   final int? dealClosedDays;
   final bool isRead;
   final String? messageId;
@@ -158,6 +162,8 @@ class ChatMessageBubble extends StatelessWidget {
     this.messageType = 'text',
     this.dealData,
     this.mediaUrl,
+    this.latitude,
+    this.longitude,
     this.dealClosedDays,
     this.isRead = false,
     this.messageId,
@@ -329,6 +335,18 @@ class ChatMessageBubble extends StatelessWidget {
       );
     }
 
+    if (messageType == 'location' && latitude != null && longitude != null) {
+      return GestureDetector(
+        onLongPress: () => _showMessageOptions(context, text, isMe),
+        child: _LocationBubble(
+          isMe: isMe,
+          sentAt: sentAt,
+          latitude: latitude!,
+          longitude: longitude!,
+        ),
+      );
+    }
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
@@ -465,6 +483,100 @@ class _ImageBubble extends StatelessWidget {
         ),
       ),
     ));
+  }
+}
+
+// ── LOCATION BUBBLE ──
+class _LocationBubble extends StatelessWidget {
+  final bool isMe;
+  final DateTime? sentAt;
+  final double latitude;
+  final double longitude;
+  const _LocationBubble({
+    required this.isMe,
+    required this.sentAt,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  Future<void> _openMaps() async {
+    final uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment:
+            isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: _openMaps,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              width: MediaQuery.of(context).size.width * 0.6,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    height: 88,
+                    decoration: BoxDecoration(
+                      color: AppColors.offer.withValues(alpha: 0.14),
+                      borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(14)),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.location_on,
+                          color: AppColors.offer, size: 40),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(children: [
+                      const Icon(Icons.map_outlined,
+                          color: AppColors.offer, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('chatx.locationShared'.tr(),
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                            Text('chatx.openInMaps'.tr(),
+                                style: const TextStyle(
+                                    color: AppColors.offer, fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (sentAt != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4, left: 4, right: 4),
+              child: Text(DateHelpers.timeAgo(sentAt!),
+                  style:
+                      const TextStyle(color: AppColors.textHint, fontSize: 10)),
+            ),
+        ],
+      ),
+    );
   }
 }
 

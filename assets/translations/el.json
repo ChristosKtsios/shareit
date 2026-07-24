@@ -233,7 +233,12 @@
     "statusActive": "Ενεργό",
     "statusNewDeal": "Νέο Deal",
     "statusRate": "Αξιολόγησε",
-    "statusPending": "Εκκρεμεί"
+    "statusPending": "Εκκρεμεί",
+    "attachPhoto": "Φωτογραφία / Βίντεο",
+    "attachLocation": "Τοποθεσία",
+    "locationFailed": "Δεν βρέθηκε η τοποθεσία σου",
+    "locationShared": "Τοποθεσία",
+    "openInMaps": "Άνοιγμα στους Χάρτες"
   },
   "msg": {
     "copy": "Αντιγραφή",

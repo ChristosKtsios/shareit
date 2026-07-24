@@ -233,7 +233,12 @@
     "statusActive": "Active",
     "statusNewDeal": "New Deal",
     "statusRate": "Rate",
-    "statusPending": "Pending"
+    "statusPending": "Pending",
+    "attachPhoto": "Photo / Video",
+    "attachLocation": "Location",
+    "locationFailed": "Could not get your location",
+    "locationShared": "Location",
+    "openInMaps": "Open in Maps"
   },
   "msg": {
     "copy": "Copy",

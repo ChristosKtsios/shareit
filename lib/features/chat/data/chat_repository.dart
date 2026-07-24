@@ -122,6 +122,38 @@ class ChatRepository {
     }
   }
 
+  /// Στέλνει την τρέχουσα τοποθεσία του χρήστη ως μήνυμα. Αποθηκεύεται μόνο
+  /// lat/lng στο Firestore (κανένα αρχείο στο Storage) — το bubble το εμφανίζει
+  /// ως κάρτα που ανοίγει στους Χάρτες.
+  Future<void> sendLocationMessage({
+    required String chatId,
+    required String senderId,
+    required double latitude,
+    required double longitude,
+    Map<String, dynamic>? replyTo,
+  }) async {
+    const preview = '📍 Τοποθεσία';
+    await _db.collection('chats').doc(chatId).collection('messages').add({
+      'text': preview,
+      'senderId': senderId,
+      'sentAt': FieldValue.serverTimestamp(),
+      'messageType': 'location',
+      'latitude': latitude,
+      'longitude': longitude,
+      if (replyTo != null) 'replyTo': replyTo,
+    });
+    try {
+      await _db.collection('chats').doc(chatId).update({
+        'lastMessage': preview,
+        'lastMessageAt': FieldValue.serverTimestamp(),
+        'lastSenderId': senderId,
+        'unread': true,
+      });
+    } catch (e, s) {
+      logSwallowed(e, s, 'chat lastMessage update');
+    }
+  }
+
   Future<void> sendMediaMessage({
     required String chatId,
     required String senderId,

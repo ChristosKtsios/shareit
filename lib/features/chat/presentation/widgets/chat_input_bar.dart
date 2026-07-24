@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_strings.dart';
+import '../../../../core/services/location_service.dart';
 import '../../../../core/services/media_picker_service.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../data/chat_repository.dart';
@@ -36,6 +37,80 @@ class ChatInputBar extends ConsumerStatefulWidget {
 
 class _ChatInputBarState extends ConsumerState<ChatInputBar> {
   bool _uploading = false;
+
+  /// Μενού συνημμένων (στυλ Signal): ανοίγει με ωραίο bottom sheet και δίνει
+  /// τις επιλογές «Φωτογραφία/Βίντεο» και «Τοποθεσία».
+  Future<void> _showAttachMenu() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10),
+          Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.borderLight,
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 6),
+          _AttachOption(
+            icon: Icons.photo_library_outlined,
+            color: AppColors.seek,
+            label: 'chatx.attachPhoto'.tr(),
+            onTap: () => Navigator.pop(ctx, 'media'),
+          ),
+          _AttachOption(
+            icon: Icons.location_on_outlined,
+            color: AppColors.offer,
+            label: 'chatx.attachLocation'.tr(),
+            onTap: () => Navigator.pop(ctx, 'location'),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (choice == 'media') {
+      await _pickAndSend();
+    } else if (choice == 'location') {
+      await _sendLocation();
+    }
+  }
+
+  Future<void> _sendLocation() async {
+    setState(() => _uploading = true);
+    try {
+      final pos = await LocationService.getCurrentPosition();
+      if (pos == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('chatx.locationFailed'.tr())),
+          );
+        }
+        return;
+      }
+      final uid = ref.read(currentUserProvider)?.uid ?? '';
+      await ChatRepository().sendLocationMessage(
+        chatId: widget.chatId,
+        senderId: uid,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        replyTo: widget.replyTo,
+      );
+      widget.onMediaSent?.call();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${'msg.sendError'.tr()}: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
 
   Future<void> _pickAndSend() async {
     final picker = MediaPickerService();
@@ -83,17 +158,17 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar> {
         border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
       ),
       child: Row(children: [
-        // Κουμπί φωτογραφικής μηχανής
+        // Κουμπί «+» → μενού συνημμένων (φωτο/βίντεο + τοποθεσία)
         IconButton(
-          onPressed: _uploading ? null : _pickAndSend,
+          onPressed: _uploading ? null : _showAttachMenu,
           icon: _uploading
               ? const SizedBox(
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: AppColors.primary))
-              : const Icon(Icons.photo_camera,
-                  color: AppColors.primary, size: 24),
+              : const Icon(Icons.add_circle_outline,
+                  color: AppColors.primary, size: 26),
         ),
         Expanded(
           child: TextField(
@@ -128,6 +203,48 @@ class _ChatInputBarState extends ConsumerState<ChatInputBar> {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// Μία γραμμή-επιλογή στο μενού συνημμένων (εικονίδιο σε χρωματιστό κύκλο +
+/// ετικέτα), στυλ Signal.
+class _AttachOption extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+  const _AttachOption({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 16),
+          Text(label,
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500)),
+        ]),
+      ),
     );
   }
 }

@@ -428,7 +428,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ]),
                 );
               }
-              return Container(
+              // Tap στην κάρτα (όχι στα κουμπιά) → πλήρης οθόνη λεπτομερειών.
+              return GestureDetector(
+                onTap: () => context.push('/deal-review/${deal.id}'),
+                child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 color: AppColors.deal.withValues(alpha: 0.12),
@@ -446,6 +449,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700)),
                         ),
+                        const Icon(Icons.chevron_right,
+                            color: AppColors.deal, size: 18),
                       ]),
                       const SizedBox(height: 4),
                       Padding(
@@ -521,6 +526,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                       ]),
                     ]),
+                ),
               );
             }
 
@@ -631,6 +637,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     messageType: messageType,
                     dealData: d['dealData'] as Map<String, dynamic>?,
                     mediaUrl: d['mediaUrl'] as String?,
+                    latitude: (d['latitude'] as num?)?.toDouble(),
+                    longitude: (d['longitude'] as num?)?.toDouble(),
                     isRead: isRead,
                     messageId: mId,
                     senderId: d['senderId'] as String?,
@@ -638,8 +646,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     currentUid: currentUid,
                     replyTo: d['replyTo'] as Map<String, dynamic>?,
                     editedAt: (d['editedAt'] as Timestamp?)?.toDate(),
-                    // Αντίδραση επιτρέπεται μόνο σε μηνύματα ΑΛΛΟΥ χρήστη.
-                    onReact: isMe
+                    // Αντίδραση σε ΚΑΘΕ μήνυμα (δικό μου ή του άλλου) — εκτός από
+                    // τα διαγραμμένα. Οι κανόνες το επιτρέπουν: κάθε συμμετέχων
+                    // αγγίζει μόνο το ΔΙΚΟ του κλειδί στο reactions.
+                    onReact: isDeleted
                         ? null
                         : (emoji) => ChatRepository().setMessageReaction(
                               chatId: widget.chatId,
