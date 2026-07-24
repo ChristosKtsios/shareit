@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../profile/data/user_repository.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -361,7 +362,18 @@ class AuthRepository {
   // ============================================================
   // OTHER
   // ============================================================
-  Future<void> logout() => _auth.signOut();
+  // Καθαρίζει ΚΑΙ το Google session, όχι μόνο το Firebase. Χωρίς αυτό, το
+  // google_sign_in κρατούσε τον λογαριασμό στην cache: μια αμέσως επόμενη
+  // «Σύνδεση με Google» έβρισκε «βρώμικη» κατάσταση (ιδίως μετά από διαγραφή
+  // λογαριασμού) και έσπαγε — flash στον χάρτη και επιστροφή στο login.
+  Future<void> logout() async {
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {
+      // Δεν ήταν συνδεδεμένος με Google — μη κρίσιμο.
+    }
+    await _auth.signOut();
+  }
 
   Future<void> updatePassword(String newPassword) =>
       _auth.currentUser!.updatePassword(newPassword);

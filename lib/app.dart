@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
+import 'core/services/auth_consent_gate.dart';
 import 'core/services/fcm_service.dart';
 import 'core/services/location_permission_gate.dart';
 import 'core/services/profile_gate.dart';
@@ -87,7 +88,14 @@ final _routerProvider = Provider<GoRouter>((ref) {
           loc == '/phone-auth';
 
       if (!isLoggedIn && !isAuthRoute) return '/login';
-      if (isLoggedIn && isAuthRoute) return '/map';
+      if (isLoggedIn && isAuthRoute) {
+        // Νέος χρήστης Google σε αποδοχή όρων/18+: ΜΕΙΝΕ στην οθόνη login μέχρι
+        // να αποδεχτεί (ή να ακυρωθεί). Το `signInWithCredential` πυροδοτεί
+        // authStateChanges πριν προλάβει να δειχτεί ο διάλογος συναίνεσης· χωρίς
+        // αυτό, ο router έφευγε στο /map και ο χρήστης μπαινε ΧΩΡΙΣ αποδοχή.
+        if (AuthConsentGate.pending) return null;
+        return '/map';
+      }
 
       if (loc == '/login') {
         final prefs = await SharedPreferences.getInstance();

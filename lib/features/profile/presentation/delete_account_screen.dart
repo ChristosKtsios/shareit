@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:go_router/go_router.dart';
 import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
@@ -170,6 +171,17 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     }
 
     if (deletionSucceeded) {
+      // Καθάρισε ΚΑΙ το Google session (disconnect → θα ξαναζητηθεί λογαριασμός).
+      // Χωρίς αυτό, μια αμέσως επόμενη «Σύνδεση με Google» έβρισκε την cached
+      // κατάσταση του μόλις διαγραμμένου λογαριασμού: flash στον χάρτη και
+      // επιστροφή στο login αντί για τη φόρμα ονόματος/όρων.
+      try {
+        await GoogleSignIn().disconnect();
+      } catch (_) {
+        try {
+          await GoogleSignIn().signOut();
+        } catch (_) {}
+      }
       try {
         await FirebaseAuth.instance.signOut();
       } catch (_) {}

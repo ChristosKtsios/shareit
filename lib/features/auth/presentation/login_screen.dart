@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/services/auth_consent_gate.dart';
 import '../../../core/services/fcm_service.dart';
 import '../../../core/utils/legal_urls.dart';
 import '../../../core/services/profile_gate.dart';
@@ -138,23 +139,54 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  Future<bool> _showTermsDialog() async {
+  /// Διάλογος για ΝΕΟ χρήστη Google: ζητά όνομα/επώνυμο (με πρόταση από τον
+  /// λογαριασμό Google) + αποδοχή όρων/18+. Επιστρέφει το όνομα που έγραψε ο
+  /// χρήστης, ή `null` αν ακύρωσε. Το κουμπί «Συνέχεια» ενεργοποιείται ΜΟΝΟ όταν
+  /// υπάρχει όνομα, επώνυμο, 18+ και αποδοχή όρων.
+  Future<({String first, String last})?> _showTermsDialog({
+    String suggestedFirst = '',
+    String suggestedLast = '',
+  }) async {
+    final firstCtrl = TextEditingController(text: suggestedFirst);
+    final lastCtrl = TextEditingController(text: suggestedLast);
     bool ageOk = false;
     bool termsOk = false;
-    bool? result;
+    ({String first, String last})? result;
 
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) {
+          final canContinue = firstCtrl.text.trim().isNotEmpty &&
+              lastCtrl.text.trim().isNotEmpty &&
+              ageOk &&
+              termsOk;
+          return AlertDialog(
           backgroundColor: AppColors.surface,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text('authx.beforeContinue'.tr(),
               style: TextStyle(
                   color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+              controller: firstCtrl,
+              textCapitalization: TextCapitalization.words,
+              onChanged: (_) => setDialogState(() {}),
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: InputDecoration(labelText: 'auth.firstName'.tr()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: lastCtrl,
+              textCapitalization: TextCapitalization.words,
+              onChanged: (_) => setDialogState(() {}),
+              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: InputDecoration(labelText: 'auth.lastName'.tr()),
+            ),
+            const SizedBox(height: 16),
             Text(
               'authx.confirmFollowing'.tr(),
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
@@ -237,20 +269,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ]),
               ),
             ),
-          ]),
+          ])),
           actions: [
             TextButton(
-              onPressed: () {
-                result = false;
-                Navigator.pop(dialogContext);
-              },
+              onPressed: () => Navigator.pop(dialogContext),
               child: Text('common.cancel'.tr(),
                   style: const TextStyle(color: AppColors.textSecondary)),
             ),
             ElevatedButton(
-              onPressed: (ageOk && termsOk)
+              onPressed: canContinue
                   ? () {
-                      result = true;
+                      result = (
+                        first: firstCtrl.text.trim(),
+                        last: lastCtrl.text.trim(),
+                      );
                       Navigator.pop(dialogContext);
                     }
                   : null,
@@ -263,11 +295,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   style: TextStyle(color: AppColors.background)),
             ),
           ],
-        ),
+          );
+        },
       ),
     );
 
-    return result == true;
+    firstCtrl.dispose();
+    lastCtrl.dispose();
+    return result;
   }
 
   Future<void> _loginWithGoogle() async {
@@ -299,6 +334,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
+
+      // Κράτα τον router στην οθόνη login: το signInWithCredential πυροδοτεί
+      // authStateChanges, οπότε χωρίς αυτό ο router θα έφευγε στο /map πριν
+      // προλάβει να δειχτεί ο διάλογος συναίνεσης (όροι + 18+). Μηδενίζεται
+      // ΠΑΝΤΑ στο finally.
+      AuthConsentGate.pending = true;
       final userCredential =
           await FirebaseAuth.instance.signInWithCredential(credential);
       final user = userCredential.user;
@@ -308,32 +349,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final docRef = db.collection('users').doc(user.uid);
         final doc = await docRef.get();
 
-        // Αν είναι νέος χρήστης — ζητάμε αποδοχή terms
+        // Νέος χρήστης;
         if (!doc.exists) {
-          if (!mounted) return;
-          final accepted = await _showTermsDialog();
-          if (!accepted) {
-            // Ο χρήστης δεν αποδέχτηκε — διαγραφή του Firebase Auth user
+          // ── ΥΠΟΧΡΕΩΤΙΚΗ ΣΥΝΑΙΝΕΣΗ: όροι + 18+ ──────────────────────────────
+          // Ο διάλογος εμφανίζεται ΠΑΝΤΑ αξιόπιστα, επειδή το
+          // AuthConsentGate.pending κρατά τον router στην οθόνη login (αλλιώς η
+          // πλοήγηση στο /map θα την κατέστρεφε πριν προλάβει να δειχτεί).
+          // Χωρίς αποδοχή, ο λογαριασμός ΔΕΝ προχωρά: διαγράφουμε τον Auth user
+          // και επιστρέφουμε. Το `mounted ? … : false` σημαίνει: αν για
+          // οποιονδήποτε λόγο δεν μπορεί να δειχτεί ο διάλογος, ΔΕΝ περνάμε.
+          // Πρόταση ονόματος από τον λογαριασμό Google (ο χρήστης μπορεί να την
+          // αλλάξει μέσα στον διάλογο).
+          final (suggFirst, suggLast) = DisplayName.from(
+            displayName: user.displayName ?? googleUser.displayName,
+            email: user.email ?? googleUser.email,
+          );
+          final consent = mounted
+              ? await _showTermsDialog(
+                  suggestedFirst: suggFirst, suggestedLast: suggLast)
+              : null;
+          if (consent == null) {
             try {
               await user.delete();
             } catch (_) {
               await FirebaseAuth.instance.signOut();
             }
             await GoogleSignIn().signOut();
-            setState(() {
-              _loading = false;
-              _error = 'authx.mustAcceptTerms'.tr();
-            });
+            if (mounted) {
+              setState(() {
+                _loading = false;
+                _error = 'authx.mustAcceptTerms'.tr();
+              });
+            }
             return;
           }
 
-          // Δημιουργία profile. Το όνομα βγαίνει από τον λογαριασμό Google και,
-          // αν εκείνος δεν έχει displayName, από το email του ΙΔΙΟΥ του χρήστη
-          // — ώστε να μην εμφανίζεται ποτέ ως σκέτο «Χρήστης».
-          final (firstName, lastName) = DisplayName.from(
-            displayName: user.displayName ?? googleUser.displayName,
-            email: user.email ?? googleUser.email,
-          );
+          // Το όνομα που ΠΛΗΚΤΡΟΛΟΓΗΣΕ ο χρήστης στον διάλογο.
+          final firstName = consent.first;
+          final lastName = consent.last;
 
           // ΠΡΟΣΟΧΗ: email/phone ΔΕΝ μπαίνουν στο δημόσιο doc — πάνε στο
           // users/{uid}/private/data (το δημόσιο doc το διαβάζουν όλοι).
@@ -353,6 +406,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             'dealsCount': 0,
             'isPrivateProfile': false,
             'showOnlineStatus': true,
+            'ageVerified': true,
             'termsAcceptedAt': FieldValue.serverTimestamp(),
             'createdAt': FieldValue.serverTimestamp(),
           });
@@ -365,9 +419,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // Το doc μόλις δημιουργήθηκε → αποθήκευσε τώρα το FCM token (το
           // FcmService.init είχε τρέξει πριν υπάρξει doc, με update-only write).
           await FcmService.syncToken(user.uid);
-
-          // Το doc υπάρχει πλέον → ο router να το ξαναδιαβάσει, ώστε να πιάσει
-          // την υποχρεωτική επαλήθευση κινητού (phoneVerified: false).
           ProfileGate.invalidate();
         } else {
           // Το email μπορεί να άλλαξε στο Google → κράτα το private doc συγχρονισμένο.
@@ -399,8 +450,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (mounted) context.go('/map');
     } catch (e) {
-      setState(() => _error = 'authx.googleError'.tr());
+      if (mounted) setState(() => _error = 'authx.googleError'.tr());
     } finally {
+      // ΠΑΝΤΑ: αλλιώς ένα ξεχασμένο `true` κλειδώνει τον χρήστη στην οθόνη login.
+      AuthConsentGate.pending = false;
       if (mounted) setState(() => _loading = false);
     }
   }
