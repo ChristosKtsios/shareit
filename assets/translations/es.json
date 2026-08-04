@@ -802,7 +802,10 @@
     "title": "Notificaciones",
     "allRead": "Todo leído",
     "loadError": "Error al cargar.",
-    "empty": "No hay notificaciones."
+    "empty": "No hay notificaciones.",
+    "friendRequest": "Nueva solicitud de amistad",
+    "friendAccepted": "Nuevo amigo",
+    "listingDeleted": "Anuncio eliminado"
   },
   "time": {
     "justNow": "ahora mismo",
@@ -851,7 +854,8 @@
   },
   "lcard": {
     "fromDate": "desde {d}",
-    "untilDate": "hasta {d}"
+    "untilDate": "hasta {d}",
+    "seeMore": "Ver más"
   },
   "lact": {
     "deleteConfirmBody": "¿Estás seguro?",

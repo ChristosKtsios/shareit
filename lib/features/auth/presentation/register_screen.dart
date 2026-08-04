@@ -232,7 +232,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
             const SizedBox(height: 8),
             Text('reg.photoOptional'.tr(),
-                style: TextStyle(color: AppColors.textHint, fontSize: 12)),
+                style: const TextStyle(color: AppColors.textHint, fontSize: 12)),
             const SizedBox(height: 24),
 
             Row(children: [
@@ -262,7 +262,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               style: const TextStyle(color: AppColors.textPrimary),
               decoration: InputDecoration(
                 hintText: AppStrings.email,
-                prefixIcon: Icon(Icons.email_outlined,
+                prefixIcon: const Icon(Icons.email_outlined,
                     color: AppColors.textSecondary, size: 20),
               ),
             ),
@@ -377,7 +377,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           padding: const EdgeInsets.only(top: 12),
                           child: Text(
                             'authx.age18'.tr(),
-                            style: TextStyle(
+                            style: const TextStyle(
                                 color: AppColors.textPrimary, fontSize: 13),
                           ),
                         ),

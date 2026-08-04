@@ -6,8 +6,8 @@ import 'package:easy_localization/easy_localization.dart';
 class AppStrings {
   AppStrings._();
 
-  static const appName = 'ShareIt';
-  static const newListing = 'ShareIt';
+  static const appName = 'Share your Need';
+  static const newListing = 'Share your Need';
 
   static String get login => 'auth.login'.tr();
   static String get register => 'auth.register'.tr();

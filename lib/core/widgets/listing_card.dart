@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import '../constants/app_colors.dart';
 import '../../features/listings/data/listing_model.dart';
 
@@ -32,8 +33,9 @@ class ListingCard extends StatelessWidget {
 
     if (fromStr != null && untilStr != null) return '$fromStr → $untilStr';
     if (fromStr != null) return 'lcard.fromDate'.tr(namedArgs: {'d': fromStr});
-    if (untilStr != null)
+    if (untilStr != null) {
       return 'lcard.untilDate'.tr(namedArgs: {'d': untilStr});
+    }
     return '';
   }
 
@@ -78,55 +80,54 @@ class ListingCard extends StatelessWidget {
                 ),
             ]),
             const SizedBox(height: 8),
-            Text(listing.title,
-                style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(listing.description,
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 13),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis),
-            if (listing.tags.length > 1) ...[
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: listing.tags
-                    .skip(1)
-                    .take(4)
-                    .map((t) => Text('#$t',
-                        style: const TextStyle(
-                            color: AppColors.textHint, fontSize: 11)))
-                    .toList(),
-              ),
-            ],
-            if (listing.imageUrls.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                  height: 60,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: listing.imageUrls.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 6),
-                    itemBuilder: (_, i) => ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                            imageUrl: listing.imageUrls[i],
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                            // Αποκωδικοποίηση στο μέγεθος που ΠΡΑΓΜΑΤΙΚΑ
-                            // εμφανίζεται — αλλιώς κάθε μικρογραφία κρατά
-                            // στη μνήμη εικόνα 1600px.
-                            memCacheWidth: 180,
-                            errorWidget: (_, __, ___) => const Icon(
-                                Icons.broken_image_outlined,
-                                color: AppColors.textHint))),
-                  )),
-            ],
+            // Κείμενο αριστερά, φωτογραφίες ΔΕΞΙΑ (στο κενό της κάρτας).
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(listing.title,
+                          style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      _DescriptionWithMore(listing.description),
+                      if (listing.tags.length > 1) ...[
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: listing.tags
+                              .skip(1)
+                              .take(4)
+                              .map((t) => Text('#$t',
+                                  style: const TextStyle(
+                                      color: AppColors.textHint, fontSize: 11)))
+                              .toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (listing.imageUrls.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  _ListingPhotos(
+                    urls: listing.imageUrls,
+                    // Tap σε φωτο → ανοίγει ο viewer, ΜΕ την αγγελία από κάτω
+                    // στη στοίβα: κλείσιμο (X) → λεπτομέρεια αγγελίας, πίσω →
+                    // πάλι όλες οι αγγελίες.
+                    onPhotoTap: (index) {
+                      context.push('/listing/${listing.id}');
+                      context.push('/listing/${listing.id}/images?i=$index',
+                          extra: List<String>.from(listing.imageUrls));
+                    },
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 10),
             StreamBuilder<DocumentSnapshot>(
               // Άμυνα: αν λείπει το userId (malformed/legacy αγγελία) μη καλέσεις
@@ -204,6 +205,111 @@ class ListingCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Περιγραφή αγγελίας (έως 2 γραμμές). Αν το κείμενο δεν χωράει, εμφανίζει
+/// «Δείτε περισσότερα» — το πάτημα οπουδήποτε στην κάρτα ανοίγει την αγγελία.
+class _DescriptionWithMore extends StatelessWidget {
+  final String text;
+  const _DescriptionWithMore(this.text);
+
+  static const _style =
+      TextStyle(color: AppColors.textSecondary, fontSize: 13);
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(builder: (context, constraints) {
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: _style),
+        maxLines: 2,
+        textDirection: Directionality.of(context),
+      )..layout(maxWidth: constraints.maxWidth);
+      final truncated = tp.didExceedMaxLines;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text,
+              style: _style, maxLines: 2, overflow: TextOverflow.ellipsis),
+          if (truncated)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text('lcard.seeMore'.tr(),
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+            ),
+        ],
+      );
+    });
+  }
+}
+
+/// Φωτογραφίες αγγελίας στη δεξιά πλευρά της κάρτας: έως 2 μικρογραφίες. Αν
+/// υπάρχουν παραπάνω, η δεύτερη έχει σκούρο overlay με «+X» (X = οι υπόλοιπες).
+class _ListingPhotos extends StatelessWidget {
+  final List<String> urls;
+  final void Function(int index) onPhotoTap;
+  const _ListingPhotos({required this.urls, required this.onPhotoTap});
+
+  static const double _size = 58;
+
+  @override
+  Widget build(BuildContext context) {
+    final show = urls.take(2).toList();
+    final extra = urls.length - show.length;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (int i = 0; i < show.length; i++) ...[
+          if (i > 0) const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () => onPhotoTap(i),
+            child: _thumb(show[i], showExtra: i == show.length - 1 ? extra : 0),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _thumb(String url, {required int showExtra}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        children: [
+          CachedNetworkImage(
+            imageUrl: url,
+            width: _size,
+            height: _size,
+            fit: BoxFit.cover,
+            // Αποκωδικοποίηση στο μέγεθος που εμφανίζεται (όχι 1600px).
+            memCacheWidth: 174,
+            placeholder: (_, __) => Container(
+                width: _size, height: _size, color: AppColors.surfaceVariant),
+            errorWidget: (_, __, ___) => Container(
+                width: _size,
+                height: _size,
+                color: AppColors.surfaceVariant,
+                child: const Icon(Icons.broken_image_outlined,
+                    color: AppColors.textHint, size: 20)),
+          ),
+          if (showExtra > 0)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.55),
+                alignment: Alignment.center,
+                child: Text('+$showExtra',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
+        ],
       ),
     );
   }

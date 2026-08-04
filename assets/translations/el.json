@@ -802,7 +802,10 @@
     "title": "Ειδοποιήσεις",
     "allRead": "Όλα διαβασμένα",
     "loadError": "Σφάλμα φόρτωσης.",
-    "empty": "Δεν υπάρχουν ειδοποιήσεις."
+    "empty": "Δεν υπάρχουν ειδοποιήσεις.",
+    "friendRequest": "Νέο αίτημα φιλίας",
+    "friendAccepted": "Νέος φίλος",
+    "listingDeleted": "Αγγελία διαγράφηκε"
   },
   "time": {
     "justNow": "μόλις τώρα",
@@ -851,7 +854,8 @@
   },
   "lcard": {
     "fromDate": "από {d}",
-    "untilDate": "ως {d}"
+    "untilDate": "ως {d}",
+    "seeMore": "Δείτε περισσότερα"
   },
   "lact": {
     "deleteConfirmBody": "Είσαι σίγουρος;",

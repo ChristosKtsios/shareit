@@ -58,7 +58,7 @@ class ChatMessageBubble extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.reply, color: AppColors.textSecondary),
             title: Text('chatx.reply'.tr(),
-                style: TextStyle(color: AppColors.textPrimary)),
+                style: const TextStyle(color: AppColors.textPrimary)),
             onTap: () {
               Navigator.pop(ctx);
               onReply!();
@@ -69,7 +69,7 @@ class ChatMessageBubble extends StatelessWidget {
             leading:
                 const Icon(Icons.edit_outlined, color: AppColors.textSecondary),
             title: Text('profile.edit'.tr(),
-                style: TextStyle(color: AppColors.textPrimary)),
+                style: const TextStyle(color: AppColors.textPrimary)),
             onTap: () {
               Navigator.pop(ctx);
               onEdit!();
@@ -79,7 +79,7 @@ class ChatMessageBubble extends StatelessWidget {
         ListTile(
           leading: const Icon(Icons.copy, color: AppColors.textSecondary),
           title: Text('msg.copy'.tr(),
-              style: TextStyle(color: AppColors.textPrimary)),
+              style: const TextStyle(color: AppColors.textPrimary)),
           onTap: () {
             Clipboard.setData(ClipboardData(text: msgText));
             Navigator.pop(ctx);
@@ -103,7 +103,7 @@ class ChatMessageBubble extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.flag_outlined, color: AppColors.deal),
             title: Text('msg.reportMessage'.tr(),
-                style: TextStyle(color: AppColors.textPrimary)),
+                style: const TextStyle(color: AppColors.textPrimary)),
             onTap: () {
               Navigator.pop(ctx);
               ctx.push('/report/message/$senderId/$chatId/$messageId');
@@ -903,7 +903,7 @@ class _DealCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('msg.dealProposal'.tr(),
-                                style: TextStyle(
+                                style: const TextStyle(
                                     color: AppColors.deal,
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,

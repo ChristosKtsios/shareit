@@ -802,7 +802,10 @@
     "title": "Notifications",
     "allRead": "All read",
     "loadError": "Loading error.",
-    "empty": "No notifications."
+    "empty": "No notifications.",
+    "friendRequest": "New friend request",
+    "friendAccepted": "New friend",
+    "listingDeleted": "Listing deleted"
   },
   "time": {
     "justNow": "just now",
@@ -851,7 +854,8 @@
   },
   "lcard": {
     "fromDate": "from {d}",
-    "untilDate": "until {d}"
+    "untilDate": "until {d}",
+    "seeMore": "See more"
   },
   "lact": {
     "deleteConfirmBody": "Are you sure?",

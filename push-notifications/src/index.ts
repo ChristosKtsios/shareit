@@ -3,6 +3,7 @@ import * as admin from "firebase-admin";
 import {
   onDocumentCreated,
   onDocumentUpdated,
+  onDocumentDeleted,
 } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -26,6 +27,7 @@ const STR: Record<string, Record<Lang, string>> = {
   newMessageTitle: { el: "Νέο μήνυμα", en: "New message", es: "Nuevo mensaje" },
   msgPhoto: { el: "📷 Φωτογραφία", en: "📷 Photo", es: "📷 Foto" },
   msgVideo: { el: "🎥 Βίντεο", en: "🎥 Video", es: "🎥 Vídeo" },
+  msgLocation: { el: "📍 Τοποθεσία", en: "📍 Location", es: "📍 Ubicación" },
   msgDealProposal: {
     el: "📋 Πρόταση Deal", en: "📋 Deal proposal", es: "📋 Propuesta de deal",
   },
@@ -62,6 +64,24 @@ const STR: Record<string, Record<Lang, string>> = {
     el: "Η «{title}» θα αφαιρεθεί σε {days} μέρες. Άνοιξέ την και πάτα «Ανανέωση» για να μείνει ενεργή.",
     en: "\"{title}\" will be removed in {days} days. Open it and tap \"Renew\" to keep it active.",
     es: "\"{title}\" se eliminará en {days} días. Ábrelo y pulsa \"Renovar\" para mantenerlo activo.",
+  },
+  friendAcceptedTitle: {
+    el: "🎉 Νέος φίλος", en: "🎉 New friend", es: "🎉 Nuevo amigo",
+  },
+  friendAcceptedBody: {
+    el: "Ο/Η {name} αποδέχτηκε το αίτημα φιλίας σου",
+    en: "{name} accepted your friend request",
+    es: "{name} aceptó tu solicitud de amistad",
+  },
+  listingDeletedTitle: {
+    el: "🗑️ Αγγελία διαγράφηκε",
+    en: "🗑️ Listing deleted",
+    es: "🗑️ Anuncio eliminado",
+  },
+  listingDeletedBody: {
+    el: "Η αγγελία σου «{title}» αφαιρέθηκε επειδή έληξε.",
+    en: "Your listing \"{title}\" was removed because it expired.",
+    es: "Tu anuncio \"{title}\" se eliminó porque caducó.",
   },
 };
 
@@ -159,17 +179,34 @@ export const onNewMessage = onDocumentCreated(
     const senderDoc = await db.collection("users").doc(senderId).get();
     const senderName: string | undefined =
       senderDoc.data()?.firstName ?? senderDoc.data()?.fullName;
-    await sendToUser(receiverId, (lang) => {
-      let body: string;
+    const bodyFor = (lang: string): string => {
       switch (msgType) {
-      case "image": body = t(lang, "msgPhoto"); break;
-      case "video": body = t(lang, "msgVideo"); break;
-      case "deal_proposal": body = t(lang, "msgDealProposal"); break;
-      case "deal_closed": body = t(lang, "msgDealClosed"); break;
-      default: body = (msg.text as string) ?? t(lang, "newMessageTitle");
+      case "image": return t(lang, "msgPhoto");
+      case "video": return t(lang, "msgVideo");
+      case "location": return t(lang, "msgLocation");
+      case "deal_proposal": return t(lang, "msgDealProposal");
+      case "deal_closed": return t(lang, "msgDealClosed");
+      default: return (msg.text as string) ?? t(lang, "newMessageTitle");
       }
-      return { title: senderName ?? t(lang, "newMessageTitle"), body };
-    }, { type: "chat", chatId }, "chat");
+    };
+    await sendToUser(receiverId, (lang) => ({
+      title: senderName ?? t(lang, "newMessageTitle"),
+      body: bodyFor(lang),
+    }), { type: "chat", chatId }, "chat");
+
+    // Μόνιμη ειδοποίηση — ΜΙΑ ανά συνομιλία (σταθερό doc id → upsert), ώστε η
+    // λίστα να μη γεμίζει με ένα doc ανά μήνυμα· κάθε νέο μήνυμα ανανεώνει την
+    // ίδια. routePath = `/chat/{chatId}` → καθαρίζεται στο onChatDeleted.
+    const rlang = await langOf(receiverId);
+    await db.collection("notifications").doc(`msg_${receiverId}_${chatId}`).set({
+      targetUid: receiverId,
+      type: "newMessage",
+      title: senderName ?? t(rlang, "newMessageTitle"),
+      body: `${senderName ? senderName + ": " : ""}${bodyFor(rlang)}`,
+      routePath: `/chat/${chatId}`,
+      isRead: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   }
 );
 
@@ -218,6 +255,22 @@ async function createNotification(
   } catch (e) {
     logger.error(`createNotification for ${targetUid}:`, e);
   }
+}
+
+/** Ειδοποιεί τον ιδιοκτήτη ότι η αγγελία του αφαιρέθηκε (λήξη). */
+async function notifyListingDeleted(
+  ownerUid: string,
+  title: string
+): Promise<void> {
+  if (!ownerUid) return;
+  const lang = await langOf(ownerUid);
+  await createNotification(
+    ownerUid,
+    "listingDeleted",
+    t(lang, "listingDeletedTitle"),
+    t(lang, "listingDeletedBody", { title }),
+    null,
+  );
 }
 
 // Deal proposals are created in two steps: an empty `pending` doc, then an
@@ -449,6 +502,31 @@ export const getEmailByPhone = onCall(
   }
 });
 
+/**
+ * Όταν διαγράφεται μια συνομιλία (ο χρήστης πατά «Διαγραφή συνομιλίας», ή στη
+ * διαγραφή λογαριασμού), σβήνει και τις μόνιμες ειδοποιήσεις μηνυμάτων εκείνου
+ * του chat — ώστε να μη μένουν «φαντάσματα» στη λίστα ειδοποιήσεων.
+ *
+ * Γίνεται server-side γιατί ο client ΔΕΝ έχει δικαίωμα delete στα notifications
+ * (firestore.rules) — και σωστά: αλλιώς θα μπορούσε να σβήνει ειδοποιήσεις
+ * άλλων. Το routePath των message notifications είναι `/chat/{chatId}`.
+ */
+export const onChatDeleted = onDocumentDeleted(
+  "chats/{chatId}",
+  async (event) => {
+    const chatId = event.params.chatId;
+    const snap = await db
+      .collection("notifications")
+      .where("routePath", "==", `/chat/${chatId}`)
+      .get();
+    if (snap.empty) return;
+    const batch = db.batch();
+    for (const doc of snap.docs) batch.delete(doc.ref);
+    await batch.commit();
+    logger.info(`Deleted ${snap.size} message notifications for chat ${chatId}`);
+  }
+);
+
 export const onNewFriendRequest = onDocumentCreated(
   "friendRequests/{reqId}",
   async (event) => {
@@ -462,6 +540,16 @@ export const onNewFriendRequest = onDocumentCreated(
       title: t(lang, "friendReqTitle"),
       body: t(lang, "friendReqBody", { name: fromName ?? t(lang, "someone") }),
     }), { type: "friend_request", fromUid }, "friends");
+
+    // Μόνιμη ειδοποίηση → οθόνη αιτημάτων φιλίας.
+    const lang = await langOf(toUid);
+    await createNotification(
+      toUid,
+      "friendRequest",
+      t(lang, "friendReqTitle"),
+      t(lang, "friendReqBody", { name: fromName ?? t(lang, "someone") }),
+      "/friend-requests",
+    );
   }
 );
 
@@ -504,6 +592,23 @@ export const onFriendRequestAccepted = onDocumentUpdated(
       }
     }
     logger.info(`Friendship created: ${fromUid} <-> ${toUid}`);
+
+    // Ειδοποίηση στον ΑΠΟΣΤΟΛΕΑ (fromUid): «ο X αποδέχτηκε το αίτημά σου».
+    const toDoc = await db.collection("users").doc(toUid).get();
+    const toName = toDoc.data()?.firstName as string | undefined;
+    await sendToUser(fromUid, (lang) => ({
+      title: t(lang, "friendAcceptedTitle"),
+      body: t(lang, "friendAcceptedBody", { name: toName ?? t(lang, "someone") }),
+    }), { type: "friend_accepted", toUid }, "friends");
+
+    const lang = await langOf(fromUid);
+    await createNotification(
+      fromUid,
+      "friendAccepted",
+      t(lang, "friendAcceptedTitle"),
+      t(lang, "friendAcceptedBody", { name: toName ?? t(lang, "someone") }),
+      `/profile/${toUid}`,
+    );
   }
 );
 
@@ -745,9 +850,12 @@ export const deleteExpiredListings = onSchedule(
       .where("availableUntil", "<", now)
       .get();
     for (const doc of explicit.docs) {
+      const d = doc.data();
       try {
         await doc.ref.delete();
         deleted++;
+        await notifyListingDeleted(
+          (d.userId as string) ?? "", (d.title as string) ?? "");
       } catch (err) {
         logger.error(`Failed to delete listing ${doc.id}:`, err);
       }
@@ -780,6 +888,8 @@ export const deleteExpiredListings = onSchedule(
         try {
           await doc.ref.delete();
           deleted++;
+          await notifyListingDeleted(
+            (d.userId as string) ?? "", (d.title as string) ?? "");
         } catch (err) {
           logger.error(`Failed to delete aged listing ${doc.id}:`, err);
         }

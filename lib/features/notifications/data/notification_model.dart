@@ -8,6 +8,9 @@ enum NotificationType {
   newRating,
   newComment,
   listingExpiring,
+  friendRequest,
+  friendAccepted,
+  listingDeleted,
 }
 
 extension NotificationTypeX on NotificationType {
@@ -18,6 +21,9 @@ extension NotificationTypeX on NotificationType {
     case NotificationType.newRating:   return 'notif.newRating'.tr();
     case NotificationType.newComment:  return 'notif.newComment'.tr();
     case NotificationType.listingExpiring: return 'notif.listingExpiring'.tr();
+    case NotificationType.friendRequest:   return 'notif.friendRequest'.tr();
+    case NotificationType.friendAccepted:  return 'notif.friendAccepted'.tr();
+    case NotificationType.listingDeleted:  return 'notif.listingDeleted'.tr();
   }}
   static NotificationType fromString(String? v) =>
       NotificationType.values.firstWhere((e) => e.name == v,

@@ -338,7 +338,7 @@ class ShareItApp extends ConsumerWidget {
           .addPostFrameCallback((_) => FcmService.saveLanguage(uid, lang));
     }
     return MaterialApp.router(
-      title: 'ShareIt',
+      title: 'Share your Need',
       theme: AppTheme.dark,
       routerConfig: ref.watch(_routerProvider),
       debugShowCheckedModeBanner: false,

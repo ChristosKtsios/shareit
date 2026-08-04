@@ -378,7 +378,7 @@ class _ChatTile extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.block, color: AppColors.deal),
             title: Text('inbox.blockUser'.tr(),
-                style: TextStyle(color: AppColors.textPrimary)),
+                style: const TextStyle(color: AppColors.textPrimary)),
             onTap: () async {
               Navigator.pop(ctx);
               final confirm = await showDialog<bool>(
@@ -386,7 +386,7 @@ class _ChatTile extends StatelessWidget {
                 builder: (dialogCtx) => AlertDialog(
                   backgroundColor: AppColors.surface,
                   title: Text('inbox.blockQ'.tr(),
-                      style: TextStyle(color: AppColors.textPrimary)),
+                      style: const TextStyle(color: AppColors.textPrimary)),
                   content: Text(
                       'inbox.blockConfirm'.tr(namedArgs: {'name': name}),
                       style: const TextStyle(color: AppColors.textSecondary)),
@@ -394,11 +394,11 @@ class _ChatTile extends StatelessWidget {
                     TextButton(
                         onPressed: () => Navigator.pop(dialogCtx, false),
                         child: Text('common.cancel'.tr(),
-                            style: TextStyle(color: AppColors.textSecondary))),
+                            style: const TextStyle(color: AppColors.textSecondary))),
                     TextButton(
                         onPressed: () => Navigator.pop(dialogCtx, true),
                         child: Text('inbox.block'.tr(),
-                            style: TextStyle(color: AppColors.danger))),
+                            style: const TextStyle(color: AppColors.danger))),
                   ],
                 ),
               );
@@ -428,7 +428,7 @@ class _ChatTile extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.delete_outline, color: AppColors.danger),
             title: Text('inbox.deleteChat'.tr(),
-                style: TextStyle(color: AppColors.danger)),
+                style: const TextStyle(color: AppColors.danger)),
             onTap: () async {
               Navigator.pop(ctx);
               final confirm = await showDialog<bool>(
@@ -436,18 +436,18 @@ class _ChatTile extends StatelessWidget {
                 builder: (dialogCtx) => AlertDialog(
                   backgroundColor: AppColors.surface,
                   title: Text('inbox.deleteQ'.tr(),
-                      style: TextStyle(color: AppColors.textPrimary)),
+                      style: const TextStyle(color: AppColors.textPrimary)),
                   content: Text('inbox.deleteBody'.tr(),
-                      style: TextStyle(color: AppColors.textSecondary)),
+                      style: const TextStyle(color: AppColors.textSecondary)),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(dialogCtx, false),
                         child: Text('common.cancel'.tr(),
-                            style: TextStyle(color: AppColors.textSecondary))),
+                            style: const TextStyle(color: AppColors.textSecondary))),
                     TextButton(
                         onPressed: () => Navigator.pop(dialogCtx, true),
                         child: Text('common.delete'.tr(),
-                            style: TextStyle(color: AppColors.danger))),
+                            style: const TextStyle(color: AppColors.danger))),
                   ],
                 ),
               );

@@ -167,7 +167,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text('authx.beforeContinue'.tr(),
-              style: TextStyle(
+              style: const TextStyle(
                   color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -189,7 +189,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             const SizedBox(height: 16),
             Text(
               'authx.confirmFollowing'.tr(),
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 16),
             InkWell(
@@ -209,7 +209,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: Padding(
                           padding: const EdgeInsets.only(top: 12),
                           child: Text('authx.age18'.tr(),
-                              style: TextStyle(
+                              style: const TextStyle(
                                   color: AppColors.textPrimary, fontSize: 13)),
                         ),
                       ),
@@ -292,7 +292,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     AppColors.primary.withValues(alpha: 0.3),
               ),
               child: Text('authx.continue'.tr(),
-                  style: TextStyle(color: AppColors.background)),
+                  style: const TextStyle(color: AppColors.background)),
             ),
           ],
           );
@@ -505,7 +505,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 8),
               Text('authx.exchangesNearYou'.tr(),
                   style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 15)),
+                      const TextStyle(color: AppColors.textSecondary, fontSize: 15)),
               const SizedBox(height: 32),
               Container(
                 padding: const EdgeInsets.all(4),
@@ -640,7 +640,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: TextButton(
                   onPressed: () => context.push('/forgot-password'),
                   child: Text('authx.forgotPassword'.tr(),
-                      style: TextStyle(color: AppColors.primary, fontSize: 13)),
+                      style: const TextStyle(color: AppColors.primary, fontSize: 13)),
                 ),
               ),
               if (_error != null) ...[
@@ -680,9 +680,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text('authx.orContinueWith'.tr(),
                       style:
-                          TextStyle(color: AppColors.textHint, fontSize: 12)),
+                          const TextStyle(color: AppColors.textHint, fontSize: 12)),
                 ),
-                Expanded(child: Divider(color: AppColors.border)),
+                const Expanded(child: Divider(color: AppColors.border)),
               ]),
               const SizedBox(height: 20),
               _SocialButton(

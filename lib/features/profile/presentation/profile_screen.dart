@@ -371,7 +371,7 @@ class ProfileScreen extends ConsumerWidget {
                                 return isMe || m['isActive'] != false;
                               }).length;
                               return _StatBox(
-                                label: 'ShareIt',
+                                label: 'Listings',
                                 value: '$count',
                                 icon: Icons.inventory_2_outlined,
                                 color: AppColors.seek,
@@ -381,7 +381,7 @@ class ProfileScreen extends ConsumerWidget {
                             },
                           )
                         : const _StatBox(
-                            label: 'ShareIt',
+                            label: 'Listings',
                             value: '—',
                             icon: Icons.inventory_2_outlined,
                             color: AppColors.seek,

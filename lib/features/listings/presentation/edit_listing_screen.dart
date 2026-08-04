@@ -171,7 +171,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 14),
               child: Text('cl.addPhoto'.tr(),
-                  style: TextStyle(
+                  style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w700)),
@@ -179,21 +179,21 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
             ListTile(
               leading: const Icon(Icons.camera_alt, color: AppColors.primary),
               title: Text('cl.takePhoto'.tr(),
-                  style: TextStyle(color: AppColors.textPrimary)),
+                  style: const TextStyle(color: AppColors.textPrimary)),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
             ListTile(
               leading:
                   const Icon(Icons.photo_library, color: AppColors.primary),
               title: Text('cl.pickGallery'.tr(),
-                  style: TextStyle(color: AppColors.textPrimary)),
+                  style: const TextStyle(color: AppColors.textPrimary)),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: Text('common.cancel'.tr(),
-                  style: TextStyle(color: AppColors.textSecondary)),
+                  style: const TextStyle(color: AppColors.textSecondary)),
             ),
             const SizedBox(height: 8),
           ],
@@ -449,7 +449,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
               const SizedBox(height: 12),
               Text('cl.titleLabel'.tr(),
                   style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
               const SizedBox(height: 6),
               TextField(
                 controller: _titleCtrl,
@@ -465,12 +465,12 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
               const SizedBox(height: 4),
               Text(
                 'cl.titleHelp'.tr(),
-                style: TextStyle(color: AppColors.textHint, fontSize: 11),
+                style: const TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
               const SizedBox(height: 16),
               Text(AppStrings.description,
                   style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
               const SizedBox(height: 6),
               TextField(
                 controller: _descCtrl,
@@ -484,13 +484,13 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
               const SizedBox(height: 4),
               Text(
                 'cl.descTip'.tr(),
-                style: TextStyle(color: AppColors.textHint, fontSize: 11),
+                style: const TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
 
               const SizedBox(height: 16),
 
               Text('cl.tagsLabel'.tr(namedArgs: {'max': '$_maxTags'}),
-                  style: TextStyle(
+                  style: const TextStyle(
                       color: AppColors.textSecondary, fontSize: 13)),
               const SizedBox(height: 6),
               if (_tags.length < _maxTags)
@@ -642,7 +642,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                           color: AppColors.primary, size: 18),
                       const SizedBox(width: 6),
                       Text('nav.map'.tr(),
-                          style: TextStyle(
+                          style: const TextStyle(
                               color: AppColors.primary,
                               fontSize: 13,
                               fontWeight: FontWeight.w600)),
@@ -657,7 +657,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
               const SizedBox(height: 4),
               Text(
                 'cl.availHelp'.tr(),
-                style: TextStyle(color: AppColors.textHint, fontSize: 11),
+                style: const TextStyle(color: AppColors.textHint, fontSize: 11),
               ),
               const SizedBox(height: 12),
               _AvailabilityRow(
@@ -708,14 +708,14 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(AppStrings.autoDelete,
-                            style: TextStyle(
+                            style: const TextStyle(
                                 color: AppColors.textSecondary, fontSize: 13)),
                         if (!canAutoDelete)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
                             child: Text(
                               'cl.autoDeleteHelp'.tr(),
-                              style: TextStyle(
+                              style: const TextStyle(
                                   color: AppColors.textHint, fontSize: 11),
                             ),
                           ),
@@ -970,7 +970,7 @@ class _AddPhotoButton extends StatelessWidget {
                           color: AppColors.primary, size: 28),
                       const SizedBox(height: 4),
                       Text('cl.addPhotoMultiline'.tr(),
-                          style: TextStyle(
+                          style: const TextStyle(
                               color: AppColors.textHint, fontSize: 10),
                           textAlign: TextAlign.center),
                     ]),

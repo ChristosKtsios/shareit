@@ -398,7 +398,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
                           : '$_countryCode${_phoneCtrl.text}');
                     },
                     child: Text('otp.resendCode'.tr(),
-                        style: TextStyle(
+                        style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 13)),
                   ),
                 ),
@@ -412,7 +412,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
                       _error = null;
                     }),
                     child: Text('otp.changeNumber'.tr(),
-                        style: TextStyle(
+                        style: const TextStyle(
                             color: AppColors.textSecondary, fontSize: 13)),
                   ),
                 ),

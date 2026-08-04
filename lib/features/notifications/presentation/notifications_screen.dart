@@ -70,6 +70,9 @@ class _NotificationTile extends StatelessWidget {
       case NotificationType.newRating:   return Icons.star_outline;
       case NotificationType.newComment:  return Icons.comment_outlined;
       case NotificationType.listingExpiring: return Icons.hourglass_bottom;
+      case NotificationType.friendRequest:   return Icons.person_add_outlined;
+      case NotificationType.friendAccepted:  return Icons.people_outline;
+      case NotificationType.listingDeleted:  return Icons.delete_outline;
     }
   }
 
