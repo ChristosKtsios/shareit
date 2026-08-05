@@ -449,7 +449,6 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
               Row(children: [
                 Expanded(
                   child: _BigTypeChip(
-                      emoji: '🤲',
                       label: AppStrings.offer,
                       selected: _type == ListingType.offer,
                       color: AppColors.offer,
@@ -458,7 +457,6 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _BigTypeChip(
-                      emoji: '🔍',
                       label: AppStrings.seek,
                       selected: _type == ListingType.seek,
                       color: AppColors.seek,
@@ -927,16 +925,19 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Minimal: διακριτική «eyebrow» ετικέτα — μικρή, uppercase, με αραιά
+    // γράμματα και ήσυχο χρώμα. Το εικονίδιο παραμένει μικρό και ουδέτερο.
     return Row(
       children: [
-        Icon(icon, color: AppColors.primary, size: 18),
+        Icon(icon, color: AppColors.textHint, size: 15),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(title,
+          child: Text(title.toUpperCase(),
               style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600)),
+                  color: AppColors.textHint,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8)),
         ),
         if (trailing != null) trailing!,
       ],
@@ -945,14 +946,12 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _BigTypeChip extends StatelessWidget {
-  final String emoji;
   final String label;
   final bool selected;
   final Color color;
   final VoidCallback onTap;
 
   const _BigTypeChip({
-    required this.emoji,
     required this.label,
     required this.selected,
     required this.color,
@@ -961,26 +960,30 @@ class _BigTypeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Minimal: καθαρό segmented κουμπί, χωρίς emoji. Επιλεγμένο = λεπτό
+    // περίγραμμα + διακριτικό tint + τικ. Μη επιλεγμένο = ήσυχο.
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 15),
         decoration: BoxDecoration(
           color: selected
-              ? color.withValues(alpha: 0.15)
-              : AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(14),
+              ? color.withValues(alpha: 0.10)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
               color: selected ? color : AppColors.border,
-              width: selected ? 2 : 0.5),
+              width: selected ? 1.5 : 1),
         ),
-        child: Column(children: [
-          Text(emoji, style: const TextStyle(fontSize: 28)),
-          const SizedBox(height: 4),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          if (selected) ...[
+            Icon(Icons.check_circle, color: color, size: 16),
+            const SizedBox(width: 6),
+          ],
           Text(label,
               style: TextStyle(
-                  color: selected ? color : AppColors.textPrimary,
+                  color: selected ? color : AppColors.textSecondary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600)),
         ]),

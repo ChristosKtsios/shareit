@@ -95,13 +95,18 @@ class _ClusterCarouselSheetState extends ConsumerState<ClusterCarouselSheet> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  'mapx.listingsHere'
-                      .tr(namedArgs: {'n': '${widget.listings.length}'}),
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                const Icon(Icons.swipe,
+                    color: AppColors.textHint, size: 16),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    'mapx.swipeMore'.tr(),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
                 const Spacer(),

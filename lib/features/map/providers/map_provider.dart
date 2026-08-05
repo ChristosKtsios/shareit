@@ -293,6 +293,42 @@ class MapNotifier extends StateNotifier<MapState> {
     return 2;
   }
 
+  /// Πόσο «σφιχτό» είναι το clustering ανάλογα με το ΠΛΗΘΟΣ των ορατών
+  /// αγγελιών. Με λίγες αγγελίες θέλουμε ΧΑΛΑΡΟ clustering (να φαίνονται
+  /// ξεχωριστά)· με πολλές, ΣΦΙΧΤΟ (να μη γεμίζει ο χάρτης). Πολλαπλασιάζει την
+  /// ακτίνα ομαδοποίησης: 0.7 (λίγες) → 1.35 (πολλές), γραμμικά.
+  double _densityFactor(int count) {
+    const fewCount = 12, manyCount = 60;
+    const looseFactor = 0.7, tightFactor = 1.35;
+    if (count <= fewCount) return looseFactor;
+    if (count >= manyCount) return tightFactor;
+    final t = (count - fewCount) / (manyCount - fewCount);
+    return looseFactor + (tightFactor - looseFactor) * t;
+  }
+
+  /// Οι τελευταίες φιλτραρισμένες αγγελίες (για το global swipe carousel).
+  List<ListingModel> _lastFiltered = const [];
+
+  double _sqDist(LatLng a, ListingModel b) {
+    final dx = a.latitude - b.location.latitude;
+    final dy = a.longitude - b.location.longitude;
+    return dx * dx + dy * dy;
+  }
+
+  /// Χτίζει τη λίστα του carousel ξεκινώντας από το cluster που πατήθηκε και
+  /// συνεχίζοντας με ΟΛΕΣ τις υπόλοιπες αγγελίες κατά αύξουσα απόσταση από το
+  /// κέντρο του cluster. Έτσι, με swipe πέρα από τις αγγελίες του cluster ο
+  /// χρήστης «ταξιδεύει» στα επόμενα (κοντινότερα) clusters και ο χάρτης
+  /// ακολουθεί (setClusterIndex → animateCamera).
+  List<ListingModel> _orderedFromCluster(
+      List<ListingModel> cluster, LatLng center) {
+    final inCluster = cluster.map((l) => l.id).toSet();
+    final rest =
+        _lastFiltered.where((l) => !inCluster.contains(l.id)).toList()
+          ..sort((a, b) => _sqDist(center, a).compareTo(_sqDist(center, b)));
+    return [...cluster, ...rest];
+  }
+
   /// Υπολογίζει το μέγεθος (scale) των markers με βάση το zoom.
   /// - Zoom out (μικρό zoom) -> μικρά markers (min 0.55)
   /// - Zoom in (μεγάλο zoom) -> φτάνει σε max 1.0 και ΔΕΝ μεγαλώνει άλλο
@@ -340,7 +376,10 @@ class MapNotifier extends StateNotifier<MapState> {
             ? filtered.first.location.latitude
             : _defaultLocation.latitude);
 
-    final radius = _radiusForZoom(state.zoomLevel, lat);
+    _lastFiltered = filtered;
+
+    final radius =
+        _radiusForZoom(state.zoomLevel, lat) * _densityFactor(filtered.length);
     final minSize = _minClusterSize(state.zoomLevel);
     final scale = _markerScaleForZoom(state.zoomLevel);
 
@@ -380,8 +419,11 @@ class MapNotifier extends StateNotifier<MapState> {
           position: center,
           icon: icon,
           onTap: () {
+            // Global carousel: ξεκινά από τις αγγελίες του cluster και συνεχίζει
+            // στις υπόλοιπες κατά απόσταση — swipe «ταξιδεύει» στα επόμενα
+            // clusters με τον χάρτη να ακολουθεί.
             state = state.copyWith(
-              clusterListings: cluster,
+              clusterListings: _orderedFromCluster(cluster, center),
               clusterIndex: 0,
               clusterTapPosition: center,
             );
