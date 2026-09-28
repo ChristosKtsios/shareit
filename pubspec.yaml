@@ -1,7 +1,7 @@
 name: shareit
 description: Peer-to-peer item & service exchange app
 publish_to: 'none'
-version: 1.0.9+12
+version: 1.0.12+18
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -35,6 +35,7 @@ dependencies:
   share_plus: ^13.1.0
   package_info_plus: ^10.1.0
   firebase_crashlytics: ^4.3.10
+  google_mobile_ads: ^9.0.0
 
 dev_dependencies:
   flutter_test:

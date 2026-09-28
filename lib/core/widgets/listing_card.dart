@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../constants/app_colors.dart';
 import '../../features/listings/data/listing_model.dart';
+import '../../features/listings/presentation/widgets/category_selector.dart';
 
 class ListingCard extends StatelessWidget {
   final ListingModel listing;
@@ -59,6 +60,19 @@ class ListingCard extends StatelessWidget {
           children: [
             Row(children: [
               _Tag(label: label, color: color),
+              if (listing.isBoosted) ...[
+                const SizedBox(width: 6),
+                _Tag(
+                    label: listing.boostCount > 1
+                        ? '🚀 ${'lcard.boosted'.tr()} ×${listing.boostCount}'
+                        : '🚀 ${'lcard.boosted'.tr()}',
+                    color: AppColors.deal),
+              ],
+              if (listing.category != null) ...[
+                const SizedBox(width: 6),
+                Icon(listing.category!.icon,
+                    size: 13, color: AppColors.textHint),
+              ],
               if (listing.tags.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Flexible(

@@ -45,6 +45,7 @@ class NotificationsScreen extends ConsumerWidget {
             itemBuilder: (_, i) => _NotificationTile(
               notification: notifications[i],
               onTap: () {
+                if (!notifications[i].isRead) markRead(notifications[i].id);
                 if (notifications[i].routePath != null) {
                   context.push(notifications[i].routePath!);
                 }

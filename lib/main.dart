@@ -13,6 +13,7 @@ import 'firebase_options.dart';
 import 'app.dart';
 import 'core/services/fcm_service.dart';
 import 'core/services/presence_service.dart';
+import 'core/services/ads_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 void main() async {
@@ -58,6 +59,11 @@ void main() async {
       cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
     );
 
+    // AdMob — consent (GDPR) + SDK init. Δεν το κάνουμε await ώστε να μην
+    // καθυστερεί το πρώτο frame· το consent round-trip μπορεί να πάρει
+    // δευτερόλεπτα, και οι διαφημίσεις φορτώνουν ούτως ή άλλως ασύγχρονα.
+    unawaited(AdsService.initialize());
+
     // Presence service — ξεκινά μόλις γίνει login
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
@@ -69,8 +75,13 @@ void main() async {
 
     runApp(
       EasyLocalization(
-        // Default = γλώσσα συσκευής αν είναι el/en/es, αλλιώς fallback Αγγλικά.
-        supportedLocales: const [Locale('el'), Locale('en'), Locale('es')],
+        // Default = γλώσσα συσκευής αν είναι el/en/es/hi, αλλιώς fallback Αγγλικά.
+        supportedLocales: const [
+          Locale('el'),
+          Locale('en'),
+          Locale('es'),
+          Locale('hi')
+        ],
         path: 'assets/translations',
         fallbackLocale: const Locale('en'),
         child: const ProviderScope(child: ShareItApp()),

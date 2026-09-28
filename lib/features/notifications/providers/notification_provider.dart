@@ -44,6 +44,16 @@ final unreadCountProvider = StreamProvider<int>((ref) {
   });
 });
 
+/// Mark ΜΙΑ ειδοποίηση ως διαβασμένη — καλείται όταν ο χρήστης πατάει πάνω
+/// της (βλ. notifications_screen.dart), ανεξάρτητα από το μαζικό
+/// "Όλα διαβασμένα" παρακάτω.
+Future<void> markRead(String notificationId) async {
+  await FirebaseFirestore.instance
+      .collection('notifications')
+      .doc(notificationId)
+      .update({'isRead': true});
+}
+
 /// Mark όλες τις ειδοποιήσεις του χρήστη ως διαβασμένες.
 /// Καλείται από το AppBar action "Όλα διαβασμένα".
 Future<void> markAllRead(String uid) async {

@@ -17,6 +17,7 @@ import '../../profile/data/user_repository.dart';
 import '../data/listing_model.dart';
 import '../data/listing_repository.dart';
 import 'location_picker_screen.dart';
+import 'widgets/category_selector.dart';
 
 class EditListingScreen extends ConsumerStatefulWidget {
   final String listingId;
@@ -27,6 +28,7 @@ class EditListingScreen extends ConsumerStatefulWidget {
 
 class _EditListingScreenState extends ConsumerState<EditListingScreen> {
   ListingType _type = ListingType.offer;
+  ListingCategory? _category;
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
@@ -65,6 +67,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       _titleCtrl.text = listing.title;
       _descCtrl.text = listing.description;
       _type = listing.type;
+      _category = listing.category;
       _imageUrls = List<String>.from(listing.imageUrls);
       _tags
         ..clear()
@@ -307,6 +310,10 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
   }
 
   Future<void> _publish() async {
+    if (_category == null) {
+      _snack('cl.selectCategory'.tr());
+      return;
+    }
     if (_titleCtrl.text.trim().isEmpty) {
       _snack('cl.writeTitle'.tr());
       return;
@@ -344,6 +351,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       desc,
       tags: _tags,
       locationLabel: _locationLabel,
+      categoryLabel: _category!.label,
     );
 
     String firstName = 'common.userFallback'.tr();
@@ -365,6 +373,7 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
       userFirstName: firstName,
       userAvatarUrl: userAvatar,
       type: _type,
+      category: _category,
       title: title,
       description: desc,
       imageUrls: _imageUrls,
@@ -445,6 +454,15 @@ class _EditListingScreenState extends ConsumerState<EditListingScreen> {
                           ? 'cl.step2Offer'.tr()
                           : 'cl.step2Seek'.tr()),
               const SizedBox(height: 12),
+              Text('cl.categoryLabel'.tr(),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 8),
+              CategorySelector(
+                selected: _category,
+                onSelect: (c) => setState(() => _category = c),
+              ),
+              const SizedBox(height: 16),
               Text('cl.titleLabel'.tr(),
                   style:
                       const TextStyle(color: AppColors.textSecondary, fontSize: 13)),

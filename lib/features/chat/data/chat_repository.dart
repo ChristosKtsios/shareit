@@ -366,6 +366,8 @@ class ChatRepository {
       'deletedAt': FieldValue.serverTimestamp(),
       'text': '',
       'mediaUrl': null,
+      'latitude': FieldValue.delete(),
+      'longitude': FieldValue.delete(),
     });
   }
 }

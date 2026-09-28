@@ -14,7 +14,8 @@
     "title": "Elegir idioma",
     "el": "Ελληνικά",
     "en": "English",
-    "es": "Español"
+    "es": "Español",
+    "hi": "Hindi"
   },
   "nav": {
     "map": "Mapa",
@@ -154,7 +155,21 @@
     "titleHintOffer": "p.ej. Presto herramientas",
     "titleHintSeek": "p.ej. Busco ayuda para mudanza",
     "locationSelected": "Ubicación seleccionada",
-    "photoTip": "Los anuncios con foto reciben mucho más interés"
+    "photoTip": "Los anuncios con foto reciben mucho más interés",
+    "categoryLabel": "Categoría *",
+    "selectCategory": "Elige una categoría para el anuncio."
+  },
+  "category": {
+    "electronics": "Electrónica",
+    "furniture": "Muebles y Hogar",
+    "clothing": "Ropa y Accesorios",
+    "books": "Libros y Educación",
+    "sports": "Deportes y Aire Libre",
+    "kids": "Niños y Juguetes",
+    "tools": "Herramientas y Bricolaje",
+    "transport": "Transporte",
+    "services": "Servicios",
+    "other": "Otro"
   },
   "listing": {
     "offer": "Ofrezco",
@@ -194,7 +209,11 @@
     "pausedBadge": "En pausa",
     "message": "Mensaje",
     "removedFav": "Eliminado de favoritos",
-    "savedFav": "Guardado en favoritos"
+    "savedFav": "Guardado en favoritos",
+    "boost": "Promocionar con un anuncio",
+    "boostActive": "Promocionado ×{n} · {h}h restantes — ve otro anuncio",
+    "boosted": "¡Anuncio promocionado! Anuncios vistos en total: {n}",
+    "boostAdUnavailable": "No hay ningún anuncio disponible ahora mismo. Inténtalo de nuevo en breve."
   },
   "chat": {
     "messages": "Mensajes",
@@ -856,7 +875,8 @@
   "lcard": {
     "fromDate": "desde {d}",
     "untilDate": "hasta {d}",
-    "seeMore": "Ver más"
+    "seeMore": "Ver más",
+    "boosted": "Promocionado"
   },
   "lact": {
     "deleteConfirmBody": "¿Estás seguro?",

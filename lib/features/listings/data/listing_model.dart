@@ -3,10 +3,31 @@ import '../../../core/utils/greek_text.dart';
 
 enum ListingType { offer, seek }
 
+/// Σταθερή, κλειστή ταξινόμηση — σε αντίθεση με τα ελεύθερα [ListingModel.tags],
+/// επίτηδες περιορισμένη ώστε δύο χρήστες με το ίδιο αντικείμενο να καταλήγουν
+/// πάντα στην ίδια κατηγορία (τα tags μόνα τους σκορπίζονταν σε ασυνεπείς
+/// παραλλαγές: «ρούχα», «clothes», «ένδυση» δεν συναντιούνταν ποτέ στο φίλτρο).
+enum ListingCategory {
+  electronics,
+  furniture,
+  clothing,
+  books,
+  sports,
+  kids,
+  tools,
+  transport,
+  services,
+  other,
+}
+
 class ListingModel {
   final String id, userId, userFirstName;
   final String? userAvatarUrl;
   final ListingType type;
+
+  /// Null σε παλιές αγγελίες δημιουργημένες πριν προστεθεί το πεδίο (βλ.
+  /// shareit-functions/backfill-categories.mjs για το one-off migration).
+  final ListingCategory? category;
   final String title, description, locationLabel;
   final List<String> imageUrls, tags, searchKeywords;
   final GeoPoint location;
@@ -26,12 +47,51 @@ class ListingModel {
   final double rating;
   final DateTime createdAt;
 
+  /// Ώρα κάθε rewarded ad που είδε ο κάτοχος γι' αυτή την αγγελία (μία
+  /// εγγραφή ανά διαφήμιση, βλ. listing_repository.dart#boost). Το
+  /// [boostCount] ΔΕΝ είναι πια μόνιμος αθροιστής — μετράει ΜΟΝΟ όσες
+  /// διαφημίσεις είναι ακόμα «μέσα» στο παράθυρο 24 ωρών τους, οπότε ο
+  /// μετρητής μειώνεται φυσικά, μία-μία, καθώς περνούν 24 ώρες από ΚΑΘΕ
+  /// προβολή — όχι όλες μαζί με μία λήξη.
+  final List<DateTime> boostTimestamps;
+
+  static const Duration _boostWindow = Duration(hours: 24);
+
+  List<DateTime> get _activeBoosts => boostTimestamps
+      .where((t) => DateTime.now().difference(t) < _boostWindow)
+      .toList();
+
+  /// Πόσες διαφημίσεις μετράνε ΑΥΤΗ τη στιγμή (μέσα στο παράθυρο 24 ωρών).
+  /// Καθορίζει τη ΣΕΙΡΑ ανάμεσα σε προωθημένες αγγελίες.
+  int get boostCount => _activeBoosts.length;
+
+  bool get isBoosted => boostCount > 0;
+
+  /// Πότε θα μειωθεί ξανά ο μετρητής κατά 1 (λήξη της παλιότερης ΑΚΟΜΑ
+  /// ενεργής προβολής) — για την ένδειξη «X ώρες ακόμα» στο κουμπί.
+  DateTime? get nextBoostDecay {
+    final active = _activeBoosts;
+    if (active.isEmpty) return null;
+    return active.reduce((a, b) => a.isBefore(b) ? a : b).add(_boostWindow);
+  }
+
+  /// Η πιο πρόσφατη προβολή — tie-break στην ταξινόμηση προωθημένων
+  /// αγγελιών (βλ. feed_provider.dart#filtered): ίδιο boostCount, προηγείται
+  /// όποιος πρόσθεσε τελευταία διαφήμιση πιο πρόσφατα.
+  DateTime? get mostRecentBoost => boostTimestamps.isEmpty
+      ? null
+      : boostTimestamps.reduce((a, b) => a.isAfter(b) ? a : b);
+
+  /// Πλήθος σχολίων (βλ. listing_repository.dart#addComment/#watchComments).
+  final int commentsCount;
+
   const ListingModel({
     required this.id,
     required this.userId,
     required this.userFirstName,
     this.userAvatarUrl,
     required this.type,
+    this.category,
     required this.title,
     required this.description,
     required this.locationLabel,
@@ -48,6 +108,8 @@ class ListingModel {
     this.isReported = false,
     required this.rating,
     required this.createdAt,
+    this.boostTimestamps = const [],
+    this.commentsCount = 0,
   });
 
   /// Κόβει κείμενο σε λέξεις >2 χαρακτήρων.
@@ -101,8 +163,9 @@ class ListingModel {
     String desc, {
     List<String> tags = const [],
     String locationLabel = '',
+    String categoryLabel = '',
   }) {
-    final text = '$title $desc $locationLabel ${tags.join(' ')}';
+    final text = '$title $desc $locationLabel $categoryLabel ${tags.join(' ')}';
     final folded = _words(text, fold: true);
     final out = <String>{
       ...folded,
@@ -127,6 +190,16 @@ class ListingModel {
     return out.toList();
   }
 
+  /// `null` ΤΟΣΟ για παλιές αγγελίες χωρίς πεδίο, ΟΣΟ και για άγνωστη/corrupt
+  /// τιμή — ποτέ throw, το feed δεν πρέπει να σπάει για μία κακή εγγραφή.
+  static ListingCategory? _categoryFromString(String? raw) {
+    if (raw == null) return null;
+    for (final c in ListingCategory.values) {
+      if (c.name == raw) return c;
+    }
+    return null;
+  }
+
   static String normalizeTag(String tag) {
     var t = tag.trim().toLowerCase();
     if (t.startsWith('#')) t = t.substring(1);
@@ -141,6 +214,7 @@ class ListingModel {
       userFirstName: d['userFirstName'] ?? '',
       userAvatarUrl: d['userAvatarUrl'],
       type: d['type'] == 'offer' ? ListingType.offer : ListingType.seek,
+      category: _categoryFromString(d['category'] as String?),
       title: d['title'] ?? '',
       description: d['description'] ?? '',
       locationLabel: d['locationLabel'] ?? '',
@@ -157,6 +231,10 @@ class ListingModel {
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isActive: d['isActive'] ?? true,
       isReported: d['isReported'] ?? false,
+      boostTimestamps: ((d['boostTimestamps'] as List?) ?? [])
+          .map((t) => (t as Timestamp).toDate())
+          .toList(),
+      commentsCount: (d['commentsCount'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -165,6 +243,7 @@ class ListingModel {
         'userFirstName': userFirstName,
         'userAvatarUrl': userAvatarUrl,
         'type': type.name,
+        'category': category?.name,
         'title': title,
         'description': description,
         'locationLabel': locationLabel,

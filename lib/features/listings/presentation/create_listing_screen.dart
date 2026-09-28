@@ -20,6 +20,7 @@ import '../data/listing_model.dart';
 import '../data/listing_repository.dart';
 import '../data/tags_repository.dart';
 import 'location_picker_screen.dart';
+import 'widgets/category_selector.dart';
 
 class CreateListingScreen extends ConsumerStatefulWidget {
   const CreateListingScreen({super.key});
@@ -30,6 +31,7 @@ class CreateListingScreen extends ConsumerStatefulWidget {
 
 class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   ListingType _type = ListingType.offer;
+  ListingCategory? _category;
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _tagCtrl = TextEditingController();
@@ -328,6 +330,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   }
 
   Future<void> _publish() async {
+    if (_category == null) {
+      _snack('cl.selectCategory'.tr());
+      return;
+    }
     if (_titleCtrl.text.trim().isEmpty) {
       _snack('cl.writeTitle'.tr());
       return;
@@ -363,6 +369,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       desc,
       tags: _tags,
       locationLabel: _locationLabel,
+      categoryLabel: _category!.label,
     );
 
     String firstName = 'common.userFallback'.tr();
@@ -384,6 +391,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       userFirstName: firstName,
       userAvatarUrl: userAvatar,
       type: _type,
+      category: _category,
       title: title,
       description: desc,
       imageUrls: _imageUrls,
@@ -473,6 +481,16 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       ? 'cl.step2Offer'.tr()
                       : 'cl.step2Seek'.tr()),
               const SizedBox(height: 12),
+
+              Text('cl.categoryLabel'.tr(),
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 8),
+              CategorySelector(
+                selected: _category,
+                onSelect: (c) => setState(() => _category = c),
+              ),
+              const SizedBox(height: 16),
 
               Text('cl.titleLabel'.tr(),
                   style: const TextStyle(

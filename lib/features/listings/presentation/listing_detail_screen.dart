@@ -17,13 +17,17 @@ import '../data/listing_model.dart';
 import '../data/listing_repository.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../profile/data/user_repository.dart';
+import '../../profile/data/wall_post_model.dart' show CommentModel;
+import '../../../core/services/ads_service.dart';
+import '../../../core/services/media_picker_service.dart';
+import '../../../core/utils/date_helpers.dart';
 
 /// Live + autoDispose: το παλιό `FutureProvider.family` (χωρίς autoDispose)
 /// κρατούσε την αγγελία cached για όλη τη ζωή της app, οπότε φωτογραφίες που
 /// προστίθεντο αργότερα ΔΕΝ εμφανίζονταν εδώ (ενώ ο χάρτης, που είναι stream,
 /// τις έδειχνε). Με stream + autoDispose τα δεδομένα είναι πάντα φρέσκα.
-final _listingDetailProvider =
-    StreamProvider.autoDispose.family<ListingModel?, String>(
+final _listingDetailProvider = StreamProvider.autoDispose
+    .family<ListingModel?, String>(
         (ref, id) => ListingRepository().watchById(id));
 
 /// Placeholder labels — μία πηγή αλήθειας στο [PlaceLabel] (τα ελληνικά
@@ -135,168 +139,179 @@ class ListingDetailScreen extends ConsumerWidget {
             }
           }
 
-          return CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: _HeroSection(
-                  listing: listing,
-                  badgeColor: badgeColor,
-                  badgeLabel: badgeLabel,
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.all(16),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    Text(listing.title,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 6),
-                    GestureDetector(
-                      onTap: () => _openInMaps(listing.location.latitude,
-                          listing.location.longitude),
-                      child: Row(children: [
-                        const Icon(Icons.location_on_outlined,
-                            color: AppColors.primary, size: 14),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            distMeters != null
-                                ? '$placeLabel · ${_formatDistance(distMeters)}'
-                                : placeLabel,
+          return Column(children: [
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _HeroSection(
+                      listing: listing,
+                      badgeColor: badgeColor,
+                      badgeLabel: badgeLabel,
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        Text(listing.title,
                             style: const TextStyle(
-                                color: AppColors.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                decoration: TextDecoration.underline),
-                          ),
+                                color: AppColors.textPrimary,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 6),
+                        GestureDetector(
+                          onTap: () => _openInMaps(listing.location.latitude,
+                              listing.location.longitude),
+                          child: Row(children: [
+                            const Icon(Icons.location_on_outlined,
+                                color: AppColors.primary, size: 14),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                distMeters != null
+                                    ? '$placeLabel · ${_formatDistance(distMeters)}'
+                                    : placeLabel,
+                                style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    decoration: TextDecoration.underline),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.open_in_new,
+                                color: AppColors.primary, size: 12),
+                          ]),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.open_in_new,
-                            color: AppColors.primary, size: 12),
+                        const SizedBox(height: 16),
+                        _OwnerCard(listing: listing),
+                        const SizedBox(height: 16),
+                        Text('ld.descriptionLabel'.tr(),
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5)),
+                        const SizedBox(height: 6),
+                        Text(listing.description,
+                            style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 14,
+                                height: 1.5)),
+                        const SizedBox(height: 16),
+                        if (listing.availableFrom != null ||
+                            listing.availableUntil != null) ...[
+                          Text('ld.availabilityLabel'.tr(),
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5)),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.deal.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: AppColors.deal.withValues(alpha: 0.3),
+                                  width: 0.5),
+                            ),
+                            child: Column(children: [
+                              if (listing.availableFrom != null)
+                                Row(children: [
+                                  const Icon(Icons.play_arrow,
+                                      color: AppColors.deal, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text('ld.fromColon'.tr(),
+                                      style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      _formatDateTime(
+                                          listing.availableFrom!,
+                                          listing.hasFromTime,
+                                          context.locale.languageCode),
+                                      style: const TextStyle(
+                                          color: AppColors.textPrimary,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ]),
+                              if (listing.availableFrom != null &&
+                                  listing.availableUntil != null)
+                                const SizedBox(height: 8),
+                              if (listing.availableUntil != null)
+                                Row(children: [
+                                  const Icon(Icons.flag_outlined,
+                                      color: AppColors.danger, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text('ld.untilColon'.tr(),
+                                      style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      _formatDateTime(
+                                          listing.availableUntil!,
+                                          listing.hasUntilTime,
+                                          context.locale.languageCode),
+                                      style: const TextStyle(
+                                          color: AppColors.textPrimary,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ]),
+                            ]),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (listing.tags.isNotEmpty) ...[
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: listing.tags
+                                .map((t) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary
+                                            .withValues(alpha: 0.12),
+                                        border: Border.all(
+                                            color: AppColors.primary,
+                                            width: 0.5),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text('#$t',
+                                          style: const TextStyle(
+                                              color: AppColors.primary,
+                                              fontSize: 11)),
+                                    ))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        _ActionButtons(listing: listing),
+                        const SizedBox(height: 32),
+                        const Divider(color: AppColors.border, height: 1),
+                        const SizedBox(height: 20),
+                        _CommentsSection(listing: listing),
                       ]),
                     ),
-                    const SizedBox(height: 16),
-                    _OwnerCard(listing: listing),
-                    const SizedBox(height: 16),
-                    Text('ld.descriptionLabel'.tr(),
-                        style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5)),
-                    const SizedBox(height: 6),
-                    Text(listing.description,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 14,
-                            height: 1.5)),
-                    const SizedBox(height: 16),
-                    if (listing.availableFrom != null ||
-                        listing.availableUntil != null) ...[
-                      Text('ld.availabilityLabel'.tr(),
-                          style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5)),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.deal.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: AppColors.deal.withValues(alpha: 0.3),
-                              width: 0.5),
-                        ),
-                        child: Column(children: [
-                          if (listing.availableFrom != null)
-                            Row(children: [
-                              const Icon(Icons.play_arrow,
-                                  color: AppColors.deal, size: 16),
-                              const SizedBox(width: 8),
-                              Text('ld.fromColon'.tr(),
-                                  style: const TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  _formatDateTime(listing.availableFrom!,
-                                      listing.hasFromTime,
-                                      context.locale.languageCode),
-                                  style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ]),
-                          if (listing.availableFrom != null &&
-                              listing.availableUntil != null)
-                            const SizedBox(height: 8),
-                          if (listing.availableUntil != null)
-                            Row(children: [
-                              const Icon(Icons.flag_outlined,
-                                  color: AppColors.danger, size: 16),
-                              const SizedBox(width: 8),
-                              Text('ld.untilColon'.tr(),
-                                  style: const TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  _formatDateTime(listing.availableUntil!,
-                                      listing.hasUntilTime,
-                                      context.locale.languageCode),
-                                  style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ]),
-                        ]),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    if (listing.tags.isNotEmpty) ...[
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: listing.tags
-                            .map((t) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary
-                                        .withValues(alpha: 0.12),
-                                    border: Border.all(
-                                        color: AppColors.primary, width: 0.5),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text('#$t',
-                                      style: const TextStyle(
-                                          color: AppColors.primary,
-                                          fontSize: 11)),
-                                ))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    _ActionButtons(listing: listing),
-                    const SizedBox(height: 32),
-                  ]),
-                ),
+                  ),
+                ],
               ),
-            ],
-          );
+            ),
+            _CommentInputBar(listingId: listing.id),
+          ]);
         },
       ),
     );
@@ -447,35 +462,34 @@ class _HeroSectionState extends State<_HeroSection> {
                       BorderRadius.vertical(top: Radius.circular(20))),
               builder: (_) => SafeArea(
                 top: false,
-                child:
-                    Column(mainAxisSize: MainAxisSize.min, children: [
-                ListTile(
-                  leading:
-                      const Icon(Icons.flag_outlined, color: AppColors.danger),
-                  title: Text('ld.report'.tr(),
-                      style: const TextStyle(color: AppColors.danger)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.push(
-                        '/report/listing/${listing.userId}/${listing.id}');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.share_outlined,
-                      color: AppColors.textSecondary),
-                  title: Text('ld.share'.tr(),
-                      style: const TextStyle(color: AppColors.textPrimary)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    // Deep link: ανοίγει κατευθείαν την αγγελία στην εφαρμογή
-                    // (App Link) ή στον browser αν δεν είναι εγκατεστημένη.
-                    final url =
-                        'https://shareit-6cfa0.web.app/listing/${listing.id}';
-                    final text =
-                        '${listing.title}\n\n${listing.description}\n\n${'ld.onShareit'.tr()}\n$url';
-                    SharePlus.instance.share(ShareParams(text: text));
-                  },
-                ),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  ListTile(
+                    leading: const Icon(Icons.flag_outlined,
+                        color: AppColors.danger),
+                    title: Text('ld.report'.tr(),
+                        style: const TextStyle(color: AppColors.danger)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      context.push(
+                          '/report/listing/${listing.userId}/${listing.id}');
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.share_outlined,
+                        color: AppColors.textSecondary),
+                    title: Text('ld.share'.tr(),
+                        style: const TextStyle(color: AppColors.textPrimary)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      // Deep link: ανοίγει κατευθείαν την αγγελία στην εφαρμογή
+                      // (App Link) ή στον browser αν δεν είναι εγκατεστημένη.
+                      final url =
+                          'https://shareit-6cfa0.web.app/listing/${listing.id}';
+                      final text =
+                          '${listing.title}\n\n${listing.description}\n\n${'ld.onShareit'.tr()}\n$url';
+                      SharePlus.instance.share(ShareParams(text: text));
+                    },
+                  ),
                 ]),
               ),
             );
@@ -653,7 +667,9 @@ class _OwnerCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      fullName.isNotEmpty ? fullName : 'common.userFallback'.tr(),
+                      fullName.isNotEmpty
+                          ? fullName
+                          : 'common.userFallback'.tr(),
                       style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 14,
@@ -705,7 +721,9 @@ class _ActionButtons extends ConsumerWidget {
     if (!listing.isActive) return const SizedBox.shrink();
     final ageDays = DateTime.now().difference(listing.createdAt).inDays;
     final daysLeft = _ttlDays - ageDays;
-    if (daysLeft > 7) return const SizedBox.shrink(); // δείξ' το μόνο κοντά στη λήξη
+    if (daysLeft > 7) {
+      return const SizedBox.shrink(); // δείξ' το μόνο κοντά στη λήξη
+    }
     final expired = daysLeft <= 0;
     final color = expired || daysLeft <= 3 ? AppColors.danger : AppColors.deal;
     return Container(
@@ -813,39 +831,41 @@ class _ActionButtons extends ConsumerWidget {
         _buildExpiryBanner(context),
         _PauseButton(listing: listing),
         const SizedBox(height: 10),
+        _BoostButton(listing: listing),
+        const SizedBox(height: 10),
         Row(children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => context.push('/edit-listing/${listing.id}'),
-            icon: const Icon(Icons.edit_outlined,
-                size: 18, color: AppColors.primary),
-            label: Text('profile.edit'.tr(),
-                style: const TextStyle(color: AppColors.primary)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.primary),
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/edit-listing/${listing.id}'),
+              icon: const Icon(Icons.edit_outlined,
+                  size: 18, color: AppColors.primary),
+              label: Text('profile.edit'.tr(),
+                  style: const TextStyle(color: AppColors.primary)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.primary),
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: () => _confirmDelete(context),
-            icon: const Icon(Icons.delete_outline,
-                size: 18, color: AppColors.danger),
-            label: Text('common.delete'.tr(),
-                style: const TextStyle(color: AppColors.danger)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.danger),
-              minimumSize: const Size.fromHeight(52),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _confirmDelete(context),
+              icon: const Icon(Icons.delete_outline,
+                  size: 18, color: AppColors.danger),
+              label: Text('common.delete'.tr(),
+                  style: const TextStyle(color: AppColors.danger)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.danger),
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
             ),
           ),
-        ),
-      ]),
+        ]),
       ]);
     }
 
@@ -893,8 +913,9 @@ class _PauseButtonState extends State<_PauseButton> {
       await ListingRepository().setActive(widget.listing.id, nowActive);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(
-              nowActive ? 'ld.reactivated'.tr() : 'ld.paused'.tr())),
+          SnackBar(
+              content:
+                  Text(nowActive ? 'ld.reactivated'.tr() : 'ld.paused'.tr())),
         );
       }
     } catch (_) {
@@ -919,10 +940,99 @@ class _PauseButtonState extends State<_PauseButton> {
               width: 16,
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2))
-          : Icon(active ? Icons.pause_circle_outline : Icons.play_circle_outline,
-              size: 18, color: color),
+          : Icon(
+              active ? Icons.pause_circle_outline : Icons.play_circle_outline,
+              size: 18,
+              color: color),
       label: Text(active ? 'ld.pause'.tr() : 'ld.reactivate'.tr(),
           style: TextStyle(color: color)),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color),
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+}
+
+/// Κουμπί «Προώθηση με διαφήμιση» (μόνο ο ιδιοκτήτης). Κάθε φορά που ο
+/// χρήστης δει ένα rewarded ad μέχρι το τέλος, προστίθεται μία νέα προβολή
+/// που μετράει για ΑΚΡΙΒΩΣ 24 ώρες από ΤΟΤΕ (βλ. ListingModel#boostCount) —
+/// η κάθε μία λήγει μόνη της, δεν μηδενίζονται όλες μαζί. Το κουμπί ΔΕΝ
+/// κλειδώνει όταν είναι ήδη boosted· μπορείς να δεις όσες διαφημίσεις θες
+/// στη σειρά για να ανέβεις πιο ψηλά από τον ανταγωνισμό — δεν υπάρχει όριο.
+class _BoostButton extends StatefulWidget {
+  final ListingModel listing;
+  const _BoostButton({required this.listing});
+
+  @override
+  State<_BoostButton> createState() => _BoostButtonState();
+}
+
+class _BoostButtonState extends State<_BoostButton> {
+  bool _busy = false;
+
+  void _watchAd() {
+    if (_busy) return;
+    setState(() => _busy = true);
+    AdsService.showRewarded(
+      onEarnedReward: () async {
+        try {
+          await ListingRepository().boost(widget.listing.id,
+              currentTimestamps: widget.listing.boostTimestamps);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                  content: Text('ld.boosted'.tr(namedArgs: {
+                'n': '${widget.listing.boostCount + 1}',
+              }))),
+            );
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('common.errorGeneric'.tr())),
+            );
+          }
+        } finally {
+          if (mounted) setState(() => _busy = false);
+        }
+      },
+      onFailed: () {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ld.boostAdUnavailable'.tr())),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final listing = widget.listing;
+    final boosted = listing.isBoosted;
+    final color = boosted ? AppColors.deal : AppColors.primary;
+
+    final label = boosted
+        ? 'ld.boostActive'.tr(namedArgs: {
+            'n': '${listing.boostCount}',
+            'h':
+                '${listing.nextBoostDecay!.difference(DateTime.now()).inHours + 1}',
+          })
+        : 'ld.boost'.tr();
+
+    return OutlinedButton.icon(
+      onPressed: _busy ? null : _watchAd,
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : Icon(boosted ? Icons.rocket_launch : Icons.rocket_launch_outlined,
+              size: 18, color: color),
+      label: Text(label,
+          overflow: TextOverflow.ellipsis, style: TextStyle(color: color)),
       style: OutlinedButton.styleFrom(
         side: BorderSide(color: color),
         minimumSize: const Size.fromHeight(48),
@@ -967,6 +1077,440 @@ class _SaveButton extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+/// Ενότητα σχολίων της αγγελίας — ανοιχτή σε ΟΠΟΙΟΝΔΗΠΟΤΕ συνδεδεμένο χρήστη
+/// (όχι μόνο ο κάτοχος), σε αντίθεση με τα wallPosts που περιορίζονται στους
+/// συμμετέχοντες του deal. Ίδιο μοντέλο/UI πρότυπο με wall_post_detail_screen.dart.
+class _CommentsSection extends ConsumerWidget {
+  final ListingModel listing;
+  const _CommentsSection({required this.listing});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentUid = ref.watch(currentUserProvider)?.uid;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Icon(Icons.chat_bubble_outline,
+            color: AppColors.textSecondary, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          listing.commentsCount == 1
+              ? 'wall.oneComment'.tr()
+              : 'wall.nComments'
+                  .tr(namedArgs: {'n': '${listing.commentsCount}'}),
+          style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600),
+        ),
+      ]),
+      const SizedBox(height: 12),
+      StreamBuilder<List<CommentModel>>(
+        stream: ListingRepository().watchComments(listing.id),
+        builder: (context, snap) {
+          if (!snap.hasData) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: CircularProgressIndicator(
+                    color: AppColors.primary, strokeWidth: 2),
+              ),
+            );
+          }
+          final comments = snap.data!;
+          if (comments.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  currentUid != null
+                      ? 'wall.beFirstComment'.tr()
+                      : 'wall.noCommentsYet'.tr(),
+                  style:
+                      const TextStyle(color: AppColors.textHint, fontSize: 12),
+                ),
+              ),
+            );
+          }
+          return Column(
+            children: comments
+                .map((c) => _ListingCommentTile(
+                      comment: c,
+                      listingId: listing.id,
+                      canDelete: c.authorUid == currentUid,
+                      onDelete: () => ListingRepository().deleteComment(
+                        listingId: listing.id,
+                        commentId: c.id,
+                      ),
+                    ))
+                .toList(),
+          );
+        },
+      ),
+    ]);
+  }
+}
+
+class _ListingCommentTile extends StatelessWidget {
+  final CommentModel comment;
+  final bool canDelete;
+  final VoidCallback onDelete;
+  final String listingId;
+
+  const _ListingCommentTile({
+    required this.comment,
+    required this.canDelete,
+    required this.onDelete,
+    required this.listingId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (comment.isDeleted) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+              color: AppColors.surfaceVariant,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.person_off_outlined,
+                color: AppColors.textHint, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: AppColors.border.withValues(alpha: 0.3), width: 0.5),
+              ),
+              child: Row(children: [
+                const Icon(Icons.delete_outline,
+                    color: AppColors.textHint, size: 14),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'wall.commentDeletedBy'
+                        .tr(namedArgs: {'name': comment.authorName}),
+                    style: const TextStyle(
+                        color: AppColors.textHint,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ]),
+      );
+    }
+
+    final initial = comment.authorName.isNotEmpty
+        ? comment.authorName[0].toUpperCase()
+        : '?';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        CircleAvatar(
+          radius: 16,
+          backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+          backgroundImage: comment.authorAvatar != null
+              ? NetworkImage(comment.authorAvatar!)
+              : null,
+          child: comment.authorAvatar == null
+              ? Text(initial,
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700))
+              : null,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text(comment.authorName,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                ),
+                Text(DateHelpers.timeAgo(comment.createdAt),
+                    style: const TextStyle(
+                        color: AppColors.textHint, fontSize: 10)),
+              ]),
+              const SizedBox(height: 2),
+              if (comment.text.isNotEmpty)
+                Text(comment.text,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        height: 1.4)),
+              if (comment.imageUrl != null) ...[
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: 220, maxHeight: 220),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.network(
+                      comment.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+              ],
+            ]),
+          ),
+        ),
+        if (canDelete)
+          IconButton(
+            icon: const Icon(Icons.delete_outline,
+                color: AppColors.textHint, size: 16),
+            onPressed: () => _confirmDelete(context),
+          )
+        else
+          // Αναφορά σχολίου — απαίτηση UGC policy του Play.
+          IconButton(
+            icon: const Icon(Icons.flag_outlined,
+                color: AppColors.textHint, size: 16),
+            onPressed: () => context.push(
+                '/report/comment/${comment.authorUid}/listings/$listingId/${comment.id}'),
+          ),
+      ]),
+    );
+  }
+
+  void _confirmDelete(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('wall.deleteCommentTitle'.tr(),
+            style: const TextStyle(color: AppColors.textPrimary)),
+        content: Text('wall.deleteCommentBody'.tr(),
+            style: const TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('common.cancel'.tr(),
+                style: const TextStyle(color: AppColors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onDelete();
+            },
+            child: Text('common.delete'.tr(),
+                style: const TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Σταθερή μπάρα σχολίου στο κάτω μέρος της οθόνης (εκτός του scroll,
+/// ίδιο πρότυπο με wall_post_detail_screen.dart). Κρυμμένη αν δεν είναι
+/// συνδεδεμένος — ίδια πύλη με το κουμπί μηνύματος στα _ActionButtons.
+class _CommentInputBar extends ConsumerStatefulWidget {
+  final String listingId;
+  const _CommentInputBar({required this.listingId});
+
+  @override
+  ConsumerState<_CommentInputBar> createState() => _CommentInputBarState();
+}
+
+class _CommentInputBarState extends ConsumerState<_CommentInputBar> {
+  final _commentCtrl = TextEditingController();
+  bool _sending = false;
+  bool _uploadingImage = false;
+  String? _pendingImageUrl;
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickCommentImage() async {
+    final picker = MediaPickerService();
+    final media = await picker.showPickerSheet(context);
+    if (media == null) return;
+    if (media.type != MediaType.image) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('wall.onlyPhotoComments'.tr())),
+        );
+      }
+      return;
+    }
+    setState(() => _uploadingImage = true);
+    try {
+      final url = await picker.uploadToStorage(
+        file: media.file,
+        folder: 'listingComments/${widget.listingId}',
+        type: media.type,
+      );
+      if (mounted) setState(() => _pendingImageUrl = url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('wall.uploadError'.tr(namedArgs: {'err': '$e'}))));
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  Future<void> _sendComment(String currentUid) async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty && _pendingImageUrl == null) return;
+
+    setState(() => _sending = true);
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUid)
+          .get();
+      String authorName = 'common.userFallback'.tr();
+      String? authorAvatar;
+      if (userDoc.exists) {
+        final d = userDoc.data() as Map<String, dynamic>;
+        final first = (d['firstName'] as String?) ?? '';
+        final last = (d['lastName'] as String?) ?? '';
+        authorName = '$first $last'.trim();
+        if (authorName.isEmpty) authorName = 'common.userFallback'.tr();
+        authorAvatar = d['avatarUrl'] as String?;
+      }
+
+      await ListingRepository().addComment(
+        listingId: widget.listingId,
+        authorUid: currentUid,
+        authorName: authorName,
+        authorAvatar: authorAvatar,
+        text: text,
+        imageUrl: _pendingImageUrl,
+      );
+
+      _commentCtrl.clear();
+      if (mounted) {
+        setState(() => _pendingImageUrl = null);
+        FocusScope.of(context).unfocus();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('wall.error'.tr(namedArgs: {'err': '$e'}))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUid = ref.watch(currentUserProvider)?.uid;
+    if (currentUid == null) return const SizedBox.shrink();
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (_pendingImageUrl != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Stack(children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(_pendingImageUrl!,
+                        width: 64,
+                        height: 64,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textHint)),
+                  ),
+                  Positioned(
+                    top: -6,
+                    right: -6,
+                    child: IconButton(
+                      icon: const Icon(Icons.cancel,
+                          color: AppColors.danger, size: 20),
+                      onPressed: () => setState(() => _pendingImageUrl = null),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          Row(children: [
+            IconButton(
+              onPressed:
+                  (_sending || _uploadingImage) ? null : _pickCommentImage,
+              icon: _uploadingImage
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary))
+                  : const Icon(Icons.photo_camera_outlined,
+                      color: AppColors.primary),
+            ),
+            Expanded(
+              child: TextField(
+                controller: _commentCtrl,
+                maxLength: 500,
+                maxLines: null,
+                style:
+                    const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'wall.commentHint'.tr(),
+                  counterText: '',
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: _sending ? null : () => _sendComment(currentUid),
+              icon: _sending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary))
+                  : const Icon(Icons.send, color: AppColors.primary),
+            ),
+          ]),
+        ]),
+      ),
     );
   }
 }

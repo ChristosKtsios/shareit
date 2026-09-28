@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/utils/greek_text.dart';
+import '../../profile/data/wall_post_model.dart' show CommentModel;
 import 'listing_model.dart';
 import 'tags_repository.dart';
 
@@ -91,6 +92,78 @@ class ListingRepository {
         'isActive': true,
       });
 
+  /// Προώθηση αγγελίας (μετά από ολοκληρωμένο rewarded ad): προσθέτει ΤΩΡΑ
+  /// στη λίστα προβολών. Κάθε εγγραφή μετράει για ΑΚΡΙΒΩΣ 24 ώρες από τη
+  /// στιγμή που προστέθηκε (βλ. ListingModel#boostCount) — δεν λήγουν όλες
+  /// μαζί, η καθεμία «πέφτει» μόνη της. Παλιές (>24ω) καθαρίζονται εδώ ώστε
+  /// η λίστα να μη μεγαλώνει επ' άπειρο — ήδη δεν θα μετρούσαν έτσι κι αλλιώς.
+  ///
+  /// Το [currentTimestamps] είναι οι ήδη γνωστές προβολές της αγγελίας (ο
+  /// caller τις έχει ήδη live από το [ListingModel] — αποφεύγει ένα επιπλέον
+  /// read εδώ). Το firestore.rules επιτρέπει μόνο προσθήκη ΜΙΑΣ πρόσφατης
+  /// χρονοσφραγίδας ανά write, όχι αυθαίρετη λίστα.
+  Future<void> boost(
+    String id, {
+    List<DateTime> currentTimestamps = const [],
+  }) async {
+    final now = DateTime.now();
+    final kept = currentTimestamps
+        .where((t) => now.difference(t) < const Duration(hours: 24))
+        .toList()
+      ..add(now);
+    await _col.doc(id).update({
+      'boostTimestamps': kept.map(Timestamp.fromDate).toList(),
+    });
+  }
+
+  /// Stream με σχόλια μιας αγγελίας (συμπεριλαμβάνει διαγραμμένα — εμφανίζονται
+  /// ως «Το σχόλιο διαγράφηκε», βλ. wall_post_repository.dart#watchComments).
+  Stream<List<CommentModel>> watchComments(String listingId) => _col
+      .doc(listingId)
+      .collection('comments')
+      .orderBy('createdAt')
+      .snapshots()
+      .map((s) => s.docs.map(CommentModel.fromFirestore).toList());
+
+  /// Προσθέτει σχόλιο (κείμενο ή/και φωτογραφία) σε αγγελία. Ίδιο πρότυπο με
+  /// το wall_post_repository.dart#addComment.
+  Future<void> addComment({
+    required String listingId,
+    required String authorUid,
+    required String authorName,
+    String? authorAvatar,
+    required String text,
+    String? imageUrl,
+  }) async {
+    final batch = FirebaseFirestore.instance.batch();
+    final commentRef = _col.doc(listingId).collection('comments').doc();
+    batch.set(commentRef, {
+      'authorUid': authorUid,
+      'authorName': authorName,
+      'authorAvatar': authorAvatar,
+      'text': text,
+      'imageUrl': imageUrl,
+      'isDeleted': false,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    batch.update(_col.doc(listingId), {
+      'commentsCount': FieldValue.increment(1),
+    });
+    await batch.commit();
+  }
+
+  /// Soft delete σχολίου — δεν σβήνεται, μένει με isDeleted=true.
+  Future<void> deleteComment({
+    required String listingId,
+    required String commentId,
+  }) async {
+    await _col.doc(listingId).collection('comments').doc(commentId).update({
+      'isDeleted': true,
+      'deletedAt': FieldValue.serverTimestamp(),
+      'text': '',
+    });
+  }
+
   /// Helper για να φιλτράρουμε hidden αγγελίες client-side.
   /// (Firestore δεν επιτρέπει "where != true" εύκολα)
   List<ListingModel> _filterVisible(List<DocumentSnapshot> docs) {
@@ -115,10 +188,8 @@ class ListingRepository {
   /// ώστε ο ίδιος να μπορεί να διαχειριστεί/ξαναενεργοποιήσει τις παγωμένες.
   /// Ταξινόμηση στον client (χωρίς orderBy) → δεν χρειάζεται composite index:
   /// ένα σκέτο where('userId') χρησιμοποιεί μόνο το αυτόματο single-field index.
-  Stream<List<ListingModel>> watchUserListings(String uid) => _col
-      .where('userId', isEqualTo: uid)
-      .snapshots()
-      .map((s) {
+  Stream<List<ListingModel>> watchUserListings(String uid) =>
+      _col.where('userId', isEqualTo: uid).snapshots().map((s) {
         final list = _filterVisible(s.docs);
         list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return list;
@@ -142,8 +213,12 @@ class ListingRepository {
   Future<void> setActive(String id, bool active) async =>
       await _col.doc(id).update({'isActive': active});
 
-  Future<({List<ListingModel> listings, DocumentSnapshot? lastDoc, int fetched})>
-      getPageWithCursor({DocumentSnapshot? lastDoc}) async {
+  Future<
+      ({
+        List<ListingModel> listings,
+        DocumentSnapshot? lastDoc,
+        int fetched
+      })> getPageWithCursor({DocumentSnapshot? lastDoc}) async {
     var q = _col
         .where('isActive', isEqualTo: true)
         .orderBy('createdAt', descending: true)

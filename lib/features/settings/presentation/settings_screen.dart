@@ -219,6 +219,8 @@ class _LanguageTile extends StatelessWidget {
         return 'language.el'.tr();
       case 'es':
         return 'language.es'.tr();
+      case 'hi':
+        return 'language.hi'.tr();
       default:
         return 'language.en'.tr();
     }
@@ -260,7 +262,8 @@ class _LanguageTile extends StatelessWidget {
           for (final locale in const [
             Locale('el'),
             Locale('en'),
-            Locale('es')
+            Locale('es'),
+            Locale('hi')
           ])
             ListTile(
               title: Text(_labelFor(locale.languageCode),

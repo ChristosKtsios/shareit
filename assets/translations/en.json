@@ -14,7 +14,8 @@
     "title": "Choose language",
     "el": "Ελληνικά",
     "en": "English",
-    "es": "Español"
+    "es": "Español",
+    "hi": "Hindi"
   },
   "nav": {
     "map": "Map",
@@ -154,7 +155,21 @@
     "titleHintOffer": "e.g. Lending tools",
     "titleHintSeek": "e.g. Looking for moving help",
     "locationSelected": "Selected location",
-    "photoTip": "Listings with a photo get far more interest"
+    "photoTip": "Listings with a photo get far more interest",
+    "categoryLabel": "Category *",
+    "selectCategory": "Choose a category for the listing."
+  },
+  "category": {
+    "electronics": "Electronics",
+    "furniture": "Furniture & Home",
+    "clothing": "Clothing & Accessories",
+    "books": "Books & Education",
+    "sports": "Sports & Outdoors",
+    "kids": "Kids & Toys",
+    "tools": "Tools & DIY",
+    "transport": "Transport",
+    "services": "Services",
+    "other": "Other"
   },
   "listing": {
     "offer": "Offer",
@@ -194,7 +209,11 @@
     "pausedBadge": "Paused",
     "message": "Message",
     "removedFav": "Removed from favorites",
-    "savedFav": "Saved to favorites"
+    "savedFav": "Saved to favorites",
+    "boost": "Boost with an ad",
+    "boostActive": "Boosted ×{n} · {h}h left — watch another ad",
+    "boosted": "Listing boosted! Total ads watched: {n}",
+    "boostAdUnavailable": "No ad available right now. Try again shortly."
   },
   "chat": {
     "messages": "Messages",
@@ -856,7 +875,8 @@
   "lcard": {
     "fromDate": "from {d}",
     "untilDate": "until {d}",
-    "seeMore": "See more"
+    "seeMore": "See more",
+    "boosted": "Boosted"
   },
   "lact": {
     "deleteConfirmBody": "Are you sure?",

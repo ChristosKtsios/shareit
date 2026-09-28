@@ -5,8 +5,10 @@ import 'package:easy_localization/easy_localization.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/providers/blocked_users_provider.dart';
 import '../../../core/widgets/listing_card.dart';
+import '../../../core/widgets/banner_ad_widget.dart';
 import '../../../core/widgets/shimmer_loader.dart';
 import '../../listings/data/listing_model.dart';
+import '../../listings/presentation/widgets/category_selector.dart';
 import '../../search/presentation/widgets/distance_slider_widget.dart';
 import '../providers/feed_provider.dart';
 
@@ -116,6 +118,34 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           ),
         ),
 
+        // Category filter — δεύτερη σειρά chips, κάτω από τον τύπο. Παλιές
+        // αγγελίες χωρίς category (πριν το backfill) απλά δεν ταιριάζουν σε
+        // καμία επιλογή εκτός «Όλα» — δεν εξαφανίζονται, μένουν στο «Όλα».
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+            children: [
+              _Chip(
+                  label: 'filters.all'.tr(),
+                  selected: state.category == null,
+                  onTap: () => notifier.setCategory(null)),
+              const SizedBox(width: 6),
+              for (final c in ListingCategory.values) ...[
+                _Chip(
+                  label: c.label,
+                  icon: c.icon,
+                  selected: state.category == c,
+                  onTap: () =>
+                      notifier.setCategory(state.category == c ? null : c),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ],
+          ),
+        ),
+
         // Distance slider — 1–100 χλμ + τελευταίο σκαλί «Παντού» (με persistence)
         DistanceSliderWidget(
           value: state.distanceKm,
@@ -198,6 +228,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                       ),
                     ),
         ),
+
+        const BannerAdWidget(),
       ]),
     );
   }
@@ -207,6 +239,7 @@ class _Chip extends StatelessWidget {
   final String label;
   final bool selected;
   final Color? color;
+  final IconData? icon;
   final VoidCallback onTap;
 
   const _Chip({
@@ -214,6 +247,7 @@ class _Chip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.color,
+    this.icon,
   });
 
   @override
@@ -232,11 +266,17 @@ class _Chip extends StatelessWidget {
               color: selected ? c : AppColors.border,
               width: selected ? 1.5 : 0.5),
         ),
-        child: Text(label,
-            style: TextStyle(
-                color: selected ? c : AppColors.textSecondary,
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: selected ? c : AppColors.textSecondary),
+            const SizedBox(width: 5),
+          ],
+          Text(label,
+              style: TextStyle(
+                  color: selected ? c : AppColors.textSecondary,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+        ]),
       ),
     );
   }

@@ -17,6 +17,7 @@ class FeedState {
   final List<ListingModel> listings;
   final String? tagFilter;
   final ListingType? type;
+  final ListingCategory? category;
   final SearchSort sort;
   final double distanceKm; // 1–100 χλμ, ή kFeedEverywhereKm (101) = «Παντού»
   final Position? userPosition;
@@ -28,6 +29,7 @@ class FeedState {
     this.listings = const [],
     this.tagFilter,
     this.type,
+    this.category,
     this.sort = SearchSort.recent,
     this.distanceKm = kFeedEverywhereKm,
     this.userPosition,
@@ -44,6 +46,9 @@ class FeedState {
     var list = [...listings];
 
     if (type != null) list = list.where((l) => l.type == type).toList();
+    if (category != null) {
+      list = list.where((l) => l.category == category).toList();
+    }
     if (tagFilter != null) {
       list = list.where((l) => l.tags.contains(tagFilter)).toList();
     }
@@ -75,6 +80,24 @@ class FeedState {
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
 
+    // Προωθημένες (boost) αγγελίες πρώτα, και ΑΝΑΜΕΣΑ ΤΟΥΣ πρώτος όποιος έχει
+    // δει τις περισσότερες διαφημίσεις (ανταγωνιστικό boost) — ισοβαθμία
+    // λύνεται με το ποιος προώθησε πιο πρόσφατα (δεν βασιζόμαστε στη
+    // σταθερότητα του List.sort(), χρησιμοποιούμε πραγματικό tie-break key).
+    // Αυτό ταξινομεί μόνο την τρέχουσα φορτωμένη σελίδα, όχι ολόκληρο το feed
+    // πέρα από το pagination cursor.
+    if (list.any((l) => l.isBoosted)) {
+      final boosted = list.where((l) => l.isBoosted).toList()
+        ..sort((a, b) {
+          final cmp = b.boostCount.compareTo(a.boostCount);
+          return cmp != 0
+              ? cmp
+              : b.mostRecentBoost!.compareTo(a.mostRecentBoost!);
+        });
+      final rest = list.where((l) => !l.isBoosted).toList();
+      list = [...boosted, ...rest];
+    }
+
     return list;
   }
 
@@ -82,6 +105,7 @@ class FeedState {
     List<ListingModel>? listings,
     String? tagFilter,
     ListingType? type,
+    ListingCategory? category,
     SearchSort? sort,
     double? distanceKm,
     Position? userPosition,
@@ -90,12 +114,14 @@ class FeedState {
     DocumentSnapshot? lastDoc,
     bool clearTag = false,
     bool clearType = false,
+    bool clearCategory = false,
     bool clearLastDoc = false,
   }) =>
       FeedState(
         listings: listings ?? this.listings,
         tagFilter: clearTag ? null : (tagFilter ?? this.tagFilter),
         type: clearType ? null : (type ?? this.type),
+        category: clearCategory ? null : (category ?? this.category),
         sort: sort ?? this.sort,
         distanceKm: distanceKm ?? this.distanceKm,
         userPosition: userPosition ?? this.userPosition,
@@ -198,6 +224,10 @@ class FeedNotifier extends StateNotifier<FeedState> {
 
   void setType(ListingType? t) {
     state = state.copyWith(type: t, clearType: t == null);
+  }
+
+  void setCategory(ListingCategory? c) {
+    state = state.copyWith(category: c, clearCategory: c == null);
   }
 
   void setSort(SearchSort s) {

@@ -1,5 +1,4 @@
 import 'dart:ui' as ui;
-import 'package:easy_localization/easy_localization.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -7,6 +6,12 @@ import '../../../../../features/listings/data/listing_model.dart';
 import 'marker_image_cache.dart';
 import 'user_map_cache.dart';
 
+/// «Photo-forward pin»: μια μεγάλη στρογγυλεμένη φωτογραφία (η βασική οπτική
+/// ταυτότητα, όπως τα pins του Airbnb) αντί για μικρά thumbnails δίπλα σε
+/// κείμενο. Ο τύπος (badge πάνω-αριστερά) και ο χρήστης (avatar κάτω-δεξιά)
+/// γίνονται μικρά «μενταγιόν» πάνω στις γωνίες της φωτογραφίας, και ο τίτλος
+/// επικάθεται στο κάτω μέρος της φωτογραφίας με σκίαση για ευκρίνεια — έτσι
+/// τραβάει περισσότερο το μάτι απ' ό,τι μια κάρτα γεμάτη κείμενο.
 class MapMarkerBuilder {
   /// [scale] = πολλαπλασιαστής μεγέθους (0.5 - 1.0) με βάση το zoom.
   static Future<BitmapDescriptor> buildMarker({
@@ -18,14 +23,7 @@ class MapMarkerBuilder {
     final emoji = isOffer ? '🤲' : '🔍';
 
     // ── Φόρτωσε live user info (cached) ──
-    // Αν το user document υπάρχει, χρησιμοποιεί το LIVE όνομα/avatar.
-    // Αν αποτύχει, fallback στα static listing.userFirstName/AvatarUrl.
     final userInfo = await UserMapCache.get(listing.userId);
-    final displayName = (userInfo != null && userInfo.firstName.isNotEmpty)
-        ? userInfo.firstName
-        : (listing.userFirstName.isNotEmpty
-            ? listing.userFirstName
-            : 'common.userFallback'.tr());
     final displayInitial = (userInfo != null && userInfo.initial != '?')
         ? userInfo.initial
         : (listing.userFirstName.isNotEmpty
@@ -36,71 +34,140 @@ class MapMarkerBuilder {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    final width = 180.0 * scale;
-    final height = 110.0 * scale;
+    final photoSize = 88.0 * scale;
+    final width = photoSize + 16 * scale;
+    final tailHeight = 12.0 * scale;
+    final height = photoSize + 10 * scale + tailHeight;
 
-    final bgPaint = Paint()..color = const Color(0xFF161B24);
-    final borderPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5 * scale;
+    final photoRect =
+        Rect.fromLTWH((width - photoSize) / 2, 2 * scale, photoSize, photoSize);
+    final photoRRect =
+        RRect.fromRectAndRadius(photoRect, Radius.circular(22 * scale));
 
-    final rrect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, width, height - 12 * scale),
-        Radius.circular(16 * scale));
-    canvas.drawRRect(rrect, bgPaint);
-    canvas.drawRRect(rrect, borderPaint);
-
-    // Triangle tail
-    final path = Path()
-      ..moveTo(width / 2 - 10 * scale, height - 12 * scale)
-      ..lineTo(width / 2 + 10 * scale, height - 12 * scale)
-      ..lineTo(width / 2, height)
-      ..close();
-    canvas.drawPath(path, bgPaint);
-    canvas.drawPath(path, borderPaint);
-
-    // Type badge top-left
-    final badgePaint = Paint()..color = color.withValues(alpha: 0.2);
+    // ── Σκιά κάτω από τη φωτογραφία (δίνει βάθος, «ξεκολλάει» από τον χάρτη) ──
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          Rect.fromLTWH(8 * scale, 8 * scale, 60 * scale, 22 * scale),
-          Radius.circular(11 * scale)),
-      badgePaint,
+      photoRRect.shift(Offset(0, 3 * scale)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4 * scale),
+    );
+
+    // ── Η φωτογραφία (ή έγχρωμο gradient fallback με emoji αν δεν υπάρχει) ──
+    final photoUrl = listing.imageUrls.isNotEmpty ? listing.imageUrls.first : null;
+    final photoImage = photoUrl != null ? await MarkerImageCache.load(photoUrl) : null;
+
+    canvas.save();
+    canvas.clipRRect(photoRRect);
+    if (photoImage != null) {
+      final srcSize =
+          photoImage.width < photoImage.height ? photoImage.width : photoImage.height;
+      final srcX = (photoImage.width - srcSize) / 2;
+      final srcY = (photoImage.height - srcSize) / 2;
+      canvas.drawImageRect(
+        photoImage,
+        Rect.fromLTWH(srcX.toDouble(), srcY.toDouble(), srcSize.toDouble(),
+            srcSize.toDouble()),
+        photoRect,
+        Paint(),
+      );
+    } else {
+      final gradient = ui.Gradient.linear(
+        photoRect.topLeft,
+        photoRect.bottomRight,
+        [color.withValues(alpha: 0.55), color.withValues(alpha: 0.85)],
+      );
+      canvas.drawRect(photoRect, Paint()..shader = gradient);
+      final bigEmojiPainter = TextPainter(
+        text: TextSpan(text: emoji, style: TextStyle(fontSize: 34 * scale)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      bigEmojiPainter.paint(
+        canvas,
+        Offset(photoRect.center.dx - bigEmojiPainter.width / 2,
+            photoRect.center.dy - bigEmojiPainter.height / 2),
+      );
+    }
+
+    // ── Σκίαση κάτω μέρους (gradient scrim) ώστε ο τίτλος να διαβάζεται ──
+    final scrimRect = Rect.fromLTWH(
+        photoRect.left, photoRect.bottom - 30 * scale, photoSize, 30 * scale);
+    canvas.drawRect(
+      scrimRect,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          scrimRect.topCenter,
+          scrimRect.bottomCenter,
+          [Colors.black.withValues(alpha: 0), Colors.black.withValues(alpha: 0.75)],
+        ),
+    );
+    canvas.restore();
+
+    // Χρωματιστό περίγραμμα γύρω από τη φωτογραφία (δηλώνει τον τύπο)
+    canvas.drawRRect(
+      photoRRect,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3 * scale,
+    );
+
+    // ── Τίτλος αγγελίας, πάνω στη σκίαση ──
+    const maxTitleLen = 16;
+    final shortTitle = listing.title.length > maxTitleLen
+        ? '${listing.title.substring(0, maxTitleLen)}…'
+        : listing.title;
+    final titlePainter = TextPainter(
+      text: TextSpan(
+        text: shortTitle,
+        style: TextStyle(
+            color: Colors.white, fontSize: 11 * scale, fontWeight: FontWeight.w700),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+      textAlign: TextAlign.center,
+    )..layout(maxWidth: photoSize - 10 * scale);
+    titlePainter.paint(
+      canvas,
+      Offset(photoRect.center.dx - titlePainter.width / 2,
+          photoRect.bottom - titlePainter.height - 5 * scale),
+    );
+
+    // ── Badge τύπου (emoji), «μενταγιόν» πάνω-αριστερά στη γωνία της φωτό ──
+    final typeBadgeCenter = photoRect.topLeft;
+    final typeBadgeRadius = 15.0 * scale;
+    canvas.drawCircle(typeBadgeCenter, typeBadgeRadius, Paint()..color = color);
+    canvas.drawCircle(
+      typeBadgeCenter,
+      typeBadgeRadius,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2 * scale,
     );
     final emojiPainter = TextPainter(
       text: TextSpan(text: emoji, style: TextStyle(fontSize: 14 * scale)),
       textDirection: TextDirection.ltr,
     )..layout();
-    emojiPainter.paint(canvas, Offset(12 * scale, 12 * scale));
+    emojiPainter.paint(
+      canvas,
+      Offset(typeBadgeCenter.dx - emojiPainter.width / 2,
+          typeBadgeCenter.dy - emojiPainter.height / 2),
+    );
 
-    final typeText = isOffer ? 'listing.offer'.tr() : 'listing.seek'.tr();
-    final typePainter = TextPainter(
-      text: TextSpan(
-          text: typeText,
-          style: TextStyle(
-              color: color, fontSize: 10 * scale, fontWeight: FontWeight.w700)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    typePainter.paint(canvas, Offset(30 * scale, 14 * scale));
-
-    // ── Avatar χρήστη (στρογγυλό) δίπλα στον τίτλο ──
-    final avatarSize = 20.0 * scale;
-    final avatarX = 8.0 * scale;
-    final avatarY = 36.0 * scale;
-    final avatarCenter =
-        Offset(avatarX + avatarSize / 2, avatarY + avatarSize / 2);
-    final avatarRadius = avatarSize / 2;
-
+    // ── Avatar χρήστη, «μενταγιόν» κάτω-δεξιά στη γωνία της φωτό ──
+    final avatarCenter = photoRect.bottomRight;
+    final avatarRadius = 15.0 * scale;
     ui.Image? avatarImage;
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       avatarImage = await MarkerImageCache.load(avatarUrl);
     }
-
+    canvas.drawCircle(avatarCenter, avatarRadius, Paint()..color = Colors.white);
     if (avatarImage != null) {
       canvas.save();
       final clip = Path()
-        ..addOval(Rect.fromCircle(center: avatarCenter, radius: avatarRadius));
+        ..addOval(Rect.fromCircle(
+            center: avatarCenter, radius: avatarRadius - 2 * scale));
       canvas.clipPath(clip);
       final srcSize = avatarImage.width < avatarImage.height
           ? avatarImage.width
@@ -111,36 +178,19 @@ class MapMarkerBuilder {
         avatarImage,
         Rect.fromLTWH(srcX.toDouble(), srcY.toDouble(), srcSize.toDouble(),
             srcSize.toDouble()),
-        Rect.fromCircle(center: avatarCenter, radius: avatarRadius),
+        Rect.fromCircle(center: avatarCenter, radius: avatarRadius - 2 * scale),
         Paint(),
       );
       canvas.restore();
-      canvas.drawCircle(
-        avatarCenter,
-        avatarRadius,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5 * scale,
-      );
     } else {
-      // Fallback: αρχικό γράμμα ονόματος σε χρωματιστό κύκλο
-      canvas.drawCircle(avatarCenter, avatarRadius,
-          Paint()..color = color.withValues(alpha: 0.25));
-      canvas.drawCircle(
-        avatarCenter,
-        avatarRadius,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5 * scale,
-      );
+      canvas.drawCircle(avatarCenter, avatarRadius - 2 * scale,
+          Paint()..color = color.withValues(alpha: 0.85));
       final initialPainter = TextPainter(
         text: TextSpan(
             text: displayInitial,
             style: TextStyle(
-                color: color,
-                fontSize: 11 * scale,
+                color: Colors.white,
+                fontSize: 12 * scale,
                 fontWeight: FontWeight.w700)),
         textDirection: TextDirection.ltr,
       )..layout();
@@ -150,140 +200,17 @@ class MapMarkerBuilder {
               avatarCenter.dy - initialPainter.height / 2));
     }
 
-    // ── Title με το ΟΝΟΜΑ του χρήστη + τίτλο της αγγελίας ──
-    // Format: "Όνομα · Τίτλος αγγελίας"
-    final titleX = avatarX + avatarSize + 6 * scale;
-    const maxTitleLen = 14;
-    final shortTitle = listing.title.length > maxTitleLen
-        ? '${listing.title.substring(0, maxTitleLen)}...'
-        : listing.title;
-
-    final maxWidthForText = width - titleX - 8 * scale;
-
-    // Πρώτη γραμμή: όνομα χρήστη (έντονο, primary χρώμα)
-    final namePainter = TextPainter(
-      text: TextSpan(
-        text: displayName,
-        style: TextStyle(
-            color: color, fontSize: 11 * scale, fontWeight: FontWeight.w700),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '…',
-    )..layout(maxWidth: maxWidthForText);
-    namePainter.paint(canvas, Offset(titleX, avatarCenter.dy - avatarRadius));
-
-    // Δεύτερη γραμμή: τίτλος αγγελίας
-    final titlePainter = TextPainter(
-      text: TextSpan(
-        text: shortTitle,
-        style: TextStyle(
-            color: const Color(0xFFF0F4FF),
-            fontSize: 10 * scale,
-            fontWeight: FontWeight.w500),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '…',
-    )..layout(maxWidth: maxWidthForText);
-    titlePainter.paint(canvas, Offset(titleX, avatarCenter.dy + 1 * scale));
-
-    // Βεντάλια φωτογραφιών αγγελίας (max 3)
-    if (listing.imageUrls.isNotEmpty) {
-      final maxPhotos = listing.imageUrls.length.clamp(0, 3);
-      final photoSize = 32.0 * scale;
-      final photoSpacing = 6.0 * scale;
-      final totalWidth = maxPhotos * photoSize + (maxPhotos - 1) * photoSpacing;
-      final startX = (width - totalWidth) / 2;
-      final photoY = 58.0 * scale;
-
-      for (var i = 0; i < maxPhotos; i++) {
-        final x = startX + i * (photoSize + photoSpacing);
-        final rect = Rect.fromLTWH(x, photoY, photoSize, photoSize);
-        final image = await MarkerImageCache.load(listing.imageUrls[i]);
-        if (image != null) {
-          final clipPath = Path()
-            ..addRRect(
-                RRect.fromRectAndRadius(rect, Radius.circular(8 * scale)));
-          canvas.save();
-          canvas.clipPath(clipPath);
-
-          final srcSize =
-              image.width < image.height ? image.width : image.height;
-          final srcX = (image.width - srcSize) / 2;
-          final srcY = (image.height - srcSize) / 2;
-          canvas.drawImageRect(
-            image,
-            Rect.fromLTWH(srcX.toDouble(), srcY.toDouble(), srcSize.toDouble(),
-                srcSize.toDouble()),
-            rect,
-            Paint(),
-          );
-          canvas.restore();
-
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(rect, Radius.circular(8 * scale)),
-            Paint()
-              ..color = color
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1.5 * scale,
-          );
-        } else {
-          _drawPlaceholder(canvas, x, photoY, photoSize, color, scale);
-        }
-      }
-
-      if (listing.imageUrls.length > 3) {
-        final overflowPainter = TextPainter(
-          text: TextSpan(
-              text: '+${listing.imageUrls.length - 3}',
-              style: TextStyle(
-                  color: color,
-                  fontSize: 10 * scale,
-                  fontWeight: FontWeight.w700)),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        overflowPainter.paint(
-            canvas,
-            Offset(width - overflowPainter.width - 8 * scale,
-                photoY + photoSize - overflowPainter.height));
-      }
-    } else {
-      if (listing.tags.isNotEmpty) {
-        final tagText = '#${listing.tags.first}';
-        final tagPainter = TextPainter(
-          text: TextSpan(
-              text: tagText,
-              style: TextStyle(
-                  color: color,
-                  fontSize: 12 * scale,
-                  fontWeight: FontWeight.w500)),
-          textDirection: TextDirection.ltr,
-        )..layout();
-        tagPainter.paint(
-            canvas, Offset((width - tagPainter.width) / 2, 70 * scale));
-      }
-    }
+    // ── Ουρά (δείχνει το ακριβές σημείο στον χάρτη) ──
+    final tailPath = Path()
+      ..moveTo(width / 2 - 8 * scale, photoRect.bottom + 4 * scale)
+      ..lineTo(width / 2 + 8 * scale, photoRect.bottom + 4 * scale)
+      ..lineTo(width / 2, height)
+      ..close();
+    canvas.drawPath(tailPath, Paint()..color = color);
 
     final picture = recorder.endRecording();
-    final image = await picture.toImage(width.toInt(), height.toInt());
+    final image = await picture.toImage(width.ceil(), height.ceil());
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
-  }
-
-  static void _drawPlaceholder(Canvas canvas, double x, double y, double size,
-      Color color, double scale) {
-    final rect = Rect.fromLTWH(x, y, size, size);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, Radius.circular(8 * scale)),
-      Paint()..color = color.withValues(alpha: 0.15),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(rect, Radius.circular(8 * scale)),
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5 * scale,
-    );
   }
 }
