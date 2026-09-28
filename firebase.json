@@ -60,7 +60,10 @@
     "rewrites": [
       {
         "source": "/listing/**",
-        "destination": "/listing.html"
+        "function": {
+          "functionId": "renderListingPage",
+          "region": "europe-west1"
+        }
       }
     ]
   },

@@ -5,7 +5,7 @@ import {
   onDocumentUpdated,
   onDocumentDeleted,
 } from "firebase-functions/v2/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions";
 import * as logger from "firebase-functions/logger";
@@ -18,70 +18,86 @@ const messaging = admin.messaging();
 const auth = admin.auth();
 
 // ── i18n των push notifications ──
-// Ο κάθε χρήστης αποθηκεύει τη γλώσσα του (`language`: el/en/es) στο user doc
+// Ο κάθε χρήστης αποθηκεύει τη γλώσσα του (`language`: el/en/es/hi) στο user doc
 // (γράφεται από τον client). Τα push συντάσσονται στη γλώσσα του ΠΑΡΑΛΗΠΤΗ.
-type Lang = "el" | "en" | "es";
-const SUPPORTED: Lang[] = ["el", "en", "es"];
+type Lang = "el" | "en" | "es" | "hi";
+const SUPPORTED: Lang[] = ["el", "en", "es", "hi"];
 
 const STR: Record<string, Record<Lang, string>> = {
-  newMessageTitle: { el: "Νέο μήνυμα", en: "New message", es: "Nuevo mensaje" },
-  msgPhoto: { el: "📷 Φωτογραφία", en: "📷 Photo", es: "📷 Foto" },
-  msgVideo: { el: "🎥 Βίντεο", en: "🎥 Video", es: "🎥 Vídeo" },
-  msgLocation: { el: "📍 Τοποθεσία", en: "📍 Location", es: "📍 Ubicación" },
+  newMessageTitle: {
+    el: "Νέο μήνυμα", en: "New message", es: "Nuevo mensaje", hi: "नया संदेश",
+  },
+  msgPhoto: { el: "📷 Φωτογραφία", en: "📷 Photo", es: "📷 Foto", hi: "📷 फोटो" },
+  msgVideo: { el: "🎥 Βίντεο", en: "🎥 Video", es: "🎥 Vídeo", hi: "🎥 वीडियो" },
+  msgLocation: {
+    el: "📍 Τοποθεσία", en: "📍 Location", es: "📍 Ubicación", hi: "📍 स्थान",
+  },
   msgDealProposal: {
     el: "📋 Πρόταση Deal", en: "📋 Deal proposal", es: "📋 Propuesta de deal",
+    hi: "📋 डील प्रस्ताव",
   },
   msgDealClosed: {
     el: "🤝 Το deal έκλεισε", en: "🤝 Deal closed", es: "🤝 Deal cerrado",
+    hi: "🤝 डील बंद हुई",
   },
-  someone: { el: "Κάποιος", en: "Someone", es: "Alguien" },
+  someone: { el: "Κάποιος", en: "Someone", es: "Alguien", hi: "कोई व्यक्ति" },
   dealProposalTitle: {
     el: "🤝 Νέα πρόταση deal",
     en: "🤝 New deal proposal",
     es: "🤝 Nueva propuesta de deal",
+    hi: "🤝 नया डील प्रस्ताव",
   },
   dealProposalBody: {
     el: "Ο/Η {name} σου έστειλε πρόταση deal",
     en: "{name} sent you a deal proposal",
     es: "{name} te envió una propuesta de deal",
+    hi: "{name} ने आपको डील प्रस्ताव भेजा",
   },
   friendReqTitle: {
     el: "👋 Νέο αίτημα φιλίας",
     en: "👋 New friend request",
     es: "👋 Nueva solicitud de amistad",
+    hi: "👋 नया मित्र अनुरोध",
   },
   friendReqBody: {
     el: "Ο/Η {name} θέλει να γίνετε φίλοι",
     en: "{name} wants to be your friend",
     es: "{name} quiere ser tu amigo",
+    hi: "{name} आपका मित्र बनना चाहता है",
   },
   listingExpiringTitle: {
     el: "⏳ Η αγγελία σου λήγει σύντομα",
     en: "⏳ Your listing expires soon",
     es: "⏳ Tu anuncio caduca pronto",
+    hi: "⏳ आपकी लिस्टिंग जल्द समाप्त हो रही है",
   },
   listingExpiringBody: {
     el: "Η «{title}» θα αφαιρεθεί σε {days} μέρες. Άνοιξέ την και πάτα «Ανανέωση» για να μείνει ενεργή.",
     en: "\"{title}\" will be removed in {days} days. Open it and tap \"Renew\" to keep it active.",
     es: "\"{title}\" se eliminará en {days} días. Ábrelo y pulsa \"Renovar\" para mantenerlo activo.",
+    hi: "\"{title}\" {days} दिनों में हटा दी जाएगी। इसे खोलें और सक्रिय रखने के लिए \"नवीनीकरण\" पर टैप करें।",
   },
   friendAcceptedTitle: {
     el: "🎉 Νέος φίλος", en: "🎉 New friend", es: "🎉 Nuevo amigo",
+    hi: "🎉 नया मित्र",
   },
   friendAcceptedBody: {
     el: "Ο/Η {name} αποδέχτηκε το αίτημα φιλίας σου",
     en: "{name} accepted your friend request",
     es: "{name} aceptó tu solicitud de amistad",
+    hi: "{name} ने आपका मित्र अनुरोध स्वीकार किया",
   },
   listingDeletedTitle: {
     el: "🗑️ Αγγελία διαγράφηκε",
     en: "🗑️ Listing deleted",
     es: "🗑️ Anuncio eliminado",
+    hi: "🗑️ लिस्टिंग हटाई गई",
   },
   listingDeletedBody: {
     el: "Η αγγελία σου «{title}» αφαιρέθηκε επειδή έληξε.",
     en: "Your listing \"{title}\" was removed because it expired.",
     es: "Tu anuncio \"{title}\" se eliminó porque caducó.",
+    hi: "आपकी लिस्टिंग \"{title}\" हट गई क्योंकि यह समाप्त हो गई थी।",
   },
 };
 
@@ -430,7 +446,10 @@ async function enforceRateLimit(ip: string, action: string): Promise<void> {
  * μη γίνεται unauthenticated query στους users και να μη χρειάζεται sign-in.
  */
 export const checkAccountExists = onCall(
-  { enforceAppCheck: false }, // ΠΡΟΣΩΡΙΝΟ: off μέχρι να ρυθμιστεί Play Integrity (ήταν true)
+  // ΠΡΟΣΩΡΙΝΟ: off μέχρι να ρυθμιστεί σωστά το Play Integrity στο Firebase
+  // Console — δοκιμάστηκε enforceAppCheck:true στις 6/9/2026 και απέρριψε
+  // ΚΑΙ τη γνήσια εφαρμογή ("AppCheck token was rejected"), οπότε επανήλθε.
+  { enforceAppCheck: false },
   async (request) => {
   await enforceRateLimit(callerIp(request), "checkAccountExists");
 
@@ -471,9 +490,12 @@ export const checkAccountExists = onCall(
  * που τρέχουν από ΜΗ συνδεδεμένο χρήστη (δεν επιτρέπεται query στους users).
  *
  * ⚠️ ΓΝΩΣΤΗ ΑΔΥΝΑΜΙΑ — ΝΑ ΑΝΤΙΚΑΤΑΣΤΑΘΕΙ:
- * Επιστρέφει EMAIL σε μη αυθεντικοποιημένο καλούντα. Ένα script που δοκιμάζει
- * κινητά στη σειρά χαρτογραφεί τηλέφωνο → email για όλη τη βάση. Το rate limit
- * παρακάτω το κάνει μη πρακτικό, αλλά ΔΕΝ το εξαλείφει.
+ * Επιστρέφει EMAIL σε μη συνδεδεμένο (Auth) καλούντα. Το `enforceAppCheck`
+ * μπλοκάρει πλέον οτιδήποτε δεν είναι η γνήσια εφαρμογή (script/curl/Postman),
+ * και το rate limit παρακάτω περιορίζει κι άλλο τον ρυθμό — αλλά κάποιος με τη
+ * γνήσια εφαρμογή στο χέρι θα μπορούσε ακόμα να δοκιμάσει χειροκίνητα
+ * συγκεκριμένα τηλέφωνα-στόχους. ΔΕΝ εξαλείφεται πλήρως χωρίς την παρακάτω
+ * αναδιάρθρωση.
  *
  * ΣΩΣΤΗ ΛΥΣΗ (επόμενη έκδοση): το email να μη φεύγει ΠΟΤΕ από τον server —
  *  - νέο callable `loginWithPhone({phone, password})`: ο server βρίσκει το
@@ -485,7 +507,10 @@ export const checkAccountExists = onCall(
  * συνδεθούν — αν το αφαιρέσουμε, σπάει το login τους.
  */
 export const getEmailByPhone = onCall(
-  { enforceAppCheck: false }, // ΠΡΟΣΩΡΙΝΟ: off μέχρι να ρυθμιστεί Play Integrity (ήταν true)
+  // ΠΡΟΣΩΡΙΝΟ: off μέχρι να ρυθμιστεί σωστά το Play Integrity στο Firebase
+  // Console — δοκιμάστηκε enforceAppCheck:true στις 6/9/2026 και απέρριψε
+  // ΚΑΙ τη γνήσια εφαρμογή ("AppCheck token was rejected"), οπότε επανήλθε.
+  { enforceAppCheck: false },
   async (request) => {
   await enforceRateLimit(callerIp(request), "getEmailByPhone");
 
@@ -726,6 +751,25 @@ export const deleteUserAccount = onCall(async (request) => {
         await doc.ref.delete();
       } catch (e) { logger.error(`userPost ${doc.id}:`, e); }
     }
+
+    // 6b. Διαγραφή σχολίων του χρήστη σε ΞΕΝΕΣ αναρτήσεις (GDPR: δικό του
+    // περιεχόμενο, δεν πρέπει να επιβιώνει σε posts άλλων χρηστών). Το
+    // collectionGroup("comments") πιάνει μαζί wallPosts/*/comments ΚΑΙ
+    // userPosts/*/comments αφού μοιράζονται το όνομα subcollection. Τα
+    // σχόλια σε ΔΙΚΕΣ του αναρτήσεις έχουν ήδη σβηστεί στα βήματα 5-6.
+    const foreignComments = await db.collectionGroup("comments").where("authorUid", "==", uid).get();
+    for (const doc of foreignComments.docs) {
+      try {
+        const postRef = doc.ref.parent.parent;
+        await doc.ref.delete();
+        if (postRef) {
+          await postRef.update({
+            commentsCount: admin.firestore.FieldValue.increment(-1),
+          }).catch(() => {});
+        }
+      } catch (e) { logger.error(`comment ${doc.id}:`, e); }
+    }
+    logger.info(`Deleted ${foreignComments.size} comments on other users' posts`);
 
     // 7. Friend requests
     const fromMe = await db.collection("friendRequests").where("fromUid", "==", uid).get();
@@ -978,5 +1022,109 @@ export const autoCompleteExpiredDeals = onSchedule(
     }
 
     logger.info(`Completed ${snap.docs.length} deals`);
+  }
+);
+
+/**
+ * WEB LANDING ΓΙΑ AGGELIA (μοιρασμένο link χωρίς την εφαρμογή)
+ *
+ * Το firebase.json κάνει rewrite `/listing/**` εδώ αντί για στατικό HTML.
+ * Δείχνει την ΠΡΑΓΜΑΤΙΚΗ αγγελία (φωτό/τίτλο/περιγραφή) με Open Graph tags
+ * ώστε να έχει σωστό preview όταν μοιράζεται σε WhatsApp/Messenger/FB, και
+ * προωθεί σε λήψη της εφαρμογής. Στο Android, αν η εφαρμογή είναι
+ * εγκατεστημένη, τα App Links (AndroidManifest.xml) ανοίγουν κατευθείαν εκεί
+ * — αυτή η σελίδα φαίνεται μόνο όταν δεν υπάρχει η εφαρμογή.
+ *
+ * Ο τίτλος/περιγραφή είναι περιεχόμενο χρήστη → escapeHtml ΠΑΝΤΟΥ πριν μπει
+ * στο HTML (αλλιώς XSS μέσω τίτλου αγγελίας).
+ */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+  }[c] as string));
+}
+
+export const renderListingPage = onRequest(
+  { region: "europe-west1" },
+  async (req, res) => {
+    const parts = req.path.split("/").filter(Boolean);
+    const listingId = parts[parts.length - 1] ?? "";
+
+    const playStoreUrl =
+      "https://play.google.com/store/apps/details?id=com.ChrisK.shareit";
+    const pageUrl =
+      `https://shareit-6cfa0.web.app/listing/${encodeURIComponent(listingId)}`;
+    const fallbackImage = "https://shareit-6cfa0.web.app/icon.png";
+
+    let title = "Share your Need";
+    let description = "Δες αυτή την αγγελία στην εφαρμογή Share your Need.";
+    let image = fallbackImage;
+    let badge = "";
+    let locationLabel = "";
+
+    try {
+      const doc = await db.collection("listings").doc(listingId).get();
+      const d = doc.data();
+      // Κρυμμένες (moderation) ή σβησμένες αγγελίες δείχνουν το γενικό
+      // fallback — δεν αποκαλύπτουμε ΓΙΑΤΙ κρύφτηκε.
+      if (doc.exists && d && d.isReported !== true) {
+        if (typeof d.title === "string" && d.title) title = d.title;
+        if (typeof d.description === "string" && d.description) {
+          description = d.description.slice(0, 200);
+        }
+        if (Array.isArray(d.imageUrls) && typeof d.imageUrls[0] === "string") {
+          image = d.imageUrls[0];
+        }
+        badge = d.type === "offer" ? "🤲 Προσφορά" : "🔍 Ζητώ";
+        if (typeof d.locationLabel === "string") locationLabel = d.locationLabel;
+      }
+    } catch (err) {
+      logger.error(`renderListingPage ${listingId}:`, err);
+    }
+
+    const safeTitle = escapeHtml(title);
+    const safeDescription = escapeHtml(description);
+    const safeImage = escapeHtml(image);
+    const safeBadge = escapeHtml(badge);
+    const safeLocation = escapeHtml(locationLabel);
+    const safePageUrl = escapeHtml(pageUrl);
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.status(200).send(`<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${safeTitle} — Share your Need</title>
+<meta property="og:title" content="${safeTitle}">
+<meta property="og:description" content="${safeDescription}">
+<meta property="og:image" content="${safeImage}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${safePageUrl}">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 0; background: #0F1115; color: #F0F4FF; }
+  .photo { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+  .content { padding: 20px; }
+  .badge { display: inline-block; background: rgba(255,107,71,0.15); color: #FF6B47; font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 20px; margin-bottom: 10px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  .location { color: #9098A8; font-size: 13px; margin-bottom: 16px; }
+  p { color: #C8CEDA; line-height: 1.5; white-space: pre-wrap; }
+  .cta { display: block; text-align: center; background: #FF6B47; color: #fff; text-decoration: none; font-weight: 700; padding: 14px; border-radius: 12px; margin-top: 20px; }
+  .hint { text-align: center; color: #6B7280; font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <img class="photo" src="${safeImage}" alt="${safeTitle}">
+  <div class="content">
+    ${safeBadge ? `<span class="badge">${safeBadge}</span>` : ""}
+    <h1>${safeTitle}</h1>
+    ${safeLocation ? `<div class="location">📍 ${safeLocation}</div>` : ""}
+    <p>${safeDescription}</p>
+    <a class="cta" href="${playStoreUrl}">Κατέβασε το Share your Need</a>
+    <div class="hint">Αν έχεις ήδη την εφαρμογή, αυτό το link ανοίγει κατευθείαν εκεί.</div>
+  </div>
+</body>
+</html>`);
   }
 );

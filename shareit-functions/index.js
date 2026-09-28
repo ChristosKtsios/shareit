@@ -356,7 +356,8 @@ exports.onReportCreated = onDocumentCreated(
       const commentId = isSafeDocId(data.commentId) ? data.commentId : null;
 
       const validCollection = postCollection === "wallPosts" ||
-          postCollection === "userPosts";
+          postCollection === "userPosts" ||
+          postCollection === "listings";
 
       try {
         if (validCollection && postId && commentId) {

@@ -172,10 +172,45 @@ service cloud.firestore {
       // users/{listing.userId} → το όνομα, η φωτογραφία και η βαθμολογία του
       // θύματος κολλάνε πάνω στο περιεχόμενο του επιτιθέμενου, και τα reports
       // πέφτουν σε αυτόν.
-      allow update: if isAuth() && resource.data.userId == request.auth.uid
-                    && !touchesAny(moderationFlags())
-                    && !touchesAny(['userId']);
+      // Boost (μετά από rewarded ad, βλ. listing_repository.dart#boost): κάθε
+      // write προσθέτει ΤΟ ΠΟΛΥ ΜΙΑ χρονοσφραγίδα στο boostTimestamps (μέγεθος
+      // ανεβαίνει κατά το πολύ 1) και η ΤΕΛΕΥΤΑΙΑ (πιο πρόσφατη, ο client πάντα
+      // προσθέτει στο τέλος) πρέπει να είναι «τώρα» (±5 λεπτά ανοχή ρολογιού,
+      // όχι μελλοντική) — έτσι δεν μπορεί κάποιος να φυτέψει αυθαίρετο πλήθος ή
+      // ψεύτικα παλιές/μελλοντικές προβολές για να νοθεύσει τη σειρά προώθησης
+      // (βλ. ListingModel#boostCount — μετράει μόνο τις τελευταίες 24 ώρες).
+      // Σχόλια (βλ. wallPosts/userPosts πιο κάτω): οποιοσδήποτε συνδεδεμένος
+      // σχολιάζει κάτω από αγγελία, όχι μόνο ο κάτοχος — γι' αυτό το
+      // commentsCount ±1 επιτρέπεται ξεχωριστά από το update του ιδιοκτήτη.
+      allow update: if isAuth() && (
+                      (resource.data.userId == request.auth.uid
+                        && !touchesAny(moderationFlags())
+                        && !touchesAny(['userId'])
+                        && (!touchesAny(['boostTimestamps'])
+                            || (request.resource.data.boostTimestamps is list
+                                && request.resource.data.boostTimestamps.size() >= 1
+                                && request.resource.data.boostTimestamps.size()
+                                   <= resource.data.get('boostTimestamps', []).size() + 1
+                                && request.resource.data.boostTimestamps[request.resource.data.boostTimestamps.size() - 1] is timestamp
+                                && request.resource.data.boostTimestamps[request.resource.data.boostTimestamps.size() - 1] <= request.time
+                                && request.resource.data.boostTimestamps[request.resource.data.boostTimestamps.size() - 1] > request.time - duration.value(5, 'm'))))
+                      || (onlyTouched(['commentsCount'])
+                          && (request.resource.data.commentsCount == resource.data.get('commentsCount', 0) + 1
+                              || request.resource.data.commentsCount == resource.data.get('commentsCount', 0) - 1))
+                    );
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+
+      // CommentModel (wall_post_model.dart) δεν έχει likes/reactions — μόνο ο
+      // συντάκτης επεξεργάζεται (soft delete), σε αντίθεση με τα wallPosts/
+      // userPosts comments που δέχονται κι εξωτερικό write στα likes.
+      match /comments/{cid} {
+        allow read:   if isAuth();
+        allow create: if isAuth() && request.resource.data.authorUid == request.auth.uid;
+        allow update: if isAuth() && resource.data.authorUid == request.auth.uid
+                      && !touchesAny(moderationFlags())
+                      && !touchesAny(['authorUid']);
+        allow delete: if isAuth() && resource.data.authorUid == request.auth.uid;
+      }
     }
 
     // ── CHATS ─────────────────────────────────────────────────────────────
@@ -235,9 +270,12 @@ service cloud.firestore {
                         //     μόνο προς τα εμπρός — δεν «ξε-διαγράφεται» ώστε να
                         //     μη μπορεί κάποιος να επαναφέρει περιεχόμενο που
                         //     ο άλλος είδε ως διαγραμμένο. Το μήνυμα μένει στη
-                        //     ροή ως «Το μήνυμα διαγράφηκε».
+                        //     ροή ως «Το μήνυμα διαγράφηκε». Τα latitude/longitude
+                        //     διαγράφονται κι αυτά ώστε να μη μένει η ακριβής
+                        //     τοποθεσία σε μήνυμα τύπου "location" μετά τη διαγραφή.
                         || (resource.data.senderId == request.auth.uid
-                            && onlyTouched(['isDeleted', 'deletedAt', 'text', 'mediaUrl'])
+                            && onlyTouched(['isDeleted', 'deletedAt', 'text', 'mediaUrl',
+                                            'latitude', 'longitude'])
                             && request.resource.data.isDeleted == true)
                       );
         // Σβήνεις ΜΟΝΟ δικά σου μηνύματα. Εξαίρεση: το «διαγραφή συνομιλίας»

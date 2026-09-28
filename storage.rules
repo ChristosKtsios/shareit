@@ -69,6 +69,13 @@ service firebase.storage {
       // update/delete: ποτέ από client.
     }
 
+    // Listing comment images — /listingComments/{listingId}/... — ίδιο σκεπτικό
+    // με τα wallComments πιο πάνω (χωρίς uid στη διαδρομή, άρα μόνο create).
+    match /listingComments/{listingId}/{allPaths=**} {
+      allow read:   if isAuth();
+      allow create: if isAuth() && isValidMedia() && resource == null;
+    }
+
     // Any path not matched above is denied by default.
   }
 }
