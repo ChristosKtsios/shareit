@@ -157,7 +157,14 @@
     "locationSelected": "Selected location",
     "photoTip": "Listings with a photo get far more interest",
     "categoryLabel": "Category *",
-    "selectCategory": "Choose a category for the listing."
+    "selectCategory": "Choose a category for the listing.",
+    "aiFillTitle": "✨ Fill in the listing from a photo",
+    "aiFillSubtitle": "Take a photo — AI writes the title, description, category and tags.",
+    "aiWorking": "AI is looking at your photo…",
+    "aiFilled": "✨ Filled in by AI — check it and fix anything you need.",
+    "aiUnsuitable": "AI couldn’t recognise an item. The photo was added — please fill in the fields yourself.",
+    "aiQuota": "Daily AI limit reached. The photo was added as usual.",
+    "aiUnavailable": "AI is unavailable right now. The photo was added as usual."
   },
   "category": {
     "electronics": "Electronics",
@@ -477,7 +484,11 @@
     "sortNearest": "📍 Nearest",
     "popularTags": "Popular tags",
     "sortRecentShort": "🕐 Recent",
-    "sortNearestShort": "📍 Nearest"
+    "sortNearestShort": "📍 Nearest",
+    "anyDate": "📅 Any time",
+    "availableWhen": "Available when?",
+    "categoryAll": "All categories",
+    "clearAll": "Clear"
   },
   "srch": {
     "tabListings": "📋 Listings",
@@ -486,10 +497,16 @@
     "searchUserHint": "Type a username to search",
     "tryAgain": "Try again",
     "searchPrompt": "Type something to search.",
-    "searchExamples": "e.g. dog, drill, lessons...",
+    "searchExamples": "e.g. drill — or tap ✨ for “bike near me on Saturday”",
     "noResults": "No listings found for \"{q}\"",
     "noResultsHint": "Try different words or increase the distance.",
-    "searchError": "Search error. Please try again."
+    "searchError": "Search error. Please try again.",
+    "aiButton": "Smart search (AI)",
+    "aiThinking": "AI is reading your search…",
+    "aiApplied": "Filters set by AI — tap a chip to change it",
+    "aiUnavailable": "AI is unavailable right now — ran a plain search instead.",
+    "aiQuota": "Daily AI search limit reached — ran a plain search instead.",
+    "noResultsFilters": "No listings match these filters"
   },
   "dist": {
     "label": "Distance:",

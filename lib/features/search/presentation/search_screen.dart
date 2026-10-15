@@ -10,6 +10,8 @@ import '../../../core/providers/blocked_users_provider.dart';
 import '../../../core/widgets/user_avatar.dart';
 import '../../listings/data/listing_model.dart';
 import '../../listings/data/tags_repository.dart';
+import '../../listings/presentation/widgets/category_selector.dart'
+    show ListingCategoryX;
 import '../providers/search_provider.dart';
 import 'widgets/search_bar_widget.dart';
 import 'widgets/search_results_widget.dart';
@@ -181,8 +183,114 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               color: AppColors.seek,
               onTap: () => notifier.setType(
                   state.type == ListingType.seek ? null : ListingType.seek)),
+          const SizedBox(width: 12),
+          _Chip(
+            label: state.hasDateFilter
+                ? '📅 ${_formatDateRange(state)}'
+                : 'filters.anyDate'.tr(),
+            selected: state.hasDateFilter,
+            color: AppColors.deal,
+            onTap: () => _pickDates(state, notifier),
+          ),
         ],
       ),
+    );
+  }
+
+  String _formatDateRange(SearchState state) {
+    final f = DateFormat('d/M', context.locale.toString());
+    final from = state.availableFrom;
+    final until = state.availableUntil;
+    if (from != null && until != null) {
+      return from == until ? f.format(from) : '${f.format(from)}–${f.format(until)}';
+    }
+    return f.format((from ?? until)!);
+  }
+
+  /// Ενεργό φίλτρο → το πάτημα το ΚΑΘΑΡΙΖΕΙ (όπως τα υπόλοιπα chips).
+  /// Ανενεργό → ανοίγει επιλογή διαστήματος.
+  Future<void> _pickDates(SearchState state, SearchNotifier notifier) async {
+    if (state.hasDateFilter) {
+      notifier.setAvailability(null, null);
+      return;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+      helpText: 'filters.availableWhen'.tr(),
+    );
+    if (range != null) notifier.setAvailability(range.start, range.end);
+  }
+
+  Widget _buildCategoryChips(SearchState state, SearchNotifier notifier) {
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        children: [
+          _Chip(
+              label: 'filters.categoryAll'.tr(),
+              selected: state.category == null,
+              onTap: () => notifier.setCategory(null)),
+          const SizedBox(width: 6),
+          ...ListingCategory.values.map((c) => Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: _Chip(
+                  label: c.label,
+                  icon: c.icon,
+                  selected: state.category == c,
+                  onTap: () =>
+                      notifier.setCategory(state.category == c ? null : c),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  /// «✨ Φίλτρα από AI» ή μήνυμα fallback. Διαφάνεια: ο χρήστης πρέπει να
+  /// ξέρει ΓΙΑΤΙ άλλαξαν τα chips μόνα τους — και να μπορεί να τα αναιρέσει.
+  Widget _buildAiBanner(SearchState state, SearchNotifier notifier) {
+    final String text;
+    final IconData icon;
+    if (state.aiLoading) {
+      text = 'srch.aiThinking'.tr();
+      icon = Icons.auto_awesome;
+    } else if (state.notice != null) {
+      text = state.notice!;
+      icon = Icons.info_outline;
+    } else if (state.aiApplied) {
+      text = 'srch.aiApplied'.tr();
+      icon = Icons.auto_awesome;
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(children: [
+        Icon(icon, size: 16, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12)),
+        ),
+        if (state.aiApplied && !state.aiLoading)
+          TextButton(
+            onPressed: notifier.clearFilters,
+            child: Text('filters.clearAll'.tr(),
+                style: const TextStyle(fontSize: 12)),
+          ),
+      ]),
     );
   }
 
@@ -312,10 +420,20 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             });
           },
           onClear: () {
+            _debounce?.cancel();
             _ctrl.clear();
             notifier.clear();
             setState(() => _userResults = []);
           },
+          aiLoading: state.aiLoading,
+          onAiSearch: _mode == SearchMode.listings
+              ? (v) {
+                  // Η AI αναζήτηση αντικαθιστά την εκκρεμή απλή αναζήτηση.
+                  _debounce?.cancel();
+                  FocusScope.of(context).unfocus();
+                  notifier.smartSearch(v);
+                }
+              : null,
         ),
         const Divider(height: 0),
         _buildToggle(),
@@ -323,7 +441,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           Expanded(
             child: CustomScrollView(
               slivers: [
+                SliverToBoxAdapter(child: _buildAiBanner(state, notifier)),
                 SliverToBoxAdapter(child: _buildTypeChips(state, notifier)),
+                SliverToBoxAdapter(
+                    child: _buildCategoryChips(state, notifier)),
                 SliverToBoxAdapter(
                     child: _buildDistanceSlider(state, notifier)),
                 SliverToBoxAdapter(child: _buildTagsRow(state, notifier)),
@@ -439,6 +560,7 @@ class _Chip extends StatelessWidget {
   /// Δείχνει ✓ όταν είναι επιλεγμένο — για tags που υποστηρίζουν πολλαπλή
   /// επιλογή, ώστε να είναι ξεκάθαρο ποια είναι ενεργά (και ότι re-tap αφαιρεί).
   final bool showCheck;
+  final IconData? icon;
 
   const _Chip({
     required this.label,
@@ -446,6 +568,7 @@ class _Chip extends StatelessWidget {
     required this.onTap,
     this.color,
     this.showCheck = false,
+    this.icon,
   });
 
   @override
@@ -467,6 +590,11 @@ class _Chip extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (showCheck && selected) ...[
             Icon(Icons.check, size: 14, color: c),
+            const SizedBox(width: 4),
+          ] else if (icon != null) ...[
+            Icon(icon,
+                size: 14,
+                color: selected ? c : AppColors.textSecondary),
             const SizedBox(width: 4),
           ],
           Text(label,

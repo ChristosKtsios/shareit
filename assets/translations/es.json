@@ -157,7 +157,14 @@
     "locationSelected": "Ubicación seleccionada",
     "photoTip": "Los anuncios con foto reciben mucho más interés",
     "categoryLabel": "Categoría *",
-    "selectCategory": "Elige una categoría para el anuncio."
+    "selectCategory": "Elige una categoría para el anuncio.",
+    "aiFillTitle": "✨ Rellena el anuncio con una foto",
+    "aiFillSubtitle": "Haz una foto: la IA escribe el título, la descripción, la categoría y las etiquetas.",
+    "aiWorking": "La IA está mirando la foto…",
+    "aiFilled": "✨ Rellenado por la IA: revísalo y corrige lo que haga falta.",
+    "aiUnsuitable": "La IA no reconoció ningún objeto. La foto se añadió; rellena los campos tú mismo.",
+    "aiQuota": "Has alcanzado el límite diario de IA. La foto se añadió normalmente.",
+    "aiUnavailable": "La IA no está disponible ahora. La foto se añadió normalmente."
   },
   "category": {
     "electronics": "Electrónica",
@@ -477,7 +484,11 @@
     "sortNearest": "📍 Más cercanos",
     "popularTags": "Etiquetas populares",
     "sortRecentShort": "🕐 Recientes",
-    "sortNearestShort": "📍 Cercanos"
+    "sortNearestShort": "📍 Cercanos",
+    "anyDate": "📅 Cuando sea",
+    "availableWhen": "¿Disponible cuándo?",
+    "categoryAll": "Todas las categorías",
+    "clearAll": "Borrar"
   },
   "srch": {
     "tabListings": "📋 Anuncios",
@@ -486,10 +497,16 @@
     "searchUserHint": "Escribe un nombre de usuario para buscar",
     "tryAgain": "Inténtalo de nuevo",
     "searchPrompt": "Escribe algo para buscar.",
-    "searchExamples": "p. ej. perro, taladro, clases...",
+    "searchExamples": "p. ej. taladro — o toca ✨ para «bici cerca de mí el sábado»",
     "noResults": "No se encontraron anuncios para \"{q}\"",
     "noResultsHint": "Prueba con otras palabras o aumenta la distancia.",
-    "searchError": "Error de búsqueda. Inténtalo de nuevo."
+    "searchError": "Error de búsqueda. Inténtalo de nuevo.",
+    "aiButton": "Búsqueda inteligente (IA)",
+    "aiThinking": "La IA está analizando tu búsqueda…",
+    "aiApplied": "Filtros de la IA: toca uno para cambiarlo",
+    "aiUnavailable": "La IA no está disponible ahora; se hizo una búsqueda normal.",
+    "aiQuota": "Has alcanzado el límite diario de búsquedas con IA; se hizo una búsqueda normal.",
+    "noResultsFilters": "No hay anuncios con estos filtros"
   },
   "dist": {
     "label": "Distancia:",

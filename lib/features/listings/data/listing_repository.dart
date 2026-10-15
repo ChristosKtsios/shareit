@@ -6,7 +6,9 @@ import 'listing_model.dart';
 import 'tags_repository.dart';
 
 class ListingRepository {
-  final _col = FirebaseFirestore.instance.collection('listings');
+  // `late`: το Firestore αγγίζεται στην πρώτη ΧΡΗΣΗ, όχι στην κατασκευή —
+  // έτσι τα unit tests μπορούν να φτιάξουν fake subclass χωρίς Firebase.
+  late final _col = FirebaseFirestore.instance.collection('listings');
   static const int _pageSize = 20;
 
   Future<void> create(ListingModel l) async => await _col.add(l.toFirestore());
@@ -302,10 +304,36 @@ class ListingRepository {
     return score;
   }
 
+  /// Η αγγελία είναι διαθέσιμη κάποια στιγμή μέσα στο [from, until];
+  ///
+  /// Έλεγχος ΕΠΙΚΑΛΥΨΗΣ διαστημάτων: η αγγελία δεν πρέπει να λήγει πριν
+  /// αρχίσει το παράθυρο, ούτε να αρχίζει αφού τελειώσει. Κενό όριο (null)
+  /// σημαίνει «χωρίς περιορισμό» και στις δύο πλευρές. Σύγκριση σε επίπεδο
+  /// ΗΜΕΡΑΣ: «διαθέσιμο το Σάββατο» πρέπει να πιάνει και αγγελία που λήγει
+  /// Σάββατο 10:00.
+  static bool isAvailableBetween(
+      ListingModel l, DateTime? from, DateTime? until) {
+    DateTime day(DateTime d) => DateTime(d.year, d.month, d.day);
+    if (from != null &&
+        l.availableUntil != null &&
+        day(l.availableUntil!).isBefore(day(from))) {
+      return false;
+    }
+    if (until != null &&
+        l.availableFrom != null &&
+        day(l.availableFrom!).isAfter(day(until))) {
+      return false;
+    }
+    return true;
+  }
+
   Future<List<ListingModel>> search({
     required String keyword,
     Set<String> tags = const {},
     ListingType? type,
+    ListingCategory? category,
+    DateTime? availableFrom,
+    DateTime? availableUntil,
   }) async {
     final tokens = queryTokens(keyword);
 
@@ -327,12 +355,45 @@ class ListingRepository {
     if (type != null) {
       q = q.where('type', isEqualTo: type.name);
     }
+    // Κατηγορία στον SERVER μόνο όταν ΔΕΝ υπάρχουν λέξεις: τότε είναι το
+    // κύριο κριτήριο και χωρίς αυτό θα έρχονταν 60 τυχαίες αγγελίες. Μαζί με
+    // arrayContainsAny θα χρειαζόταν νέο composite index — εκεί φιλτράρουμε
+    // στον client, πάνω σε ήδη σχετικά αποτελέσματα.
+    final categoryOnServer = category != null && tokens.isEmpty;
+    if (categoryOnServer) {
+      q = q.where('category', isEqualTo: category.name);
+    }
 
     // Μεγαλύτερο από το παλιό 40: με OR έρχονται περισσότεροι υποψήφιοι και
     // θέλουμε αρκετούς για να έχει νόημα η ταξινόμηση κατά σχετικότητα.
     final snap = await q.limit(60).get();
     var results = _filterVisible(snap.docs);
 
+    return applyFilters(
+      results,
+      tags: tags,
+      // Στον server ήδη — μην ξαναφιλτράρεις (ίδιο αποτέλεσμα, άσκοπη δουλειά).
+      category: categoryOnServer ? null : category,
+      availableFrom: availableFrom,
+      availableUntil: availableUntil,
+    );
+  }
+
+  /// Τα φίλτρα που εφαρμόζονται ΣΤΟΝ CLIENT — κοινά για την αναζήτηση
+  /// λέξεων ΚΑΙ για τα σημασιολογικά αποτελέσματα (που έρχονται ως ids από
+  /// τον server, χωρίς φίλτρα). Έτσι τα δύο δεν αποκλίνουν ποτέ.
+  static List<ListingModel> applyFilters(
+    List<ListingModel> listings, {
+    Set<String> tags = const {},
+    ListingType? type,
+    ListingCategory? category,
+    DateTime? availableFrom,
+    DateTime? availableUntil,
+  }) {
+    var results = listings;
+    if (type != null) {
+      results = results.where((l) => l.type == type).toList();
+    }
     // Multi-tag filter (OR): keep listings matching ANY selected tag.
     // Accent-insensitive: "ψάχνω" ταιριάζει και με "ψαχνω".
     if (tags.isNotEmpty) {
@@ -341,7 +402,30 @@ class ListingRepository {
           .where((l) => l.tags.any((t) => wanted.contains(GreekText.fold(t))))
           .toList();
     }
+    if (category != null) {
+      results = results.where((l) => l.category == category).toList();
+    }
+    if (availableFrom != null || availableUntil != null) {
+      results = results
+          .where((l) => isAvailableBetween(l, availableFrom, availableUntil))
+          .toList();
+    }
     return results;
+  }
+
+  /// Ενεργές, ορατές αγγελίες με αυτά τα ids (σειρά: όπως επιστρέφει το
+  /// Firestore). Για τα σημασιολογικά αποτελέσματα του AI.
+  Future<List<ListingModel>> getActiveByIds(Iterable<String> ids) async {
+    final unique = ids.toSet().toList();
+    final out = <ListingModel>[];
+    // Firestore: το whereIn δέχεται έως 30 τιμές ανά query.
+    for (var i = 0; i < unique.length; i += 30) {
+      final chunk = unique.sublist(i, (i + 30).clamp(0, unique.length));
+      final snap =
+          await _col.where(FieldPath.documentId, whereIn: chunk).get();
+      out.addAll(_filterVisible(snap.docs).where((l) => l.isActive));
+    }
+    return out;
   }
 
   Future<List<ListingModel>> getByTag(String tag, {int limit = 40}) async {

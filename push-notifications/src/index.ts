@@ -1128,3 +1128,11 @@ export const renderListingPage = onRequest(
 </html>`);
   }
 );
+
+// AI (Gemini API) — βλ. src/ai.ts
+export {
+  parseSearchQuery,
+  suggestListingFromImage,
+  embedListing,
+  embedMissingListings,
+} from "./ai.js";

@@ -20,7 +20,7 @@ class SearchResultsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (state.loading) return const ShimmerList(count: 4);
+    if (state.loading || state.aiLoading) return const ShimmerList(count: 4);
 
     if (state.error != null) {
       return Center(child: Column(
@@ -42,7 +42,7 @@ class SearchResultsWidget extends StatelessWidget {
     // Prompt μόνο όταν δεν υπάρχει ΤΙΠΟΤΑ προς αναζήτηση — ίδια λογική με το
     // search() (query ΚΑΙ tags κενά). Αλλιώς (π.χ. tag-only search) θα κρύβαμε
     // αποτελέσματα ενώ ο μετρητής θα έδειχνε «1 αποτέλεσμα».
-    if (state.query.isEmpty && state.tags.isEmpty) {
+    if (!state.hasCriteria) {
       return Center(child: Column(
         mainAxisSize: MainAxisSize.min, children: [
         const Icon(Icons.search, color: AppColors.textHint, size: 48),
@@ -62,7 +62,10 @@ class SearchResultsWidget extends StatelessWidget {
         const Icon(Icons.search_off,
             color: AppColors.textHint, size: 48),
         const SizedBox(height: 12),
-        Text('srch.noResults'.tr(namedArgs: {'q': state.query}),
+        Text(
+            state.query.trim().isEmpty
+                ? 'srch.noResultsFilters'.tr()
+                : 'srch.noResults'.tr(namedArgs: {'q': state.query}),
             style: const TextStyle(
                 color: AppColors.textSecondary),
             textAlign: TextAlign.center),

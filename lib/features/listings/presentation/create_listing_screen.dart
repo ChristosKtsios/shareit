@@ -16,6 +16,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../profile/data/user_repository.dart';
+import '../../../core/services/ai_functions.dart';
+import '../data/listing_ai_service.dart';
 import '../data/listing_model.dart';
 import '../data/listing_repository.dart';
 import '../data/tags_repository.dart';
@@ -46,6 +48,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   bool _autoDelete = false;
   bool _loading = false;
   bool _uploadingImage = false;
+  bool _aiLoading = false;
   bool _locationLoading = true;
   GeoPoint? _location;
   String _locationLabel = '';
@@ -148,13 +151,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     }
   }
 
-  Future<void> _pickImage() async {
-    if (_imageUrls.length >= 5) {
-      _snack('cl.maxPhotos'.tr());
-      return;
-    }
-
-    final source = await showModalBottomSheet<ImageSource>(
+  Future<ImageSource?> _chooseSource() {
+    return showModalBottomSheet<ImageSource>(
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
@@ -204,7 +202,14 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         ),
       ),
     );
+  }
 
+  Future<void> _pickImage() async {
+    if (_imageUrls.length >= 5) {
+      _snack('cl.maxPhotos'.tr());
+      return;
+    }
+    final source = await _chooseSource();
     if (source == null) return;
 
     final picker = ImagePicker();
@@ -226,7 +231,14 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         imageQuality: 85,
       ));
     }
-    if (files.isEmpty) return;
+    await _uploadFiles(files);
+  }
+
+  /// Ανεβάζει στο Storage και προσθέτει στην αγγελία. Επιστρέφει τις
+  /// διαδρομές (fullPath) όσων ανέβηκαν — τις χρειάζεται το AI.
+  Future<List<String>> _uploadFiles(List<XFile> files) async {
+    final paths = <String>[];
+    if (files.isEmpty) return paths;
     setState(() => _uploadingImage = true);
     try {
       final uid = ref.read(currentUserProvider)!.uid;
@@ -239,6 +251,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
           await ref2.putFile(
               File(file.path), SettableMetadata(contentType: 'image/jpeg'));
           final url = await ref2.getDownloadURL();
+          paths.add(ref2.fullPath);
           if (mounted) setState(() => _imageUrls = [..._imageUrls, url]);
         } catch (e) {
           _snack('${'common.error'.tr()}: $e');
@@ -246,6 +259,66 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       }
     } finally {
       if (mounted) setState(() => _uploadingImage = false);
+    }
+    return paths;
+  }
+
+  /// ✨ Μία φωτογραφία → το AI προτείνει τίτλο, περιγραφή, κατηγορία, tags.
+  ///
+  /// Η φωτογραφία μπαίνει ΚΑΙ στην αγγελία (δεν ανεβαίνει δύο φορές). Το AI
+  /// συμπληρώνει μόνο κενά πεδία — ό,τι έγραψε ήδη ο χρήστης μένει ως έχει.
+  Future<void> _fillFromPhoto() async {
+    if (_aiLoading || _uploadingImage) return;
+    if (_imageUrls.length >= 5) {
+      _snack('cl.maxPhotos'.tr());
+      return;
+    }
+    final source = await _chooseSource();
+    if (source == null) return;
+    final photo = await ImagePicker().pickImage(
+      source: source,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      imageQuality: 85,
+    );
+    if (photo == null || !mounted) return;
+
+    setState(() => _aiLoading = true);
+    try {
+      final paths = await _uploadFiles([photo]);
+      if (paths.isEmpty || !mounted) return;
+
+      final suggestion = await ListingAiService().suggestFromImage(
+        storagePath: paths.first,
+        type: _type,
+        locale: context.locale.languageCode,
+      );
+      if (!mounted) return;
+      if (!suggestion.suitable) {
+        _snack('cl.aiUnsuitable'.tr());
+        return;
+      }
+      final next = ListingDraft(
+        title: _titleCtrl.text,
+        description: _descCtrl.text,
+        category: _category,
+        tags: _tags,
+      ).fillFrom(suggestion, maxTags: _maxTags);
+      setState(() {
+        _titleCtrl.text = next.title;
+        _descCtrl.text = next.description;
+        _category = next.category;
+        _tags
+          ..clear()
+          ..addAll(next.tags);
+      });
+      _snack('cl.aiFilled'.tr());
+    } on AiException catch (e) {
+      _snack(e.reason == AiFailure.quota
+          ? 'cl.aiQuota'.tr()
+          : 'cl.aiUnavailable'.tr());
+    } finally {
+      if (mounted) setState(() => _aiLoading = false);
     }
   }
 
@@ -471,6 +544,9 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                       onTap: () => setState(() => _type = ListingType.seek)),
                 ),
               ]),
+
+              const SizedBox(height: 16),
+              _AiFillCard(loading: _aiLoading, onTap: _fillFromPhoto),
 
               const SizedBox(height: 28),
 
@@ -926,6 +1002,66 @@ class _AvailabilityRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// «✨ Γέμισε την αγγελία από φωτογραφία» — η είσοδος στο AI.
+class _AiFillCard extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _AiFillCard({required this.loading, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: loading ? null : onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.35)),
+          ),
+          child: Row(children: [
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary))
+                  : const Icon(Icons.auto_awesome,
+                      color: AppColors.primary, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(loading ? 'cl.aiWorking'.tr() : 'cl.aiFillTitle'.tr(),
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14)),
+                  const SizedBox(height: 2),
+                  Text('cl.aiFillSubtitle'.tr(),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                ],
+              ),
+            ),
+            if (!loading)
+              const Icon(Icons.chevron_right, color: AppColors.textHint),
+          ]),
+        ),
+      ),
     );
   }
 }
