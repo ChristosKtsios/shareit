@@ -24,9 +24,11 @@
         android:icon="@mipmap/ic_launcher">
 
         <!-- Google Maps API Key -->
+        <!-- Η τιμή έρχεται από το android/local.properties (MAPS_API_KEY)
+             μέσω manifestPlaceholders στο app/build.gradle.kts. -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyBkOZitrrZv4OwG5Qo_VjNG4yp8B-tnlDM"/>
+            android:value="${MAPS_API_KEY}"/>
 
         <!-- AdMob App ID -->
         <meta-data

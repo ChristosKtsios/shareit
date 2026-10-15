@@ -14,6 +14,21 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+// Google Maps API key: ΔΕΝ μπαίνει στο git. Ζει στο android/local.properties
+// (gitignored) ως MAPS_API_KEY και περνά στο manifest ως placeholder.
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { localProperties.load(it) }
+}
+val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY")?.trim().orEmpty()
+if (mapsApiKey.isEmpty()) {
+    throw GradleException(
+        "MAPS_API_KEY λείπει από το android/local.properties — ο χάρτης δεν θα " +
+        "φόρτωνε. Πρόσθεσε τη γραμμή: MAPS_API_KEY=<το κλειδί του Google Maps>"
+    )
+}
+
 android {
     namespace = "com.ChrisK.shareit"
     compileSdk = flutter.compileSdkVersion
@@ -35,6 +50,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     signingConfigs {
